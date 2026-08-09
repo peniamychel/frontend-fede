@@ -1,4 +1,4 @@
-# fede — Padrón FEDERA
+# frontend-fede — Padrón FEDERA
 
 Cliente Flutter del padrón de productores. Consume la API de Spring Boot del
 repositorio `backend-fede`.
