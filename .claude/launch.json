@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fede-web",
+      "runtimeExecutable": "C:\\dev\\flutter\\bin\\flutter.bat",
+      "runtimeArgs": [
+        "run",
+        "-d",
+        "web-server",
+        "--web-hostname",
+        "localhost",
+        "--web-port",
+        "5173"
+      ],
+      "port": 5173
+    }
+  ]
+}

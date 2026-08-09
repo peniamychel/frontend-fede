@@ -1,0 +1,122 @@
+import 'package:flutter/material.dart';
+
+import '../../repositories/padron.dart';
+import '../widgets/marca_estado.dart';
+
+/// Fila de productor para listados.
+///
+/// La usan el padrón completo y el listado por sindicato, así que vive aparte:
+/// si cambia cómo se muestra un productor, cambia en los dos sitios a la vez.
+class FilaProductor extends StatelessWidget {
+  const FilaProductor({
+    super.key,
+    required this.productor,
+    required this.alTocar,
+    this.mostrarRuta = true,
+  });
+
+  final Productor productor;
+  final VoidCallback alTocar;
+
+  /// Dentro de un sindicato concreto la ruta es la misma en todas las filas y
+  /// solo ocupa espacio.
+  final bool mostrarRuta;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+
+    final documentos = [
+      if (productor.ci != null && productor.ci!.isNotEmpty)
+        'CI ${productor.ci}',
+      if (productor.carnetProductor != null &&
+          productor.carnetProductor!.isNotEmpty)
+        'Carné ${productor.carnetProductor}',
+    ].join('  ·  ');
+
+    final subtitulos = [
+      if (documentos.isNotEmpty) documentos,
+      if (mostrarRuta) productor.ruta,
+    ];
+
+    return ListTile(
+      onTap: alTocar,
+      leading: _avatar(context),
+      title: TituloConEstado(
+        nombre: productor.nombreCompleto.isEmpty
+            ? productor.nombres
+            : productor.nombreCompleto,
+        habilitado: productor.habilitado,
+      ),
+      subtitle: subtitulos.isEmpty
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final (i, texto) in subtitulos.indexed)
+                  Text(
+                    texto,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: tema.textTheme.bodySmall?.copyWith(
+                      color: i == subtitulos.length - 1 && mostrarRuta
+                          ? tema.colorScheme.outline
+                          : null,
+                    ),
+                  ),
+              ],
+            ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (productor.marcado)
+            Tooltip(
+              message: 'Marcado en la revisión',
+              child: Icon(Icons.bookmark,
+                  size: 18, color: tema.colorScheme.tertiary),
+            ),
+          if (productor.tieneCorreccionPendiente)
+            Tooltip(
+              message: 'Corrección de nombre sin confirmar',
+              child:
+                  Icon(Icons.edit_note, size: 20, color: tema.colorScheme.error),
+            ),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right, size: 20),
+        ],
+      ),
+    );
+  }
+
+  /// La miniatura real si está cargada; si no, el icono de siempre.
+  ///
+  /// El icono distingue dos ausencias que no son lo mismo: no tener imagen
+  /// subida, y no tener siquiera el rótulo de la foto en la planilla.
+  Widget _avatar(BuildContext context) {
+    final tema = Theme.of(context);
+    final miniatura = productor.miniaturaUrl;
+
+    if (miniatura != null) {
+      return CircleAvatar(
+        backgroundColor: tema.colorScheme.surfaceContainerHighest,
+        // foregroundImage y no backgroundImage: si la carga falla, se ve el
+        // child de respaldo en vez de un círculo vacío.
+        foregroundImage: NetworkImage(ApiConfig.urlAbsoluta(miniatura)),
+        child: Icon(Icons.person, size: 20, color: tema.colorScheme.outline),
+      );
+    }
+
+    return CircleAvatar(
+      backgroundColor: productor.tieneFoto
+          ? tema.colorScheme.primaryContainer
+          : tema.colorScheme.surfaceContainerHighest,
+      child: Icon(
+        productor.tieneFoto ? Icons.person : Icons.person_off_outlined,
+        size: 20,
+        color: productor.tieneFoto
+            ? tema.colorScheme.onPrimaryContainer
+            : tema.colorScheme.outline,
+      ),
+    );
+  }
+}

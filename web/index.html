@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="fede">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>Padrón FEDERA</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!--
+    ===================================================================
+    Google Maps, para marcar la sede de los sindicatos.
+
+    Para activar el mapa en la web:
+      1. Descomentá el <script> de abajo.
+      2. Reemplazá TU_API_KEY_AQUI por tu clave de Google Cloud, con la
+         "Maps JavaScript API" habilitada.
+      3. Arrancá pasando la misma clave a Dart, que es como la app sabe
+         que el mapa está disponible:
+         flutter run --dart-define=GOOGLE_MAPS_API_KEY=TU_CLAVE
+
+    Queda comentado a propósito: un script con una clave de ejemplo se
+    descarga igual y Google responde con un error de clave inválida en
+    la consola, en cada carga, para siempre.
+
+    Restringí la clave por referente HTTP a los dominios donde vaya a
+    correr la app. Que la clave quede escrita en el HTML es normal en las
+    claves de navegador —el navegador tiene que verla para pedir el
+    mapa—: lo que la protege es la restricción, no esconderla.
+
+    Sin esto la app funciona igual. La pantalla de ubicación muestra el
+    modo de coordenadas manuales y la ubicación se guarda lo mismo.
+    ===================================================================
+
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key=TU_API_KEY_AQUI&loading=async">
+  </script>
+  -->
+</head>
+<body>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
