@@ -1,10 +1,21 @@
 # fede — Padrón FEDERA
 
-Cliente Flutter del padrón de productores. Consume la API de Spring Boot que
-vive en `../../negrito/federa/backend`.
+Cliente Flutter del padrón de productores. Consume la API de Spring Boot del
+repositorio `backend-fede`.
 
 Jerarquía del dominio: **Federación › Central › Sindicato › Productor**, y cada
 productor tiene lotes y observaciones.
+
+Además del padrón, la app cubre:
+
+- **Directorio** en los tres niveles. Un sindicato tiene presidente y
+  secretario; una central suma haciendas; la federación suma vocal. Nadie puede
+  ocupar dos cargos a la vez.
+- **Documentos**: la nómina del sindicato con su acta de entrega, la credencial
+  del afiliado (apaisada) y la del dirigente (vertical), las dos del tamaño de
+  una cédula y con QR.
+- **Reuniones y pase de lista**. Cuatro tipos de convocatoria, cada uno con su
+  propia lista, y registro leyendo el QR con la cámara.
 
 ## Cómo correrlo
 
@@ -96,7 +107,18 @@ lib/
 └── ui/
     ├── productores/ listado, ficha y formulario
     ├── jerarquia/   navegación Federación › Central › Sindicato
+    ├── reuniones/    convocatoria y pase de lista con la cámara
     ├── observaciones/
-    ├── calidad/     panel de duplicados, sin foto y lotes sin reconocer
-    └── importacion/ carga masiva desde Excel
+    ├── calidad/      panel de duplicados, sin foto y lotes sin reconocer
+    └── importacion/  carga masiva desde Excel
 ```
+
+## Leer el QR de las credenciales
+
+El pase de lista usa `mobile_scanner`. En Android pide permiso de cámara la
+primera vez; en el navegador lo pide el propio navegador, y **solo funciona
+sobre HTTPS o en `localhost`** —es una restricción del navegador, no de la app.
+
+Nunca depende de la cámara: debajo del QR, cada credencial trae el código
+impreso en letras, y la pantalla siempre ofrece escribirlo a mano. Es el
+respaldo que hace falta en el campo, de noche o con una cámara sucia.
