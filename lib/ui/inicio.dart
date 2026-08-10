@@ -29,18 +29,33 @@ class _InicioState extends State<Inicio> {
     _Destino('Calidad', Icons.fact_check_outlined, Icons.fact_check),
   ];
 
+  /// Secciones que el usuario ya visitó.
+  ///
+  /// El IndexedStack conserva el scroll y los filtros al ir y volver, que es lo
+  /// que se quiere, pero construye **todos** sus hijos de entrada: al abrir la
+  /// app se disparaban once consultas a la API para dibujar cinco pantallas de
+  /// las que se ve una. Sobre la red de una oficina, o desde un teléfono en el
+  /// campo, eso es un segundo largo de espera por datos que nadie pidió.
+  ///
+  /// Con esto cada sección se arma la primera vez que se entra, y de ahí en
+  /// adelante se conserva igual que antes.
+  final Set<int> _visitadas = {0};
+
   @override
   Widget build(BuildContext context) {
-    // IndexedStack y no un switch: conserva el scroll y los filtros de cada
-    // sección al ir y volver.
+    const paginas = [
+      ProductoresPagina(),
+      JerarquiaPagina(),
+      ReunionesPagina(),
+      ObservacionesPagina(),
+      CalidadPagina(),
+    ];
+
     final contenido = IndexedStack(
       index: _seccion,
-      children: const [
-        ProductoresPagina(),
-        JerarquiaPagina(),
-        ReunionesPagina(),
-        ObservacionesPagina(),
-        CalidadPagina(),
+      children: [
+        for (var i = 0; i < paginas.length; i++)
+          _visitadas.contains(i) ? paginas[i] : const SizedBox.shrink(),
       ],
     );
 
@@ -108,7 +123,12 @@ class _InicioState extends State<Inicio> {
     );
   }
 
-  void _ir(int indice) => setState(() => _seccion = indice);
+  void _ir(int indice) => setState(() {
+        _seccion = indice;
+        // Queda anotada para siempre: a partir de acá esta sección se
+        // construye como antes y conserva su estado al ir y volver.
+        _visitadas.add(indice);
+      });
 }
 
 class _Destino {
