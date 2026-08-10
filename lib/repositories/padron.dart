@@ -24,6 +24,7 @@ export '../models/observacion.dart';
 export '../models/productor.dart';
 export '../models/reunion.dart';
 export '../models/sindicato.dart';
+export '../models/tenencia.dart';
 export 'central_repository.dart';
 export 'directorio_repository.dart';
 export 'federacion_repository.dart';
@@ -48,6 +49,9 @@ class Padron {
   late final SindicatoRepository sindicatos = SindicatoRepository(api);
   late final ProductorRepository productores = ProductorRepository(api);
   late final LoteRepository lotes = LoteRepository(api);
+
+  /// Sistemas: el agregado que un lote puede tener y que se traslada.
+  late final SistemaRepository sistemas = SistemaRepository(api);
   late final ObservacionRepository observaciones = ObservacionRepository(api);
   late final ImportacionRepository importaciones = ImportacionRepository(api);
 

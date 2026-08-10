@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/boton_tema.dart';
+import '../lotes/lotes_sindicato_pagina.dart';
 import '../widgets/descargas.dart';
 import '../widgets/dialogo_nombre_numero.dart';
 import '../widgets/dialogo_texto.dart';
@@ -10,7 +11,7 @@ import '../widgets/estados.dart';
 import '../widgets/marca_estado.dart';
 import 'directorio_pagina.dart';
 import 'sindicato_productores_pagina.dart';
-import 'ubicacion_sindicato_pagina.dart';
+import '../widgets/ubicacion_pagina.dart';
 
 /// Navegación por la jerarquía: Federación › Central › Sindicato.
 ///
@@ -450,6 +451,11 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
+                        tooltip: 'Parcelas del sindicato',
+                        onPressed: () => _verLotes(s),
+                        icon: const Icon(Icons.crop_landscape, size: 20),
+                      ),
+                      IconButton(
                         tooltip: 'Directorio: presidente y secretario',
                         onPressed: () =>
                             _verDirectorio(DirectorioPagina.deSindicato(s)),
@@ -510,6 +516,16 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     );
   }
 
+  /// Las parcelas del sindicato. Cuelgan de acá y no del productor porque la
+  /// tierra pertenece al sindicato: una parcela sin tenedor tiene que poder
+  /// encontrarse igual.
+  Future<void> _verLotes(Sindicato s) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => LotesSindicatoPagina(sindicato: s)),
+    );
+    if (mounted) _recargarSindicatos();
+  }
+
   /// Abre el directorio de cualquiera de los tres niveles.
   Future<void> _verDirectorio(DirectorioPagina pagina) async {
     await Navigator.of(context).push(
@@ -519,9 +535,19 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   }
 
   Future<void> _ubicar(Sindicato s) async {
+    final repo = PadronScope.of(context).sindicatos;
     final cambio = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => UbicacionSindicatoPagina(sindicato: s),
+        builder: (_) => UbicacionPagina(
+          titulo: s.nombre,
+          subtitulo: 'Central ${s.centralNombre}',
+          queEs: 'la sede',
+          latitud: s.latitud,
+          longitud: s.longitud,
+          ubicacionActualizadaEn: s.ubicacionActualizadaEn,
+          alGuardar: (lat, lon) => repo.marcarUbicacion(s.id, lat, lon),
+          alBorrar: () => repo.borrarUbicacion(s.id),
+        ),
       ),
     );
     if (cambio == true) _recargarSindicatos();

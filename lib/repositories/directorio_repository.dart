@@ -62,9 +62,12 @@ class DirectorioRepository {
     required TipoCargo cargo,
     DateTime? hasta,
   }) async {
+    // La fecha va como query aparte y no pegada con un `?`: la URI se arma con
+    // Uri(path: ...), que codificaría el signo de pregunta dentro del camino y
+    // el servidor devolvería 404.
     final datos = await _api.eliminarConRespuesta(
-      '${_base(ambito, id)}/${cargo.valor}'
-      '${hasta == null ? '' : '?hasta=${_soloFecha(hasta)}'}',
+      '${_base(ambito, id)}/${cargo.valor}',
+      query: {'hasta': hasta == null ? null : _soloFecha(hasta)},
     );
     return Directorio.desdeJson(datos.comoObjeto);
   }

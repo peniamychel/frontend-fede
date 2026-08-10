@@ -23,6 +23,7 @@ import 'package:fede/repositories/padron.dart';
 void main() {
   late Padron padron;
   late Sindicato sindicato;
+  late Lote lote;
   final productores = <Productor>[];
 
   setUpAll(() async {
@@ -45,7 +46,8 @@ void main() {
     }
     // Un lote y una observación, para que el informe tenga esas dos columnas
     // con algo adentro.
-    await padron.lotes.crear(LoteRequest(
+    lote = await padron.lotes.crear(LoteRequest(
+      sindicatoId: sindicato.id,
       productorId: productores.first.id,
       numero: '99',
     ));
@@ -56,6 +58,10 @@ void main() {
   });
 
   tearDownAll(() async {
+    // El lote primero: un productor con tierra a su nombre no se borra, y con
+    // razón. La parcela pertenece al sindicato y sobrevive a su tenedor, así
+    // que hay que darla de baja aparte.
+    await padron.lotes.eliminar(lote.id);
     for (final p in productores) {
       await padron.productores.eliminar(p.id);
     }

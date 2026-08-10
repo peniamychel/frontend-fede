@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../lotes/lote_pagina.dart';
 import '../widgets/descargas.dart';
 import '../widgets/dialogo_texto.dart';
 import '../widgets/estados.dart';
@@ -42,6 +43,13 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
 
   Future<void> _descargarCredencial() => descargarCredencialProductor(
       context, widget.productorId, _nombre ?? 'el productor');
+
+  Future<void> _abrirLote(Lote lote) async {
+    final cambio = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => LotePagina(loteId: lote.id)),
+    );
+    if (cambio == true && mounted) _recargar();
+  }
 
   Future<void> _cambiarEstado(Productor p) async {
     final cambio = await cambiarEstadoConAviso(
@@ -143,7 +151,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
               ? const _Nada(texto: 'Este productor no tiene lotes cargados.')
               : Column(
                   children: [
-                    for (final lote in detalle.lotes) _FilaLote(lote: lote),
+                    for (final lote in detalle.lotes)
+                      _FilaLote(lote: lote, alAbrir: () => _abrirLote(lote)),
                   ],
                 ),
         ),
@@ -243,8 +252,10 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
       builder: (context) => AlertDialog(
         title: const Text('¿Eliminar el productor?'),
         content: Text(
-          'Se va a borrar «${p.nombreCompleto}» junto con todos sus lotes y '
-          'observaciones. La acción no se puede deshacer.',
+          'Se va a borrar «${p.nombreCompleto}» junto con sus observaciones, '
+          'fotos y su historial de tenencias. Sus lotes no se tocan: la tierra '
+          'pertenece al sindicato y se queda ahí. La acción no se puede '
+          'deshacer.',
         ),
         actions: [
           TextButton(
@@ -591,9 +602,10 @@ class _Nada extends StatelessWidget {
 }
 
 class _FilaLote extends StatelessWidget {
-  const _FilaLote({required this.lote});
+  const _FilaLote({required this.lote, required this.alAbrir});
 
   final Lote lote;
+  final VoidCallback alAbrir;
 
   @override
   Widget build(BuildContext context) {
@@ -601,12 +613,20 @@ class _FilaLote extends StatelessWidget {
 
     return ListTile(
       dense: true,
-      leading: const Icon(Icons.grid_view_outlined),
+      leading: Icon(lote.tieneUbicacion
+          ? Icons.location_on_outlined
+          : Icons.grid_view_outlined),
       title: Text(lote.codigo.isEmpty ? 'Lote ${lote.id}' : lote.codigo),
+      onTap: alAbrir,
       subtitle: Text(
-        lote.necesitaRevision && lote.estadoOriginal != null
-            ? 'Estado sin reconocer, en el padrón decía «${lote.estadoOriginal}»'
-            : lote.estado.etiqueta,
+        [
+          lote.necesitaRevision && lote.estadoOriginal != null
+              ? 'Estado sin reconocer, en el padrón decía '
+                  '«${lote.estadoOriginal}»'
+              : lote.estado.etiqueta,
+          if (lote.superficie != null) lote.superficieTexto,
+          if (lote.tieneSistema) 'Sistema ${lote.sistema!.codigo}',
+        ].join(' · '),
         style: tema.textTheme.bodySmall,
       ),
       trailing: lote.necesitaRevision

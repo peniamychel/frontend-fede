@@ -106,16 +106,25 @@ class _LotesDesconocidosPaginaState extends State<LotesDesconocidosPagina> {
                           title: Text(lote.codigo.isEmpty
                               ? 'Lote ${lote.id}'
                               : lote.codigo),
-                          subtitle:
-                              Text('Productor #${lote.productorId}'),
-                          trailing: const Icon(Icons.chevron_right, size: 20),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => ProductorDetallePagina(
-                                productorId: lote.productorId,
-                              ),
-                            ),
-                          ),
+                          // Un lote puede no tener tenedor: la parcela existe
+                          // igual, y decir de qué sindicato es sigue ubicándola.
+                          subtitle: Text(lote.tenedor == null
+                              ? '${lote.sindicatoNombre} · sin tenedor'
+                              : '${lote.sindicatoNombre} · '
+                                  '${lote.tenedor!.nombre}'),
+                          trailing: lote.tenedor == null
+                              ? null
+                              : const Icon(Icons.chevron_right, size: 20),
+                          onTap: lote.tenedor == null
+                              ? null
+                              : () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => ProductorDetallePagina(
+                                        productorId:
+                                            lote.tenedor!.productorId,
+                                      ),
+                                    ),
+                                  ),
                         ),
                     ],
                   ),

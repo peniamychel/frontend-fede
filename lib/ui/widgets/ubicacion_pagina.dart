@@ -4,27 +4,55 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/mapas_config.dart';
-import '../../repositories/padron.dart';
-import '../padron_scope.dart';
-import '../widgets/estados.dart';
+import 'estados.dart';
 
-/// Marca en el mapa dónde está la sede de un sindicato.
+/// Marca en el mapa dónde está algo: la sede de un sindicato, una parcela.
 ///
 /// Hay dos formas de fijar el punto y las dos están siempre disponibles: tocar
 /// el mapa, o escribir las coordenadas. La segunda no es un parche por si falla
 /// la primera — es lo que hace que la función sirva sin clave de Google, con
 /// coordenadas leídas de un GPS, o cuando alguien las dicta por teléfono.
-class UbicacionSindicatoPagina extends StatefulWidget {
-  const UbicacionSindicatoPagina({super.key, required this.sindicato});
+class UbicacionPagina extends StatefulWidget {
+  const UbicacionPagina({
+    super.key,
+    required this.titulo,
+    required this.queEs,
+    required this.latitud,
+    required this.longitud,
+    required this.alGuardar,
+    required this.alBorrar,
+    this.subtitulo,
+    this.ubicacionActualizadaEn,
+  });
 
-  final Sindicato sindicato;
+  /// Nombre de lo que se ubica: el sindicato o el lote.
+  final String titulo;
+
+  /// Línea de contexto bajo el título.
+  final String? subtitulo;
+
+  /// Qué es el punto, para los textos: «la sede», «la parcela».
+  final String queEs;
+
+  final double? latitud;
+  final double? longitud;
+  final DateTime? ubicacionActualizadaEn;
+
+  final Future<void> Function(double latitud, double longitud) alGuardar;
+  final Future<void> Function() alBorrar;
+
+  bool get tieneUbicacion => latitud != null && longitud != null;
+
+  String get coordenadas => tieneUbicacion
+      ? '${latitud!.toStringAsFixed(6)}, ${longitud!.toStringAsFixed(6)}'
+      : 'Sin ubicación';
 
   @override
-  State<UbicacionSindicatoPagina> createState() =>
-      _UbicacionSindicatoPaginaState();
+  State<UbicacionPagina> createState() =>
+      _UbicacionPaginaState();
 }
 
-class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
+class _UbicacionPaginaState extends State<UbicacionPagina> {
   late final TextEditingController _latitud;
   late final TextEditingController _longitud;
 
@@ -38,12 +66,12 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
   @override
   void initState() {
     super.initState();
-    final s = widget.sindicato;
-    _punto = s.tieneUbicacion ? LatLng(s.latitud!, s.longitud!) : null;
+    final w = widget;
+    _punto = w.tieneUbicacion ? LatLng(w.latitud!, w.longitud!) : null;
     _latitud = TextEditingController(
-        text: s.latitud?.toStringAsFixed(7) ?? '');
+        text: w.latitud?.toStringAsFixed(7) ?? '');
     _longitud = TextEditingController(
-        text: s.longitud?.toStringAsFixed(7) ?? '');
+        text: w.longitud?.toStringAsFixed(7) ?? '');
   }
 
   @override
@@ -97,7 +125,7 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
 
   @override
   Widget build(BuildContext context) {
-    final s = widget.sindicato;
+    final w = widget;
 
     return PopScope(
       canPop: false,
@@ -109,9 +137,10 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Ubicación de ${s.nombre}',
+              Text('Ubicación de ${w.titulo}',
                   maxLines: 1, overflow: TextOverflow.ellipsis),
-              Text('Central ${s.centralNombre}',
+              if (w.subtitulo != null)
+                Text(w.subtitulo!,
                   style: Theme.of(context).textTheme.bodySmall),
             ],
           ),
@@ -169,7 +198,7 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
                 position: _punto!,
                 draggable: true,
                 onDragEnd: (destino) => _moverA(destino),
-                infoWindow: InfoWindow(title: widget.sindicato.nombre),
+                infoWindow: InfoWindow(title: widget.titulo),
               ),
           },
           myLocationButtonEnabled: false,
@@ -180,9 +209,9 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
           top: 12,
           child: Card(
             color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Text('Tocá el mapa para marcar la sede, '
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Text('Tocá el mapa para marcar ${widget.queEs}, '
                   'o arrastrá el pin'),
             ),
           ),
@@ -279,15 +308,15 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
           label: const Text('Guardar ubicación'),
         ),
         const SizedBox(height: 24),
-        if (widget.sindicato.tieneUbicacion) ...[
+        if (widget.tieneUbicacion) ...[
           const Divider(),
           const SizedBox(height: 8),
           Text('Ubicación guardada', style: tema.textTheme.titleSmall),
           const SizedBox(height: 4),
-          SelectableText(widget.sindicato.coordenadas,
+          SelectableText(widget.coordenadas,
               style: tema.textTheme.bodyMedium),
-          if (widget.sindicato.ubicacionActualizadaEn != null)
-            Text('Marcada el ${_fecha(widget.sindicato.ubicacionActualizadaEn!)}',
+          if (widget.ubicacionActualizadaEn != null)
+            Text('Marcada el ${_fecha(widget.ubicacionActualizadaEn!)}',
                 style: tema.textTheme.bodySmall
                     ?.copyWith(color: tema.colorScheme.outline)),
           const SizedBox(height: 12),
@@ -310,7 +339,7 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
           ),
         ] else if (!hayPunto)
           Text(
-            'Este sindicato todavía no tiene sede marcada.',
+            'Todavía no se marcó ${widget.queEs}.',
             style: tema.textTheme.bodySmall
                 ?.copyWith(color: tema.colorScheme.outline),
           ),
@@ -341,11 +370,7 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
 
     setState(() => _guardando = true);
     try {
-      await PadronScope.of(context).sindicatos.marcarUbicacion(
-            widget.sindicato.id,
-            destino.latitude,
-            destino.longitude,
-          );
+      await widget.alGuardar(destino.latitude, destino.longitude);
       if (!mounted) return;
       _huboCambios = true;
       setState(() => _guardando = false);
@@ -365,8 +390,8 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('¿Quitar la ubicación?'),
-        content: Text('${widget.sindicato.nombre} deja de tener sede marcada. '
-            'El sindicato y sus productores no se tocan.'),
+        content: Text('${widget.titulo} deja de estar ubicado en el mapa. '
+            'No se toca ningún otro dato.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -386,9 +411,7 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
 
     setState(() => _guardando = true);
     try {
-      await PadronScope.of(context)
-          .sindicatos
-          .borrarUbicacion(widget.sindicato.id);
+      await widget.alBorrar();
       if (!mounted) return;
       setState(() => _guardando = false);
       Navigator.of(context).pop(true);
@@ -400,10 +423,10 @@ class _UbicacionSindicatoPaginaState extends State<UbicacionSindicatoPagina> {
   }
 
   Future<void> _abrirEnGoogleMaps() async {
-    final s = widget.sindicato;
-    if (!s.tieneUbicacion) return;
+    final w = widget;
+    if (!w.tieneUbicacion) return;
     // Esta URL es pública y no consume la clave de API.
-    final url = MapasConfig.enlaceExterno(s.latitud!, s.longitud!);
+    final url = MapasConfig.enlaceExterno(w.latitud!, w.longitud!);
     try {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } catch (e) {

@@ -32,8 +32,15 @@ class ApiClient {
   Future<Object?> crear(String ruta, Object cuerpo) =>
       _enviar('POST', ruta, cuerpo: cuerpo);
 
-  Future<Object?> reemplazar(String ruta, Object cuerpo) =>
-      _enviar('PUT', ruta, cuerpo: cuerpo);
+  /// PUT, con parámetros de consulta opcionales.
+  ///
+  /// El [query] va aparte y no pegado a [ruta] con un `?`: la URI se arma con
+  /// `Uri(path: ...)`, que codifica el signo de pregunta como parte del camino
+  /// y convierte `/traslado?loteId=5` en `/traslado%3FloteId=5`. El servidor
+  /// responde 404 y el error no dice por qué.
+  Future<Object?> reemplazar(String ruta, Object cuerpo,
+          {Map<String, dynamic>? query}) =>
+      _enviar('PUT', ruta, cuerpo: cuerpo, query: query);
 
   Future<Object?> parchear(String ruta, {Object? cuerpo}) =>
       _enviar('PATCH', ruta, cuerpo: cuerpo);
@@ -46,7 +53,9 @@ class ApiClient {
   ///
   /// No todo borrado responde 204: quitar la ubicación de un sindicato lo
   /// devuelve actualizado, porque el sindicato no desaparece.
-  Future<Object?> eliminarConRespuesta(String ruta) => _enviar('DELETE', ruta);
+  Future<Object?> eliminarConRespuesta(String ruta,
+          {Map<String, dynamic>? query}) =>
+      _enviar('DELETE', ruta, query: query);
 
   /// Sube un archivo como `multipart/form-data`.
   ///

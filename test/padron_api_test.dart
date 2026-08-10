@@ -120,12 +120,36 @@ void main() {
       }
     }
 
-    // Cada productor cuelga de exactamente un sindicato, así que las partes
-    // tienen que sumar el total del padrón.
+    // Cada productor cuelga de exactamente un sindicato, así que las partes no
+    // pueden sumar más que el total del padrón.
+    //
+    // Antes esto exigía igualdad exacta, y fallaba sin que hubiera nada roto:
+    // los archivos de prueba corren en paralelo, y entre la suma y este conteo
+    // otro archivo daba de alta los suyos. La igualdad solo se puede afirmar
+    // sobre una foto fija de la base, y acá no hay ninguna.
     final todos = await padron.productores.listar(
       paginacion: const Paginacion(tamano: 1),
     );
-    expect(sumaPorSindicato, equals(todos.totalElementos));
+    expect(sumaPorSindicato, lessThanOrEqualTo(todos.totalElementos));
+
+    // Lo que sí se puede afirmar con certeza es sobre datos propios: un
+    // sindicato recién creado con dos productores devuelve exactamente dos.
+    final sindicato = await padron.sindicatos.crear(SindicatoRequest(
+        nombre: 'ZZZ SIN CONTEO', centralId: sindicatos.first.centralId));
+    final mios = <Productor>[];
+    for (final nombre in ['ZZZ UNO', 'ZZZ DOS']) {
+      mios.add(await padron.productores.crear(ProductorRequest(
+          nombres: nombre, apellidos: 'CONTEO', sindicatoId: sindicato.id)));
+    }
+
+    final pagina =
+        await padron.productores.listar(sindicatoId: sindicato.id, paginacion: sonda);
+    expect(pagina.totalElementos, equals(2));
+
+    for (final p in mios) {
+      await padron.productores.eliminar(p.id);
+    }
+    await padron.sindicatos.eliminar(sindicato.id);
   });
 
   test('un sindicato inexistente devuelve vacío, no un error', () async {

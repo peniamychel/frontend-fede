@@ -109,22 +109,19 @@ void main() {
   });
 
   test('la simulación no deja rastro en el padrón', () async {
-    final antes = await padron.productores.listar(
-      paginacion: const Paginacion(tamano: 1),
-    );
-    final centralesAntes = await padron.centrales.listar();
-
     await analizar();
 
-    final despues = await padron.productores.listar(
-      paginacion: const Paginacion(tamano: 1),
-    );
-    final centralesDespues = await padron.centrales.listar();
+    // Se busca lo que la simulación habría creado, en vez de comparar el total
+    // de productores antes y después. El total es de toda la base, y los demás
+    // archivos de prueba corren en paralelo creando y borrando los suyos: la
+    // comparación fallaba por culpa de ellos y no por la importación.
+    final creados = await padron.productores.listar(texto: 'CONSTANTINA');
+    expect(creados.contenido, isEmpty,
+        reason: 'ningún productor de la planilla debe haberse guardado');
 
-    expect(despues.totalElementos, equals(antes.totalElementos));
-    expect(centralesDespues.length, equals(centralesAntes.length));
+    final centrales = await padron.centrales.listar();
     expect(
-      centralesDespues.map((c) => c.nombre),
+      centrales.map((c) => c.nombre),
       isNot(contains('SANTA FE')),
       reason: 'la central de la simulación no debe haberse creado',
     );
