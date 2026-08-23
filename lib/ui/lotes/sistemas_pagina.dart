@@ -131,12 +131,13 @@ class _SistemasPaginaState extends State<SistemasPagina> {
   }
 
   Future<void> _crear() async {
-    // Se reusa el diálogo de nombre y número: un sistema es código más
-    // descripción, exactamente la misma forma.
+    // Se reusa el diálogo de dos campos: un sistema es código más descripción,
+    // exactamente la misma forma.
     final datos = await DialogoNombreNumero.mostrar(
       context,
       titulo: 'Nuevo sistema',
       etiquetaNombre: 'Código',
+      segundo: const SegundoCampo(etiqueta: 'Descripción'),
       textoAceptar: 'Crear',
     );
     if (datos == null || !mounted) return;

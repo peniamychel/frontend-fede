@@ -29,9 +29,6 @@ class FilaProductor extends StatelessWidget {
     final documentos = [
       if (productor.ci != null && productor.ci!.isNotEmpty)
         'CI ${productor.ci}',
-      if (productor.carnetProductor != null &&
-          productor.carnetProductor!.isNotEmpty)
-        'Carné ${productor.carnetProductor}',
     ].join('  ·  ');
 
     final subtitulos = [

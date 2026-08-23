@@ -13,11 +13,14 @@ import 'api_exception.dart';
 /// [ApiException], y aceptar tanto 200 como 201 en las altas — los POST del
 /// backend devuelven 201 aunque el spec diga 200.
 class ApiClient {
-  ApiClient({http.Client? cliente, this.tiempoLimite = const Duration(seconds: 20)})
-      : _cliente = cliente ?? http.Client();
+  ApiClient({
+    http.Client? cliente,
+    this.tiempoLimite = const Duration(seconds: 20),
+  }) : _cliente = cliente ?? http.Client();
 
   final http.Client _cliente;
   final Duration tiempoLimite;
+  String? _token;
 
   static const Map<String, String> _cabeceras = {
     'Accept': 'application/json',
@@ -26,8 +29,47 @@ class ApiClient {
 
   void cerrar() => _cliente.close();
 
+  void usarToken(String? token) {
+    final limpio = token?.trim();
+    _token = limpio == null || limpio.isEmpty ? null : limpio;
+  }
+
+  bool get tieneToken => _token != null;
+
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) =>
       _enviar('GET', ruta, query: query);
+
+  Future<DescargaBinaria> obtenerBytes(
+    String ruta, {
+    Map<String, dynamic>? query,
+    Duration tiempoLimite = const Duration(minutes: 5),
+  }) async {
+    final peticion = http.Request('GET', ApiConfig.uri(ruta, query));
+    // Una descarga puede ser PDF, XLSX, GZIP u otro binario. Pedir solamente
+    // application/octet-stream hace que Spring responda 406 cuando el endpoint
+    // declara un tipo más específico, como application/gzip.
+    peticion.headers['Accept'] = '*/*';
+    _autorizar(peticion.headers);
+
+    final http.Response respuesta;
+    try {
+      final flujo = await _cliente.send(peticion).timeout(tiempoLimite);
+      respuesta = await http.Response.fromStream(flujo);
+    } on TimeoutException catch (e) {
+      throw SinConexionException(ApiConfig.descripcion, e);
+    } on http.ClientException catch (e) {
+      throw SinConexionException(ApiConfig.descripcion, e);
+    }
+
+    if (respuesta.statusCode < 200 || respuesta.statusCode >= 300) {
+      _interpretar(respuesta);
+    }
+    return DescargaBinaria(
+      bytes: respuesta.bodyBytes,
+      nombreArchivo: _nombreDescarga(respuesta.headers['content-disposition']),
+      tipoMime: respuesta.headers['content-type'] ?? 'application/octet-stream',
+    );
+  }
 
   Future<Object?> crear(String ruta, Object cuerpo) =>
       _enviar('POST', ruta, cuerpo: cuerpo);
@@ -38,9 +80,11 @@ class ApiClient {
   /// `Uri(path: ...)`, que codifica el signo de pregunta como parte del camino
   /// y convierte `/traslado?loteId=5` en `/traslado%3FloteId=5`. El servidor
   /// responde 404 y el error no dice por qué.
-  Future<Object?> reemplazar(String ruta, Object cuerpo,
-          {Map<String, dynamic>? query}) =>
-      _enviar('PUT', ruta, cuerpo: cuerpo, query: query);
+  Future<Object?> reemplazar(
+    String ruta,
+    Object cuerpo, {
+    Map<String, dynamic>? query,
+  }) => _enviar('PUT', ruta, cuerpo: cuerpo, query: query);
 
   Future<Object?> parchear(String ruta, {Object? cuerpo}) =>
       _enviar('PATCH', ruta, cuerpo: cuerpo);
@@ -53,9 +97,10 @@ class ApiClient {
   ///
   /// No todo borrado responde 204: quitar la ubicación de un sindicato lo
   /// devuelve actualizado, porque el sindicato no desaparece.
-  Future<Object?> eliminarConRespuesta(String ruta,
-          {Map<String, dynamic>? query}) =>
-      _enviar('DELETE', ruta, query: query);
+  Future<Object?> eliminarConRespuesta(
+    String ruta, {
+    Map<String, dynamic>? query,
+  }) => _enviar('DELETE', ruta, query: query);
 
   /// Sube un archivo como `multipart/form-data`.
   ///
@@ -63,22 +108,29 @@ class ApiClient {
   /// `Content-Type` con el separador de partes, y fijarlo a mano lo rompería.
   /// El tiempo límite es aparte porque subir y procesar una planilla de miles
   /// de filas no entra en los 20 segundos del resto de las llamadas.
+  /// [campos] son los datos que acompañan al archivo —el número del acta, por
+  /// ejemplo—. Van como partes del formulario y no en la dirección: lo que se
+  /// manda en un POST no tiene por qué quedar escrito en el historial ni en el
+  /// registro del servidor. Los nulos se omiten.
   Future<Object?> subirArchivo(
     String ruta, {
     required String campo,
     required List<int> bytes,
     required String nombreArchivo,
+    Map<String, String?>? campos,
     Map<String, dynamic>? query,
     Duration tiempoLimite = const Duration(minutes: 5),
   }) async {
     final uri = ApiConfig.uri(ruta, query);
     final peticion = http.MultipartRequest('POST', uri)
       ..headers['Accept'] = 'application/json'
-      ..files.add(http.MultipartFile.fromBytes(
-        campo,
-        bytes,
-        filename: nombreArchivo,
-      ));
+      ..files.add(
+        http.MultipartFile.fromBytes(campo, bytes, filename: nombreArchivo),
+      );
+    _autorizar(peticion.headers);
+    campos?.forEach((clave, valor) {
+      if (valor != null) peticion.fields[clave] = valor;
+    });
 
     final http.Response respuesta;
     try {
@@ -101,6 +153,7 @@ class ApiClient {
   }) async {
     final uri = ApiConfig.uri(ruta, query);
     final peticion = http.Request(metodo, uri)..headers.addAll(_cabeceras);
+    _autorizar(peticion.headers);
     if (cuerpo != null) {
       peticion.body = jsonEncode(cuerpo);
     }
@@ -151,6 +204,34 @@ class ApiClient {
 
     throw ApiException.desdeJson(codigo, decodificado);
   }
+
+  void _autorizar(Map<String, String> cabeceras) {
+    final token = _token;
+    if (token != null) cabeceras['Authorization'] = 'Bearer $token';
+  }
+
+  String _nombreDescarga(String? disposicion) {
+    if (disposicion == null) return 'descarga.bin';
+    final coincidencia = RegExp(
+      r'''filename\*?=(?:UTF-8''|["']?)([^"';]+)''',
+      caseSensitive: false,
+    ).firstMatch(disposicion);
+    return Uri.decodeComponent(
+      coincidencia?.group(1)?.trim() ?? 'descarga.bin',
+    );
+  }
+}
+
+class DescargaBinaria {
+  const DescargaBinaria({
+    required this.bytes,
+    required this.nombreArchivo,
+    required this.tipoMime,
+  });
+
+  final List<int> bytes;
+  final String nombreArchivo;
+  final String tipoMime;
 }
 
 /// Azúcar para los repositorios: castea la respuesta al tipo esperado.

@@ -25,6 +25,7 @@ class _ReunionFormularioState extends State<ReunionFormulario> {
   DateTime _fecha = DateTime.now();
   int? _convocanteId;
   bool _guardando = false;
+  bool _vetosHabilitados = false;
 
   /// Los convocantes posibles del nivel elegido. Se recarga al cambiar el tipo.
   late Future<List<_Opcion>> _convocantes;
@@ -191,6 +192,23 @@ class _ReunionFormularioState extends State<ReunionFormulario> {
                         border: OutlineInputBorder(),
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    // Apagado por omisión: la mayoría de las asambleas son
+                    // informativas, y ofrecer el veto en todas invita a usarlo
+                    // donde no corresponde. Igual se puede activar después,
+                    // desde la propia reunión.
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _vetosHabilitados,
+                      onChanged: (v) => setState(() => _vetosHabilitados = v),
+                      secondary: const Icon(Icons.gavel_outlined),
+                      title: const Text('Se pueden decidir vetos'),
+                      subtitle: Text(
+                        'Solo si en esta asamblea se va a tratar alguna '
+                        'sanción. Hace falta el acta igual.',
+                        style: tema.textTheme.bodySmall,
+                      ),
+                    ),
                     const SizedBox(height: 24),
                     FilledButton.icon(
                       onPressed: _guardando ? null : _guardar,
@@ -243,6 +261,7 @@ class _ReunionFormularioState extends State<ReunionFormulario> {
               fecha: _fecha,
               lugar: _texto(_lugar),
               observaciones: _texto(_observaciones),
+              vetosHabilitados: _vetosHabilitados,
             ),
           );
       if (!mounted) return;

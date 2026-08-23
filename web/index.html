@@ -63,6 +63,10 @@
   -->
 </head>
 <body>
+  <!-- Motor local de segmentación: se carga antes de Flutter porque Dart lo
+       invoca mediante interoperabilidad JavaScript. -->
+  <script src="mediapipe/selfie_segmentation.js"></script>
+  <script src="fondo_ia.js"></script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

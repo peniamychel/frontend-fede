@@ -5,26 +5,17 @@ import '../padron_scope.dart';
 import '../productores/productor_detalle_pagina.dart';
 import '../widgets/estados.dart';
 
-enum TipoDuplicado {
-  cedula('Cédulas duplicadas', 'cédula', Icons.badge_outlined),
-  carnet('Carnés duplicados', 'carné', Icons.credit_card_outlined);
-
-  const TipoDuplicado(this.titulo, this.singular, this.icono);
-
-  final String titulo;
-  final String singular;
-  final IconData icono;
-}
-
-/// Documentos asignados a más de una persona.
+/// Cédulas asignadas a más de una persona.
 ///
-/// El backend devuelve solo los documentos repetidos, no los productores: hay
-/// que pedir por separado quiénes comparten cada uno. Por eso la lista se
-/// despliega bajo demanda, y no de golpe.
+/// El backend devuelve solo las cédulas repetidas, no los productores: hay que
+/// pedir por separado quiénes comparten cada una. Por eso la lista se despliega
+/// bajo demanda, y no de golpe.
+///
+/// Antes esta pantalla servía también para los carnés de productor, y por eso
+/// venía parametrizada. Ese dato se eliminó del padrón, y con un solo caso la
+/// parametrización solo agregaba ruido.
 class DuplicadosPagina extends StatefulWidget {
-  const DuplicadosPagina({super.key, required this.tipo});
-
-  final TipoDuplicado tipo;
+  const DuplicadosPagina({super.key});
 
   @override
   State<DuplicadosPagina> createState() => _DuplicadosPaginaState();
@@ -42,10 +33,7 @@ class _DuplicadosPaginaState extends State<DuplicadosPagina> {
   void _recargar() {
     final repo = PadronScope.of(context).productores;
     setState(() {
-      _futuro = switch (widget.tipo) {
-        TipoDuplicado.cedula => repo.cedulasDuplicadas(),
-        TipoDuplicado.carnet => repo.carnetsDuplicados(),
-      };
+      _futuro = repo.cedulasDuplicadas();
     });
   }
 
@@ -53,7 +41,7 @@ class _DuplicadosPaginaState extends State<DuplicadosPagina> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.tipo.titulo),
+        title: const Text('Cédulas duplicadas'),
         actions: [
           IconButton(
             tooltip: 'Recargar',
@@ -65,23 +53,20 @@ class _DuplicadosPaginaState extends State<DuplicadosPagina> {
       body: CargaAsync<List<String>>(
         futuro: _futuro,
         alReintentar: _recargar,
-        constructor: (context, documentos) {
-          if (documentos.isEmpty) {
-            return SinResultados(
+        constructor: (context, cedulas) {
+          if (cedulas.isEmpty) {
+            return const SinResultados(
               icono: Icons.check_circle_outline,
-              mensaje: 'No hay ${widget.tipo.singular}s repetidas.',
-              detalle: 'Cada documento corresponde a una sola persona.',
+              mensaje: 'No hay cédulas repetidas.',
+              detalle: 'Cada cédula corresponde a una sola persona.',
             );
           }
 
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: documentos.length,
+            itemCount: cedulas.length,
             separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, i) => _FilaDuplicado(
-              documento: documentos[i],
-              tipo: widget.tipo,
-            ),
+            itemBuilder: (context, i) => _FilaDuplicado(cedula: cedulas[i]),
           );
         },
       ),
@@ -90,10 +75,9 @@ class _DuplicadosPaginaState extends State<DuplicadosPagina> {
 }
 
 class _FilaDuplicado extends StatefulWidget {
-  const _FilaDuplicado({required this.documento, required this.tipo});
+  const _FilaDuplicado({required this.cedula});
 
-  final String documento;
-  final TipoDuplicado tipo;
+  final String cedula;
 
   @override
   State<_FilaDuplicado> createState() => _FilaDuplicadoState();
@@ -106,10 +90,7 @@ class _FilaDuplicadoState extends State<_FilaDuplicado> {
     if (!abierto || _futuro != null) return;
     final repo = PadronScope.of(context).productores;
     setState(() {
-      _futuro = switch (widget.tipo) {
-        TipoDuplicado.cedula => repo.porCedula(widget.documento),
-        TipoDuplicado.carnet => repo.porCarnet(widget.documento),
-      };
+      _futuro = repo.porCedula(widget.cedula);
     });
   }
 
@@ -118,12 +99,12 @@ class _FilaDuplicadoState extends State<_FilaDuplicado> {
     return ExpansionTile(
       shape: const Border(),
       collapsedShape: const Border(),
-      leading: Icon(widget.tipo.icono),
+      leading: const Icon(Icons.badge_outlined),
       title: Text(
-        widget.documento,
+        widget.cedula,
         style: const TextStyle(fontFamily: 'monospace', fontSize: 16),
       ),
-      subtitle: Text('Tocá para ver quiénes comparten esta ${widget.tipo.singular}'),
+      subtitle: const Text('Tocá para ver quiénes comparten esta cédula'),
       onExpansionChanged: _cargarSiHaceFalta,
       children: [
         if (_futuro == null)

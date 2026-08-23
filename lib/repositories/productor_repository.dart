@@ -2,6 +2,7 @@ import '../core/api_client.dart';
 import '../core/api_config.dart';
 import '../core/pagina.dart';
 import '../models/cargo.dart';
+import '../models/credencial_previa.dart';
 import '../models/imagen.dart';
 import '../models/productor.dart';
 
@@ -19,6 +20,16 @@ class ProductorRepository {
   /// la marca como adjunto y el sistema la guarda solo.
   Uri urlCredencial(int id) => ApiConfig.uri('$_ruta/$id/credencial.pdf');
 
+  /// Lo que va a salir impreso, y lo que falta para poder imprimirlo.
+  ///
+  /// Hay que pedirla antes de abrir [urlCredencial]: si falta algo el backend
+  /// responde 409, y como la descarga se abre en el navegador ese error
+  /// aparecería como un JSON en pantalla en vez de como un aviso.
+  Future<CredencialPrevia> previaCredencial(int id) async {
+    final datos = await _api.obtener('$_ruta/$id/credencial/previa');
+    return CredencialPrevia.desdeJson(datos.comoObjeto);
+  }
+
   /// Listado paginado del padrón. Los tres filtros son opcionales y
   /// combinables; [texto] busca a la vez en nombres, apellidos, cédula y carné.
   ///
@@ -30,12 +41,15 @@ class ProductorRepository {
     String? texto,
     Paginacion paginacion = const Paginacion(),
   }) async {
-    final datos = await _api.obtener(_ruta, query: {
-      'sindicatoId': sindicatoId,
-      'centralId': centralId,
-      'texto': texto,
-      ...paginacion.query,
-    });
+    final datos = await _api.obtener(
+      _ruta,
+      query: {
+        'sindicatoId': sindicatoId,
+        'centralId': centralId,
+        'texto': texto,
+        ...paginacion.query,
+      },
+    );
     return Pagina.desdeJson(datos.comoObjeto, Productor.desdeJson);
   }
 
@@ -50,7 +64,10 @@ class ProductorRepository {
   Future<Pagina<Productor>> sinFoto({
     Paginacion paginacion = const Paginacion(),
   }) async {
-    final datos = await _api.obtener('$_ruta/sin-foto', query: paginacion.query);
+    final datos = await _api.obtener(
+      '$_ruta/sin-foto',
+      query: paginacion.query,
+    );
     return Pagina.desdeJson(datos.comoObjeto, Productor.desdeJson);
   }
 
@@ -61,20 +78,16 @@ class ProductorRepository {
     return datos.comoListaDeTextos;
   }
 
-  /// Carnés de productor asignados a más de una persona.
-  Future<List<String>> carnetsDuplicados() async {
-    final datos = await _api.obtener('$_ruta/duplicados/carnets');
-    return datos.comoListaDeTextos;
-  }
-
   Future<List<Productor>> porCedula(String ci) async {
     final datos = await _api.obtener('$_ruta/por-cedula/$ci');
     return datos.comoLista.map(Productor.desdeJson).toList(growable: false);
   }
 
-  Future<List<Productor>> porCarnet(String carnet) async {
-    final datos = await _api.obtener('$_ruta/por-carnet/$carnet');
-    return datos.comoLista.map(Productor.desdeJson).toList(growable: false);
+  /// Consulta nombres y apellidos en SIE. El token vive en el backend: nunca
+  /// se entrega a esta aplicación ni queda dentro del JavaScript compilado.
+  Future<ConsultaPersona> consultarPersona(String ci) async {
+    final datos = await _api.crear('/personas/consulta', {'ci': ci});
+    return ConsultaPersona.desdeJson(datos.comoObjeto);
   }
 
   Future<Productor> crear(ProductorRequest request) async {
@@ -88,8 +101,10 @@ class ProductorRepository {
   /// habilitar. Es la salida para lo que el backend no deja eliminar por
   /// tener registros dependientes.
   Future<Productor> cambiarEstado(int id, bool estado) async {
-    final datos = await _api
-        .parchear('$_ruta/$id/estado', cuerpo: {'estado': estado});
+    final datos = await _api.parchear(
+      '$_ruta/$id/estado',
+      cuerpo: {'estado': estado},
+    );
     return Productor.desdeJson(datos.comoObjeto);
   }
 
@@ -106,8 +121,9 @@ class ProductorRepository {
     return Productor.desdeJson(datos.comoObjeto);
   }
 
-  /// Elimina el productor. Arrastra en cascada sus lotes, observaciones e
-  /// imágenes.
+  /// Elimina el productor y sus datos dependientes (fotos, cargos, vetos e
+  /// historial de tenencias). El backend lo rechaza si todavía tiene una
+  /// parcela vigente: los lotes no se eliminan en cascada.
   Future<void> eliminar(int id) => _api.eliminar('$_ruta/$id');
 
   // ---------- Imágenes ----------

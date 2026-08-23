@@ -20,6 +20,7 @@ import 'package:fede/repositories/padron.dart';
 void main() {
   late Padron padron;
   late int sindicatoId;
+  late String sindicatoNombre;
   late int otroSindicatoId;
   late Productor ana;
   late Productor bruno;
@@ -28,20 +29,26 @@ void main() {
   late Uint8List fotoGrande;
 
   Future<Productor> crear(String nombres, String apellidos, int sindicato) {
-    return padron.productores.crear(ProductorRequest(
-      nombres: nombres,
-      apellidos: apellidos,
-      sindicatoId: sindicato,
-    ));
+    return padron.productores.crear(
+      ProductorRequest(
+        nombres: nombres,
+        apellidos: apellidos,
+        sindicatoId: sindicato,
+      ),
+    );
   }
 
   setUpAll(() async {
     padron = Padron();
     fotoGrande = File('test/fixtures/foto-grande.jpg').readAsBytesSync();
     final sindicatos = await padron.sindicatos.listar();
-    expect(sindicatos.length, greaterThanOrEqualTo(2),
-        reason: 'hacen falta dos sindicatos para probar el cruce');
+    expect(
+      sindicatos.length,
+      greaterThanOrEqualTo(2),
+      reason: 'hacen falta dos sindicatos para probar el cruce',
+    );
     sindicatoId = sindicatos.first.id;
+    sindicatoNombre = sindicatos.first.nombre;
     otroSindicatoId = sindicatos.last.id;
 
     ana = await crear('ZZZ ANA', 'PRIMERA', sindicatoId);
@@ -55,10 +62,13 @@ void main() {
   /// Sin esto una prueba hereda lo que dejó la anterior y falla por un estado
   /// que no eligió: el directorio es un recurso compartido entre todas.
   setUp(() async {
-    for (final cargo in TipoCargo.values) {
+    for (final cargo in TipoCargo.vigentes) {
       try {
-        await padron.directorios
-            .terminar(ambito: Ambito.sindicato, id: sindicatoId, cargo: cargo);
+        await padron.directorios.terminar(
+          ambito: Ambito.sindicato,
+          id: sindicatoId,
+          cargo: cargo,
+        );
       } on ApiException catch (e) {
         // Ya estaba vacante, que es justo lo que se quería.
         if (!e.esNoEncontrado) rethrow;
@@ -78,63 +88,79 @@ void main() {
   });
 
   test('un sindicato empieza sin directorio', () async {
-    final directorio = await padron.directorios.obtener(Ambito.sindicato, sindicatoId);
+    final directorio = await padron.directorios.obtener(
+      Ambito.sindicato,
+      sindicatoId,
+    );
 
     // Vacante no es un error: un sindicato nuevo no tiene autoridades.
-    expect(directorio.cargoDe(TipoCargo.presidente), isNull);
-    expect(directorio.cargoDe(TipoCargo.secretario), isNull);
+    expect(directorio.cargoDe(TipoCargo.secretarioGeneral), isNull);
+    expect(directorio.cargoDe(TipoCargo.secretarioRelaciones), isNull);
     expect(directorio.estaVacio, isTrue);
   });
 
-  test('asignar presidente y secretario deja los dos en funciones', () async {
+  test('asignar los dos secretarios deja ambos en funciones', () async {
     await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: ana.id,
       desde: DateTime(2026, 3, 1),
     );
     final directorio = await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.secretario,
+      cargo: TipoCargo.secretarioRelaciones,
       productorId: bruno.id,
     );
 
-    expect(directorio.cargoDe(TipoCargo.presidente)!.productorId, equals(ana.id));
-    expect(directorio.cargoDe(TipoCargo.secretario)!.productorId, equals(bruno.id));
+    expect(
+      directorio.cargoDe(TipoCargo.secretarioGeneral)!.productorId,
+      equals(ana.id),
+    );
+    expect(
+      directorio.cargoDe(TipoCargo.secretarioRelaciones)!.productorId,
+      equals(bruno.id),
+    );
     expect(directorio.estaCompleto, isTrue);
-    expect(directorio.cargoDe(TipoCargo.presidente)!.vigente, isTrue);
+    expect(directorio.cargoDe(TipoCargo.secretarioGeneral)!.vigente, isTrue);
   });
 
   test('reemplazar cierra el período anterior el día previo', () async {
     await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: ana.id,
       desde: DateTime(2026, 3, 1),
     );
     await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: carla.id,
       desde: DateTime(2026, 8, 1),
     );
 
-    final historial =
-        await padron.directorios.historial(Ambito.sindicato, sindicatoId);
+    final historial = await padron.directorios.historial(
+      Ambito.sindicato,
+      sindicatoId,
+    );
     final deAna = historial.firstWhere((c) => c.productorId == ana.id);
 
-    // El día anterior, no el mismo: dos presidentes la misma fecha es una
+    // El día anterior, no el mismo: dos secretarios generales la misma fecha es una
     // contradicción que después nadie sabe interpretar.
     expect(deAna.hasta, equals(DateTime(2026, 7, 31)));
     expect(deAna.vigente, isFalse);
 
-    final vigentes = historial.where((c) =>
-        c.vigente && c.cargo == TipoCargo.presidente);
-    expect(vigentes.length, equals(1), reason: 'un solo presidente a la vez');
+    final vigentes = historial.where(
+      (c) => c.vigente && c.cargo == TipoCargo.secretarioGeneral,
+    );
+    expect(
+      vigentes.length,
+      equals(1),
+      reason: 'un solo secretario general a la vez',
+    );
     expect(vigentes.first.productorId, equals(carla.id));
   });
 
@@ -143,12 +169,14 @@ void main() {
       padron.directorios.asignar(
         ambito: Ambito.sindicato,
         id: sindicatoId,
-        cargo: TipoCargo.presidente,
+        cargo: TipoCargo.secretarioGeneral,
         productorId: ajeno.id,
       ),
-      throwsA(isA<ApiException>()
-          .having((e) => e.esConflicto, 'esConflicto', isTrue)
-          .having((e) => e.mensaje, 'mensaje', contains('no puede ocupar'))),
+      throwsA(
+        isA<ApiException>()
+            .having((e) => e.esConflicto, 'esConflicto', isTrue)
+            .having((e) => e.mensaje, 'mensaje', contains('no puede ocupar')),
+      ),
     );
   });
 
@@ -156,7 +184,7 @@ void main() {
     await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.secretario,
+      cargo: TipoCargo.secretarioRelaciones,
       productorId: bruno.id,
     );
 
@@ -164,59 +192,75 @@ void main() {
       padron.directorios.asignar(
         ambito: Ambito.sindicato,
         id: sindicatoId,
-        cargo: TipoCargo.secretario,
+        cargo: TipoCargo.secretarioRelaciones,
         productorId: bruno.id,
       ),
-      throwsA(isA<ApiException>()
-          .having((e) => e.mensaje, 'mensaje', contains('ya es'))),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.mensaje,
+          'mensaje',
+          contains('ya es'),
+        ),
+      ),
     );
   });
 
-  test('no se puede empezar antes de que empezara el período en curso',
-      () async {
-    await padron.directorios.asignar(
-      ambito: Ambito.sindicato,
-      id: sindicatoId,
-      cargo: TipoCargo.presidente,
-      productorId: carla.id,
-      desde: DateTime(2026, 8, 1),
-    );
-
-    await expectLater(
-      padron.directorios.asignar(
+  test(
+    'no se puede empezar antes de que empezara el período en curso',
+    () async {
+      await padron.directorios.asignar(
         ambito: Ambito.sindicato,
         id: sindicatoId,
-        cargo: TipoCargo.presidente,
-        productorId: ana.id,
-        desde: DateTime(2026, 1, 1),
-      ),
-      throwsA(isA<ApiException>()
-          .having((e) => e.mensaje, 'mensaje', contains('antes de'))),
-    );
-  });
+        cargo: TipoCargo.secretarioGeneral,
+        productorId: carla.id,
+        desde: DateTime(2026, 8, 1),
+      );
+
+      await expectLater(
+        padron.directorios.asignar(
+          ambito: Ambito.sindicato,
+          id: sindicatoId,
+          cargo: TipoCargo.secretarioGeneral,
+          productorId: ana.id,
+          desde: DateTime(2026, 1, 1),
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.mensaje,
+            'mensaje',
+            contains('antes de'),
+          ),
+        ),
+      );
+    },
+  );
 
   test('se puede dejar el cargo vacante sin nombrar reemplazo', () async {
     await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.secretario,
+      cargo: TipoCargo.secretarioRelaciones,
       productorId: bruno.id,
     );
 
     final directorio = await padron.directorios.terminar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.secretario,
+      cargo: TipoCargo.secretarioRelaciones,
     );
 
     // Una renuncia sin sucesor es real; obligar a nombrar a alguien para poder
     // registrarla falsearía el historial.
-    expect(directorio.cargoDe(TipoCargo.secretario), isNull);
+    expect(directorio.cargoDe(TipoCargo.secretarioRelaciones), isNull);
 
-    final historial =
-        await padron.directorios.historial(Ambito.sindicato, sindicatoId);
-    expect(historial.any((c) => c.productorId == bruno.id && !c.vigente),
-        isTrue);
+    final historial = await padron.directorios.historial(
+      Ambito.sindicato,
+      sindicatoId,
+    );
+    expect(
+      historial.any((c) => c.productorId == bruno.id && !c.vigente),
+      isTrue,
+    );
   });
 
   test('terminar un cargo vacante da 404', () async {
@@ -225,10 +269,15 @@ void main() {
       padron.directorios.terminar(
         ambito: Ambito.sindicato,
         id: sindicatoId,
-        cargo: TipoCargo.secretario,
+        cargo: TipoCargo.secretarioRelaciones,
       ),
-      throwsA(isA<ApiException>()
-          .having((e) => e.esNoEncontrado, 'esNoEncontrado', isTrue)),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.esNoEncontrado,
+          'esNoEncontrado',
+          isTrue,
+        ),
+      ),
     );
   });
 
@@ -236,10 +285,10 @@ void main() {
     final directorio = await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: ana.id,
     );
-    final cargoId = directorio.cargoDe(TipoCargo.presidente)!.id;
+    final cargoId = directorio.cargoDe(TipoCargo.secretarioGeneral)!.id;
 
     // Una foto de 4032x3024 y 1,42 MB: se acepta y el servidor la reduce.
     final actualizado = await padron.directorios.subirImagen(
@@ -251,60 +300,70 @@ void main() {
 
     expect(actualizado.firmaUrl, isNotNull);
     expect(actualizado.firmaUrl, startsWith('/api/v1/archivos/firmas/'));
-    expect(actualizado.pieFirmaUrl, isNull,
-        reason: 'subir una no debe tocar la otra');
+    expect(
+      actualizado.pieFirmaUrl,
+      isNull,
+      reason: 'subir una no debe tocar la otra',
+    );
 
-    final respuesta = await http
-        .get(Uri.parse(ApiConfig.urlAbsoluta(actualizado.firmaUrl!)));
+    final respuesta = await http.get(
+      Uri.parse(ApiConfig.urlAbsoluta(actualizado.firmaUrl!)),
+    );
     expect(respuesta.statusCode, equals(200));
     // El requisito es 200 KB; a 200 px de lado queda muy por debajo.
     expect(respuesta.bodyBytes.length, lessThan(200 * 1024));
   });
 
-  test('las dos imágenes conviven y se borran por separado', () async {
+  test('la firma y su pie automático conviven', () async {
     final directorio = await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.secretario,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: bruno.id,
     );
-    final cargoId = directorio.cargoDe(TipoCargo.secretario)!.id;
+    final cargoId = directorio.cargoDe(TipoCargo.secretarioGeneral)!.id;
 
-    await padron.directorios.subirImagen(
+    final conAmbas = await padron.directorios.subirImagen(
       cargoId: cargoId,
       tipo: TipoImagenCargo.firma,
       bytes: fotoGrande,
       nombreArchivo: 'firma.jpg',
     );
-    final conAmbas = await padron.directorios.subirImagen(
-      cargoId: cargoId,
-      tipo: TipoImagenCargo.pieFirma,
-      bytes: fotoGrande,
-      nombreArchivo: 'pie.jpg',
-    );
     expect(conAmbas.tieneFirmas, isTrue);
+    final pieEsperado =
+        '${bruno.nombreCompleto}\nSECRETARIO GENERAL\n$sindicatoNombre';
+    expect(conAmbas.pieFirma, pieEsperado);
 
-    final sinFirma = await padron.directorios
-        .eliminarImagen(cargoId, TipoImagenCargo.firma);
+    final sinFirma = await padron.directorios.eliminarImagen(
+      cargoId,
+      TipoImagenCargo.firma,
+    );
 
     // La respuesta tiene que reflejar el estado nuevo, no el anterior.
     expect(sinFirma.firmaUrl, isNull);
-    expect(sinFirma.pieFirmaUrl, isNotNull);
+    expect(sinFirma.pieFirma, pieEsperado);
   });
 
   test('borrar una firma que no está da 404', () async {
     final directorio = await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: carla.id,
     );
 
     await expectLater(
       padron.directorios.eliminarImagen(
-          directorio.cargoDe(TipoCargo.presidente)!.id, TipoImagenCargo.firma),
-      throwsA(isA<ApiException>()
-          .having((e) => e.esNoEncontrado, 'esNoEncontrado', isTrue)),
+        directorio.cargoDe(TipoCargo.secretarioGeneral)!.id,
+        TipoImagenCargo.firma,
+      ),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.esNoEncontrado,
+          'esNoEncontrado',
+          isTrue,
+        ),
+      ),
     );
   });
 
@@ -312,12 +371,12 @@ void main() {
     final directorio = await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: ana.id,
       desde: DateTime(2026, 3, 1),
     );
     await padron.directorios.subirImagen(
-      cargoId: directorio.cargoDe(TipoCargo.presidente)!.id,
+      cargoId: directorio.cargoDe(TipoCargo.secretarioGeneral)!.id,
       tipo: TipoImagenCargo.firma,
       bytes: fotoGrande,
       nombreArchivo: 'firma.jpg',
@@ -327,32 +386,37 @@ void main() {
     await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: carla.id,
       desde: DateTime(2026, 8, 1),
     );
 
-    final historial =
-        await padron.directorios.historial(Ambito.sindicato, sindicatoId);
+    final historial = await padron.directorios.historial(
+      Ambito.sindicato,
+      sindicatoId,
+    );
     final deAna = historial.firstWhere((c) => c.productorId == ana.id);
 
     expect(deAna.vigente, isFalse);
-    expect(deAna.firmaUrl, isNotNull,
-        reason: 'la firma pertenece al período, no se pierde al terminar');
+    expect(
+      deAna.firmaUrl,
+      isNotNull,
+      reason: 'la firma pertenece al período, no se pierde al terminar',
+    );
   });
 
   test('el productor conserva su historial de cargos', () async {
     await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: ana.id,
       desde: DateTime(2026, 3, 1),
     );
     await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicatoId,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: carla.id,
       desde: DateTime(2026, 8, 1),
     );
@@ -362,7 +426,7 @@ void main() {
     // Aunque ya no presida, su paso por el cargo queda registrado con fechas.
     expect(cargos, isNotEmpty);
     final ultimo = cargos.first;
-    expect(ultimo.cargo, equals(TipoCargo.presidente));
+    expect(ultimo.cargo, equals(TipoCargo.secretarioGeneral));
     expect(ultimo.vigente, isFalse);
     expect(ultimo.hasta, isNotNull);
     expect(ultimo.ambitoId, equals(sindicatoId));

@@ -45,13 +45,10 @@ class DirectorioRepository {
     required int productorId,
     DateTime? desde,
   }) async {
-    final datos = await _api.reemplazar(
-      '${_base(ambito, id)}/${cargo.valor}',
-      {
-        'productorId': productorId,
-        if (desde != null) 'desde': _soloFecha(desde),
-      },
-    );
+    final datos = await _api.reemplazar('${_base(ambito, id)}/${cargo.valor}', {
+      'productorId': productorId,
+      if (desde != null) 'desde': _soloFecha(desde),
+    });
     return Directorio.desdeJson(datos.comoObjeto);
   }
 
@@ -83,14 +80,14 @@ class DirectorioRepository {
 
   // ---------- Imágenes del período ----------
 
-  /// Sube la firma o el pie de firma de un período del directorio.
+  /// Sube una imagen histórica de un período. La interfaz actual usa solo FIRMA.
   ///
   /// Cualquier tamaño de archivo sirve: el servidor la reduce a 200 píxeles de
   /// lado mayor conservando la proporción.
   ///
   /// La ruta cuelga de `/cargos` y no del nivel porque las imágenes son del
-  /// período, que también existe cuando ya terminó. Solo presidente y
-  /// secretario las admiten; con otro cargo el backend responde 409.
+  /// período, que también existe cuando ya terminó. Solo los dos cargos
+  /// firmantes de cada nivel las admiten; con otro cargo el backend responde 409.
   Future<Cargo> subirImagen({
     required int cargoId,
     required TipoImagenCargo tipo,
@@ -107,9 +104,38 @@ class DirectorioRepository {
   }
 
   Future<Cargo> eliminarImagen(int cargoId, TipoImagenCargo tipo) async {
-    final datos =
-        await _api.eliminarConRespuesta('/cargos/$cargoId/imagenes/${tipo.ruta}');
+    final datos = await _api.eliminarConRespuesta(
+      '/cargos/$cargoId/imagenes/${tipo.ruta}',
+    );
     return Cargo.desdeJson(datos.comoObjeto);
+  }
+
+  Future<Cargo> actualizarPieFirma(int cargoId, String? pieFirma) async {
+    final datos = await _api.parchear(
+      '/cargos/$cargoId/pie-firma',
+      cuerpo: {'pieFirma': pieFirma},
+    );
+    return Cargo.desdeJson(datos.comoObjeto);
+  }
+
+  Future<Directorio> subirSello({
+    required Ambito ambito,
+    required int id,
+    required List<int> bytes,
+    required String nombreArchivo,
+  }) async {
+    final datos = await _api.subirArchivo(
+      '${_base(ambito, id)}/sello',
+      campo: 'archivo',
+      bytes: bytes,
+      nombreArchivo: nombreArchivo,
+    );
+    return Directorio.desdeJson(datos.comoObjeto);
+  }
+
+  Future<Directorio> eliminarSello(Ambito ambito, int id) async {
+    final datos = await _api.eliminarConRespuesta('${_base(ambito, id)}/sello');
+    return Directorio.desdeJson(datos.comoObjeto);
   }
 
   /// El backend espera una fecha sin hora: mandar el instante completo lo hace

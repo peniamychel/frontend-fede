@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/fondo_ia.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/estados.dart';
@@ -69,8 +70,8 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
               child: _ocupado
                   ? const Center(child: CircularProgressIndicator())
                   : foto == null
-                      ? _vacia(context)
-                      : _vista(context, foto),
+                  ? _vacia(context)
+                  : _vista(context, foto),
             ),
           ),
         ),
@@ -93,16 +94,20 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
           Text(
             'Subí una imagen del tamaño que sea. El servidor la reduce y '
             'genera la miniatura para los listados.',
-            style: tema.textTheme.bodySmall
-                ?.copyWith(color: tema.colorScheme.outline),
+            style: tema.textTheme.bodySmall?.copyWith(
+              color: tema.colorScheme.outline,
+            ),
           ),
         ] else ...[
           Text('Fotografía cargada', style: tema.textTheme.titleSmall),
           const SizedBox(height: 6),
           _dato(context, 'Foto', '${foto.dimensiones} · ${foto.tamanoLegible}'),
           if (mini != null)
-            _dato(context, 'Miniatura',
-                '${mini.dimensiones} · ${mini.tamanoLegible}'),
+            _dato(
+              context,
+              'Miniatura',
+              '${mini.dimensiones} · ${mini.tamanoLegible}',
+            ),
           if (foto.nombreOriginal != null)
             _dato(context, 'Archivo', foto.nombreOriginal!),
         ],
@@ -113,17 +118,23 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
             FilledButton.tonalIcon(
               onPressed: _ocupado ? null : _elegirYSubir,
               icon: Icon(
-                  foto == null ? Icons.add_a_photo_outlined : Icons.swap_horiz,
-                  size: 18),
+                foto == null ? Icons.add_a_photo_outlined : Icons.swap_horiz,
+                size: 18,
+              ),
               label: Text(foto == null ? 'Subir foto' : 'Reemplazar'),
             ),
             if (foto != null)
               TextButton.icon(
                 onPressed: _ocupado ? null : _borrar,
-                icon: Icon(Icons.delete_outline,
-                    size: 18, color: tema.colorScheme.error),
-                label: Text('Borrar',
-                    style: TextStyle(color: tema.colorScheme.error)),
+                icon: Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: tema.colorScheme.error,
+                ),
+                label: Text(
+                  'Borrar',
+                  style: TextStyle(color: tema.colorScheme.error),
+                ),
               ),
           ],
         ),
@@ -136,14 +147,17 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Text.rich(
-        TextSpan(children: [
-          TextSpan(
-            text: '$etiqueta: ',
-            style: tema.textTheme.bodySmall
-                ?.copyWith(color: tema.colorScheme.outline),
-          ),
-          TextSpan(text: valor, style: tema.textTheme.bodySmall),
-        ]),
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$etiqueta: ',
+              style: tema.textTheme.bodySmall?.copyWith(
+                color: tema.colorScheme.outline,
+              ),
+            ),
+            TextSpan(text: valor, style: tema.textTheme.bodySmall),
+          ],
+        ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -158,11 +172,18 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.person_outline, size: 40, color: tema.colorScheme.outline),
+            Icon(
+              Icons.person_outline,
+              size: 40,
+              color: tema.colorScheme.outline,
+            ),
             const SizedBox(height: 6),
-            Text('Sin foto',
-                style: tema.textTheme.bodySmall
-                    ?.copyWith(color: tema.colorScheme.outline)),
+            Text(
+              'Sin foto',
+              style: tema.textTheme.bodySmall?.copyWith(
+                color: tema.colorScheme.outline,
+              ),
+            ),
           ],
         ),
       ),
@@ -189,10 +210,13 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
             loadingBuilder: (context, hijo, progreso) => progreso == null
                 ? hijo
                 : const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2)),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
             errorBuilder: (context, error, _) => Center(
-              child: Icon(Icons.broken_image_outlined,
-                  color: Theme.of(context).colorScheme.error),
+              child: Icon(
+                Icons.broken_image_outlined,
+                color: Theme.of(context).colorScheme.error,
+              ),
             ),
           ),
           const Align(
@@ -234,13 +258,11 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
 
     setState(() => _ocupado = true);
     try {
-      final resultado =
-          await PadronScope.of(context).productores.subirImagen(
-                productorId: widget.productorId,
-                bytes: elegido.bytes!,
-                nombreArchivo: elegido.name,
-                recorte: decision.recorte,
-              );
+      final resultado = await PadronScope.of(context).productores.subirImagen(
+        productorId: widget.productorId,
+        bytes: decision.bytes,
+        nombreArchivo: decision.nombreArchivo,
+      );
       if (!mounted) return;
       setState(() => _ocupado = false);
       mostrarExito(
@@ -248,9 +270,9 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
         'Foto guardada',
         detalle: resultado.huboReduccion
             ? 'De ${pesoLegible(resultado.tamanoSubidoBytes)} a '
-                '${pesoLegible(resultado.original.tamanoBytes)}, '
-                '${resultado.porcentajeReduccion} % menos. '
-                'Miniatura de ${pesoLegible(resultado.miniatura.tamanoBytes)}.'
+                  '${pesoLegible(resultado.original.tamanoBytes)}, '
+                  '${resultado.porcentajeReduccion} % menos. '
+                  'Miniatura de ${pesoLegible(resultado.miniatura.tamanoBytes)}.'
             : null,
       );
       widget.alCambiar();
@@ -266,8 +288,10 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('¿Borrar la fotografía?'),
-        content: const Text('Se eliminan la foto y su miniatura. Podés subir '
-            'otra cuando quieras.'),
+        content: const Text(
+          'Se eliminan la foto y su miniatura. Podés subir '
+          'otra cuando quieras.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -287,9 +311,9 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
 
     setState(() => _ocupado = true);
     try {
-      await PadronScope.of(context)
-          .productores
-          .eliminarImagen(widget.productorId);
+      await PadronScope.of(
+        context,
+      ).productores.eliminarImagen(widget.productorId);
       if (!mounted) return;
       setState(() => _ocupado = false);
       widget.alCambiar();
@@ -304,9 +328,10 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
 /// Lo que devuelve el diálogo: null si se canceló, o el recorte elegido —que a
 /// su vez puede ser null cuando se quiere la imagen entera.
 class _Decision {
-  const _Decision(this.recorte);
+  const _Decision({required this.bytes, required this.nombreArchivo});
 
-  final Recorte? recorte;
+  final Uint8List bytes;
+  final String nombreArchivo;
 }
 
 /// Vista previa con recorte, antes de mandar la foto.
@@ -325,8 +350,10 @@ class _VistaPrevia extends StatefulWidget {
 
 class _VistaPreviaState extends State<_VistaPrevia> {
   Recorte? _recorte;
-  int? _anchoImagen;
-  int? _altoImagen;
+  Uint8List? _fotoPreparada;
+  bool _quitarFondo = true;
+  bool _procesando = false;
+  String? _errorPreparacion;
 
   @override
   Widget build(BuildContext context) {
@@ -343,36 +370,94 @@ class _VistaPreviaState extends State<_VistaPrevia> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Arrastrá el marco para elegir qué parte se guarda.',
-                style: tema.textTheme.bodySmall
-                    ?.copyWith(color: tema.colorScheme.outline),
+                'Acomodá cabeza y hombros dentro del cuadro. La foto se '
+                'guardará cuadrada.',
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.outline,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               RecortadorImagen(
                 bytes: bytes,
-                alCargarImagen: (ancho, alto) {
-                  if (!mounted) return;
-                  setState(() {
-                    _anchoImagen = ancho;
-                    _altoImagen = alto;
-                  });
-                },
                 alCambiar: (recorte) {
                   if (!mounted) return;
-                  setState(() => _recorte = recorte);
+                  setState(() {
+                    _recorte = recorte;
+                    _fotoPreparada = null;
+                    _errorPreparacion = null;
+                  });
                 },
+                proporcionFija: Proporcion.cuadrada,
               ),
               const SizedBox(height: 12),
-              Text(widget.archivo.name,
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _quitarFondo,
+                onChanged: _procesando
+                    ? null
+                    : (valor) => setState(() {
+                        _quitarFondo = valor;
+                        _fotoPreparada = null;
+                        _errorPreparacion = null;
+                      }),
+                title: const Text('Quitar fondo'),
+                subtitle: Text(
+                  _quitarFondo
+                      ? 'Conserva automáticamente a la persona y guarda PNG transparente.'
+                      : 'Guarda el recorte cuadrado sin eliminar el fondo.',
                   style: tema.textTheme.bodySmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center),
-              Text(pesoLegible(widget.archivo.size),
-                  style: tema.textTheme.bodySmall
-                      ?.copyWith(color: tema.colorScheme.outline),
-                  textAlign: TextAlign.center),
+                ),
+              ),
+              if (_fotoPreparada != null) ...[
+                const SizedBox(height: 8),
+                Text('Vista previa', style: tema.textTheme.labelLarge),
+                const SizedBox(height: 6),
+                Center(
+                  child: Container(
+                    width: 180,
+                    height: 180,
+                    decoration: BoxDecoration(
+                      color: tema.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Image.memory(_fotoPreparada!, fit: BoxFit.cover),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'PNG cuadrado · ${pesoLegible(_fotoPreparada!.length)}',
+                  textAlign: TextAlign.center,
+                  style: tema.textTheme.bodySmall?.copyWith(
+                    color: tema.colorScheme.outline,
+                  ),
+                ),
+              ],
+              if (_errorPreparacion != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _errorPreparacion!,
+                  textAlign: TextAlign.center,
+                  style: tema.textTheme.bodySmall?.copyWith(
+                    color: tema.colorScheme.error,
+                  ),
+                ),
+              ],
+              Text(
+                widget.archivo.name,
+                style: tema.textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+              Text(
+                pesoLegible(widget.archivo.size),
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.outline,
+                ),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -382,14 +467,16 @@ class _VistaPreviaState extends State<_VistaPrevia> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.auto_awesome,
-                        size: 18, color: tema.colorScheme.onSecondaryContainer),
+                    Icon(
+                      Icons.auto_awesome,
+                      size: 18,
+                      color: tema.colorScheme.onSecondaryContainer,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'El recorte se aplica sobre la foto original, en su '
-                        'resolución completa. Después se reduce y se genera la '
-                        'miniatura.',
+                        'Primero se prepara una vista previa. La foto se procesa '
+                        'localmente en este equipo; no se envía a un servicio externo.',
                         style: tema.textTheme.bodySmall?.copyWith(
                           color: tema.colorScheme.onSecondaryContainer,
                         ),
@@ -407,24 +494,79 @@ class _VistaPreviaState extends State<_VistaPrevia> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
+        OutlinedButton.icon(
+          onPressed: _procesando ? null : _preparar,
+          icon: _procesando
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.auto_fix_high_outlined, size: 18),
+          label: Text(_procesando ? 'Procesando…' : 'Preparar vista previa'),
+        ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(_Decision(_recorteAEnviar())),
+          onPressed: _fotoPreparada == null || _procesando
+              ? null
+              : () => Navigator.of(context).pop(
+                  _Decision(
+                    bytes: _fotoPreparada!,
+                    nombreArchivo: _nombrePng(),
+                  ),
+                ),
           child: const Text('Subir'),
         ),
       ],
     );
   }
 
-  /// Omite el recorte cuando abarca la imagen entera: mandarlo daría el mismo
-  /// resultado y solo agregaría trabajo al servidor.
-  Recorte? _recorteAEnviar() {
+  Future<void> _preparar() async {
     final recorte = _recorte;
-    if (recorte == null) return null;
-    final ancho = _anchoImagen;
-    final alto = _altoImagen;
-    if (ancho != null && alto != null && recorte.esCompleto(ancho, alto)) {
-      return null;
+    if (recorte == null) {
+      setState(() => _errorPreparacion = 'Esperá a que cargue la fotografía.');
+      return;
     }
-    return recorte;
+    if (!fondoIaDisponible) {
+      setState(
+        () => _errorPreparacion =
+            'La eliminación de fondo está disponible por ahora en la versión web.',
+      );
+      return;
+    }
+
+    setState(() {
+      _procesando = true;
+      _errorPreparacion = null;
+      _fotoPreparada = null;
+    });
+    try {
+      final resultado = await prepararFotoSinFondo(
+        bytes: Uint8List.fromList(widget.archivo.bytes!),
+        recorte: recorte,
+        quitarFondo: _quitarFondo,
+        tipoMime: _tipoMime(),
+      );
+      if (!mounted) return;
+      setState(() => _fotoPreparada = resultado.bytes);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorPreparacion = '$e');
+    } finally {
+      if (mounted) setState(() => _procesando = false);
+    }
+  }
+
+  String _nombrePng() {
+    final nombre = widget.archivo.name;
+    final punto = nombre.lastIndexOf('.');
+    return '${punto <= 0 ? nombre : nombre.substring(0, punto)}.png';
+  }
+
+  String _tipoMime() {
+    final nombre = widget.archivo.name.toLowerCase();
+    if (nombre.endsWith('.png')) return 'image/png';
+    if (nombre.endsWith('.webp')) return 'image/webp';
+    if (nombre.endsWith('.gif')) return 'image/gif';
+    return 'image/jpeg';
   }
 }

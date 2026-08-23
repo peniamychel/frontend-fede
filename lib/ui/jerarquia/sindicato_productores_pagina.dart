@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
+import '../credenciales/pliego_previa_pagina.dart';
 import '../padron_scope.dart';
 import '../productores/fila_productor.dart';
 import '../productores/productor_detalle_pagina.dart';
@@ -53,8 +54,10 @@ class _SindicatoProductoresPaginaState
             icon: const Icon(Icons.picture_as_pdf_outlined),
           ),
           IconButton(
-            tooltip: 'Imprimir las credenciales de todo el sindicato',
-            onPressed: () => descargarCredencialesSindicato(context, s),
+            tooltip: 'Ver e imprimir las credenciales del sindicato',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => PliegoPreviaPagina(sindicato: s),
+            )),
             icon: const Icon(Icons.badge_outlined),
           ),
           IconButton(

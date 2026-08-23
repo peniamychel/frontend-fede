@@ -23,10 +23,16 @@ void main() {
   const lat = -16.8574123;
   const lon = -64.7891456;
 
-  Future<Lote> crearLote(String numero, {double? superficie}) async {
+  /// Las parcelas se crean **sin tenedor** salvo que se pida lo contrario.
+  ///
+  /// Acá se prueban la ubicación y la superficie, que no dependen de quién la
+  /// tenga. Y desde que nadie puede tener dos parcelas a su nombre, ponerle
+  /// todas a la misma productora fallaría en la segunda.
+  Future<Lote> crearLote(String numero,
+      {double? superficie, bool conTenedor = false}) async {
     final l = await padron.lotes.crear(LoteRequest(
       sindicatoId: sindicato.id,
-      productorId: ana.id,
+      productorId: conTenedor ? ana.id : null,
       numero: numero,
       superficie: superficie,
     ));
@@ -48,8 +54,15 @@ void main() {
 
   tearDownAll(() async {
     for (final id in lotes) {
-      await padron.lotes
-          .traspasar(id, const TraspasoRequest(motivo: MotivoTraspaso.otro));
+      try {
+        // Casi todas nacen sin tenedor, así que soltarlas da 409. Se intenta
+        // igual por la única que sí lo tiene: una parcela con tenedor no se
+        // puede borrar.
+        await padron.lotes
+            .traspasar(id, const TraspasoRequest(motivo: MotivoTraspaso.otro));
+      } on ApiException {
+        // Ya estaba sin tenedor.
+      }
       await padron.lotes.eliminar(id);
     }
     await padron.productores.eliminar(ana.id);
@@ -107,9 +120,9 @@ void main() {
       final sinPunto = await padron.lotes.borrarUbicacion(lote.id);
 
       expect(sinPunto.tieneUbicacion, isFalse);
-      // El lote sigue ahí, con su número y su tenedor.
+      // El lote sigue ahí, con su número y en su sindicato.
       expect(sinPunto.numero, '505');
-      expect(sinPunto.tenedor?.productorId, ana.id);
+      expect(sinPunto.sindicatoId, sindicato.id);
     });
 
     test('el listado del mapa trae solo los ubicados', () async {
@@ -153,7 +166,8 @@ void main() {
     });
 
     test('se corrige sin tocar al tenedor', () async {
-      final lote = await crearLote('603', superficie: 10);
+      // La única con tenedor: es lo que esta prueba mira.
+      final lote = await crearLote('603', superficie: 10, conTenedor: true);
 
       final medido = await padron.lotes.actualizar(
         lote.id,

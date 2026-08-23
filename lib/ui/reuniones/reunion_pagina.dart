@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
-import '../productores/productor_detalle_pagina.dart';
 import '../widgets/estados.dart';
-import 'escaner_qr.dart';
+import 'llamada_pagina.dart';
 import 'reuniones_pagina.dart' show iconoDeTipo;
+import 'tarjeta_acta.dart';
+import 'tarjeta_vetos.dart';
 
-/// Pasar lista en una reunión.
+/// Una reunión, en cuadros.
 ///
-/// La pantalla está pensada para usarse de pie, con el teléfono en una mano y
-/// una fila de gente enfrente: la cámara arriba, el último resultado bien
-/// grande, y la lista abajo para buscar a quien no tenga el carnet.
+/// Cada cuadro es una cosa que se hace en la asamblea y se hace por separado:
+/// quién convoca y cuándo, llamar lista, subir el acta, y —si toca— los vetos.
+/// Antes estaba todo en una sola pantalla larga, con el acta y las decisiones
+/// enredadas en el pase de lista, que son momentos distintos de la reunión.
 class ReunionPagina extends StatefulWidget {
   const ReunionPagina({super.key, required this.reunionId});
 
@@ -23,27 +25,11 @@ class ReunionPagina extends StatefulWidget {
 
 class _ReunionPaginaState extends State<ReunionPagina> {
   late Future<_Datos> _futuro;
-  final _codigo = TextEditingController();
-
-  /// Mientras se registra una lectura, la cámara no sigue leyendo.
-  bool _registrando = false;
-
-  /// El último resultado, para mostrarlo grande. Se limpia al recargar.
-  RegistroAsistencia? _ultimo;
-  String? _ultimoError;
-
-  bool _soloAusentes = false;
 
   @override
   void initState() {
     super.initState();
     _recargar();
-  }
-
-  @override
-  void dispose() {
-    _codigo.dispose();
-    super.dispose();
   }
 
   void _recargar() {
@@ -57,7 +43,7 @@ class _ReunionPaginaState extends State<ReunionPagina> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pasar lista'),
+        title: const Text('Reunión'),
         actions: [
           IconButton(
             tooltip: 'Recargar',
@@ -69,190 +55,100 @@ class _ReunionPaginaState extends State<ReunionPagina> {
       body: CargaAsync<_Datos>(
         futuro: _futuro,
         alReintentar: _recargar,
-        constructor: (context, datos) => _contenido(context, datos),
+        constructor: (context, datos) => ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _TarjetaEncabezado(reunion: datos.reunion),
+                    const SizedBox(height: 16),
+                    _TarjetaLlamadas(
+                      reunion: datos.reunion,
+                      llamadas: datos.llamadas,
+                      alAbrir: _abrirLlamada,
+                      alEntrar: _entrarALlamada,
+                      alCambiarCierre: _cambiarCierre,
+                    ),
+                    const SizedBox(height: 16),
+                    TarjetaActa(reunion: datos.reunion, alCambiar: _recargar),
+                    const SizedBox(height: 16),
+                    TarjetaVetos(reunion: datos.reunion, alCambiar: _recargar),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-    );
-  }
-
-  Widget _contenido(BuildContext context, _Datos datos) {
-    final reunion = datos.reunion;
-    final visibles = _soloAusentes
-        ? datos.lista.where((c) => !c.presente).toList()
-        : datos.lista;
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-      children: [
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _Encabezado(reunion: reunion, alCambiarCierre: _cambiarCierre),
-                const SizedBox(height: 16),
-                if (reunion.cerrada)
-                  _ListaCerrada(alReabrir: () => _cambiarCierre(false))
-                else ...[
-                  EscanerQr(pausado: _registrando, alLeer: _registrar),
-                  const SizedBox(height: 12),
-                  _entradaManual(),
-                ],
-                if (_ultimo != null || _ultimoError != null) ...[
-                  const SizedBox(height: 12),
-                  _Resultado(registro: _ultimo, error: _ultimoError),
-                ],
-                const SizedBox(height: 24),
-                _cabeceraLista(context, datos),
-                const SizedBox(height: 4),
-                if (visibles.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Text(
-                      _soloAusentes
-                          ? 'No falta nadie.'
-                          : 'Esta reunión no convoca a nadie todavía.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Theme.of(context).colorScheme.outline),
-                    ),
-                  )
-                else
-                  Card(
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      children: [
-                        for (final c in visibles)
-                          _FilaConvocado(
-                            convocado: c,
-                            cerrada: reunion.cerrada,
-                            alQuitar: () => _quitar(c),
-                            alAbrir: () => _abrirProductor(c.productorId),
-                          ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _entradaManual() {
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _codigo,
-            textCapitalization: TextCapitalization.characters,
-            enabled: !_registrando,
-            decoration: const InputDecoration(
-              labelText: 'Código de la credencial',
-              helperText: 'Está impreso debajo del QR',
-              prefixIcon: Icon(Icons.keyboard_outlined),
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: (_) => _registrarEscrito(),
-          ),
-        ),
-        const SizedBox(width: 8),
-        FilledButton(
-          onPressed: _registrando ? null : _registrarEscrito,
-          child: const Text('Registrar'),
-        ),
-      ],
-    );
-  }
-
-  Widget _cabeceraLista(BuildContext context, _Datos datos) {
-    final tema = Theme.of(context);
-    return Row(
-      children: [
-        Text('Lista', style: tema.textTheme.titleMedium),
-        const SizedBox(width: 8),
-        Text('${datos.reunion.presentes} de ${datos.reunion.convocados}',
-            style: tema.textTheme.bodySmall
-                ?.copyWith(color: tema.colorScheme.outline)),
-        const Spacer(),
-        FilterChip(
-          label: const Text('Solo los que faltan'),
-          selected: _soloAusentes,
-          onSelected: (v) => setState(() => _soloAusentes = v),
-        ),
-      ],
     );
   }
 
   // ---------- Acciones ----------
 
-  void _registrarEscrito() {
-    final codigo = _codigo.text.trim();
-    if (codigo.isEmpty) return;
-    _registrar(codigo);
-  }
-
-  Future<void> _registrar(String codigo) async {
-    if (_registrando) return;
-    setState(() {
-      _registrando = true;
-      _ultimoError = null;
-    });
-
-    try {
-      final registro =
-          await PadronScope.of(context).reuniones.registrar(widget.reunionId, codigo);
-      if (!mounted) return;
-      _codigo.clear();
-      setState(() {
-        _ultimo = registro;
-        _registrando = false;
-      });
-      _recargar();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _ultimo = null;
-        // El mensaje va a la tarjeta grande y no a un aviso que se desvanece:
-        // quien está pasando lista necesita poder leerlo mientras le explica
-        // a la persona que tiene enfrente por qué no entró.
-        _ultimoError = e is ApiException ? e.mensaje : '$e';
-        _registrando = false;
-      });
-    }
-  }
-
-  Future<void> _quitar(Convocado c) async {
-    final confirmado = await showDialog<bool>(
+  Future<void> _abrirLlamada() async {
+    final nota = await showDialog<String?>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('¿Quitar de la lista?'),
-        content: Text('${c.nombre} deja de figurar como presente.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Quitar'),
-          ),
-        ],
-      ),
+      builder: (context) => const _DialogoNuevaLlamada(),
     );
-    if (confirmado != true || !mounted) return;
+    // El diálogo devuelve null si se canceló, y cadena vacía si se aceptó sin
+    // escribir nota: son cosas distintas.
+    if (nota == null || !mounted) return;
 
     try {
-      await PadronScope.of(context)
+      final llamada = await PadronScope.of(context)
           .reuniones
-          .quitar(widget.reunionId, c.productorId);
-      if (mounted) _recargar();
+          .abrirLlamada(widget.reunionId, nota: nota.isEmpty ? null : nota);
+      if (!mounted) return;
+      _recargar();
+      await _entrarALlamada(llamada);
     } catch (e) {
       if (mounted) mostrarError(context, e);
     }
   }
 
+  Future<void> _entrarALlamada(LlamadaLista llamada) async {
+    final datos = await _futuro;
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LlamadaPagina(
+          llamada: llamada,
+          tituloReunion: datos.reunion.titulo,
+        ),
+      ),
+    );
+    if (mounted) _recargar();
+  }
+
   Future<void> _cambiarCierre(bool cerrar) async {
+    if (cerrar) {
+      final confirmado = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('¿Cerrar la lista?'),
+          content: const Text(
+            'No se van a poder abrir más llamadas, y la que esté abierta se '
+            'cierra. Lo ya registrado se sigue viendo.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+      if (confirmado != true || !mounted) return;
+    }
+
     try {
       await PadronScope.of(context)
           .reuniones
@@ -264,33 +160,29 @@ class _ReunionPaginaState extends State<ReunionPagina> {
       if (mounted) mostrarError(context, e);
     }
   }
-
-  Future<void> _abrirProductor(int id) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ProductorDetallePagina(productorId: id)),
-    );
-    if (mounted) _recargar();
-  }
 }
 
-/// Las dos consultas de la pantalla, pedidas juntas.
+/// Lo que muestra la pantalla, pedido junto.
 class _Datos {
-  const _Datos(this.reunion, this.lista);
+  const _Datos(this.reunion, this.llamadas);
 
   final Reunion reunion;
-  final List<Convocado> lista;
+  final List<LlamadaLista> llamadas;
 
   static Future<_Datos> cargar(ReunionRepository repo, int id) async {
-    final resultados = await Future.wait([repo.obtener(id), repo.lista(id)]);
-    return _Datos(resultados[0] as Reunion, resultados[1] as List<Convocado>);
+    final resultados =
+        await Future.wait([repo.obtener(id), repo.llamadas(id)]);
+    return _Datos(
+        resultados[0] as Reunion, resultados[1] as List<LlamadaLista>);
   }
 }
 
-class _Encabezado extends StatelessWidget {
-  const _Encabezado({required this.reunion, required this.alCambiarCierre});
+// --------------------------------------------------- el cuadro de arriba
+
+class _TarjetaEncabezado extends StatelessWidget {
+  const _TarjetaEncabezado({required this.reunion});
 
   final Reunion reunion;
-  final ValueChanged<bool> alCambiarCierre;
 
   @override
   Widget build(BuildContext context) {
@@ -308,11 +200,6 @@ class _Encabezado extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(reunion.titulo, style: tema.textTheme.titleLarge),
-                ),
-                IconButton(
-                  tooltip: reunion.cerrada ? 'Reabrir la lista' : 'Cerrar la lista',
-                  onPressed: () => alCambiarCierre(!reunion.cerrada),
-                  icon: Icon(reunion.cerrada ? Icons.lock_open : Icons.lock_outline),
                 ),
               ],
             ),
@@ -332,14 +219,10 @@ class _Encabezado extends StatelessWidget {
                   _Dato(icono: Icons.place_outlined, texto: reunion.lugar!),
               ],
             ),
-            const SizedBox(height: 14),
-            LinearProgressIndicator(value: reunion.avance, minHeight: 8),
-            const SizedBox(height: 6),
-            Text(
-              '${reunion.presentes} presentes · ${reunion.ausentes} faltan '
-              'de ${reunion.convocados} convocados',
-              style: tema.textTheme.bodySmall,
-            ),
+            if (reunion.observaciones != null) ...[
+              const SizedBox(height: 8),
+              Text(reunion.observaciones!, style: tema.textTheme.bodySmall),
+            ],
           ],
         ),
       ),
@@ -367,160 +250,228 @@ class _Dato extends StatelessWidget {
   }
 }
 
-class _ListaCerrada extends StatelessWidget {
-  const _ListaCerrada({required this.alReabrir});
+// ------------------------------------------------- el cuadro de la lista
 
-  final VoidCallback alReabrir;
-
-  @override
-  Widget build(BuildContext context) {
-    final tema = Theme.of(context);
-    return Card(
-      color: tema.colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(Icons.lock_outline, color: tema.colorScheme.outline),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'La lista está cerrada: no admite más registros. La lista de '
-                'abajo se puede seguir consultando.',
-                style: tema.textTheme.bodyMedium,
-              ),
-            ),
-            TextButton(onPressed: alReabrir, child: const Text('Reabrir')),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// El último resultado, bien grande y con color.
+/// Resumen de las vueltas de lista, con la opción de abrir otra o cerrar.
 ///
-/// Es lo que se mira sin bajar la vista al teléfono, así que el color hace más
-/// trabajo que el texto: verde entró, ámbar ya estaba, rojo no corresponde.
-class _Resultado extends StatelessWidget {
-  const _Resultado({required this.registro, required this.error});
-
-  final RegistroAsistencia? registro;
-  final String? error;
-
-  @override
-  Widget build(BuildContext context) {
-    final tema = Theme.of(context);
-    final esError = error != null;
-    final repetido = registro?.repetido ?? false;
-
-    final (Color fondo, Color frente, IconData icono) = esError
-        ? (tema.colorScheme.errorContainer, tema.colorScheme.onErrorContainer,
-            Icons.block)
-        : repetido
-            ? (const Color(0xFFFFF0C2), const Color(0xFF6B4E00),
-                Icons.info_outline)
-            : (const Color(0xFFD7F0DC), const Color(0xFF14532D),
-                Icons.check_circle_outline);
-
-    return Card(
-      color: fondo,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(icono, color: frente, size: 32),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    esError ? error! : registro!.persona.nombre,
-                    style: tema.textTheme.titleMedium?.copyWith(color: frente),
-                  ),
-                  if (!esError) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      [
-                        repetido ? 'Ya estaba registrado' : 'Registrado',
-                        registro!.persona.sindicato,
-                        if (registro!.persona.cargo != null)
-                          registro!.persona.cargo!,
-                      ].join(' · '),
-                      style: tema.textTheme.bodySmall?.copyWith(color: frente),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (!esError)
-              Text('${registro!.presentes}',
-                  style: tema.textTheme.headlineSmall?.copyWith(color: frente)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FilaConvocado extends StatelessWidget {
-  const _FilaConvocado({
-    required this.convocado,
-    required this.cerrada,
-    required this.alQuitar,
+/// Se entra a cada vuelta para ver a los afiliados: acá solo va el resumen,
+/// porque tres listas de doscientos nombres una debajo de otra no se leen.
+class _TarjetaLlamadas extends StatelessWidget {
+  const _TarjetaLlamadas({
+    required this.reunion,
+    required this.llamadas,
     required this.alAbrir,
+    required this.alEntrar,
+    required this.alCambiarCierre,
   });
 
-  final Convocado convocado;
-  final bool cerrada;
-  final VoidCallback alQuitar;
+  final Reunion reunion;
+  final List<LlamadaLista> llamadas;
   final VoidCallback alAbrir;
+  final ValueChanged<LlamadaLista> alEntrar;
+  final ValueChanged<bool> alCambiarCierre;
 
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
+    final hayAbierta = llamadas.any((l) => l.abierta);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.how_to_reg_outlined, color: tema.colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Llamar lista', style: tema.textTheme.titleLarge),
+                ),
+                if (reunion.cerrada)
+                  Chip(
+                    avatar: const Icon(Icons.lock_outline, size: 16),
+                    label: const Text('Cerrada'),
+                    backgroundColor: tema.colorScheme.surfaceContainerHighest,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Se puede llamar lista varias veces en la misma reunión: al '
+              'empezar, más tarde para los que llegaron con retraso, y al '
+              'final.',
+              style: tema.textTheme.bodySmall
+                  ?.copyWith(color: tema.colorScheme.outline),
+            ),
+            const SizedBox(height: 12),
+            _resumen(context),
+            const SizedBox(height: 12),
+            if (llamadas.isEmpty)
+              Text(
+                reunion.cerrada
+                    ? 'La lista se cerró sin haber llamado ninguna vez.'
+                    : 'Todavía no se llamó lista.',
+                style: tema.textTheme.bodyMedium,
+              )
+            else
+              Column(
+                children: [
+                  for (final l in llamadas)
+                    _FilaLlamada(llamada: l, alEntrar: () => alEntrar(l)),
+                ],
+              ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (!reunion.cerrada)
+                  FilledButton.tonalIcon(
+                    onPressed: alAbrir,
+                    icon: const Icon(Icons.add),
+                    label: Text(
+                        llamadas.isEmpty ? 'Llamar lista' : 'Otra llamada'),
+                  ),
+                if (hayAbierta) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Hay una llamada abierta. Cerrala antes de abrir otra.',
+                      style: tema.textTheme.bodySmall
+                          ?.copyWith(color: tema.colorScheme.outline),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => alCambiarCierre(!reunion.cerrada),
+                  icon: Icon(
+                      reunion.cerrada ? Icons.lock_open : Icons.lock_outline,
+                      size: 18),
+                  label: Text(reunion.cerrada ? 'Reabrir' : 'Cerrar lista'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Cuántos estuvieron en la reunión, contando a cada uno una sola vez aunque
+  /// haya venido a tres vueltas.
+  Widget _resumen(BuildContext context) {
+    final tema = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LinearProgressIndicator(value: reunion.avance, minHeight: 8),
+        const SizedBox(height: 6),
+        Text(
+          '${reunion.presentes} estuvieron · ${reunion.ausentes} faltaron '
+          'de ${reunion.convocados} convocados',
+          style: tema.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
+class _FilaLlamada extends StatelessWidget {
+  const _FilaLlamada({required this.llamada, required this.alEntrar});
+
+  final LlamadaLista llamada;
+  final VoidCallback alEntrar;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final abierta = llamada.abierta;
 
     return ListTile(
       dense: true,
+      contentPadding: EdgeInsets.zero,
       leading: Icon(
-        convocado.presente
-            ? Icons.check_circle
-            : Icons.radio_button_unchecked,
-        color: convocado.presente
-            ? const Color(0xFF2E7D32)
-            : tema.colorScheme.outlineVariant,
+        abierta ? Icons.podcasts : Icons.playlist_add_check,
+        color: abierta ? tema.colorScheme.primary : tema.colorScheme.outline,
       ),
-      title: Text(convocado.nombre,
-          style: TextStyle(
-            color: convocado.presente ? null : tema.colorScheme.outline,
-          )),
+      title: Text(llamada.etiqueta),
       subtitle: Text(
         [
-          convocado.cargo ?? convocado.sindicato,
-          if (convocado.ci != null) 'CI ${convocado.ci}',
+          '${llamada.presentes} presentes',
+          if (abierta)
+            'en curso'
+          else if (llamada.horaCierre != null)
+            'cerrada ${llamada.horaCierre}'
+          else
+            'cerrada',
+          if (llamada.nota != null) llamada.nota!,
         ].join(' · '),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: convocado.presente
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (convocado.horaLlegada != null)
-                  Text(convocado.horaLlegada!,
-                      style: tema.textTheme.bodySmall
-                          ?.copyWith(color: tema.colorScheme.outline)),
-                if (!cerrada)
-                  IconButton(
-                    tooltip: 'Quitar de la lista',
-                    onPressed: alQuitar,
-                    icon: const Icon(Icons.close, size: 18),
-                  ),
-              ],
-            )
-          : null,
-      onTap: alAbrir,
+      trailing: const Icon(Icons.chevron_right),
+      onTap: alEntrar,
+    );
+  }
+}
+
+/// Pregunta la nota antes de abrir la vuelta.
+///
+/// Es opcional a propósito: en la primera no hay nada que aclarar, pero en la
+/// tercera "después del cuarto intermedio" es lo que le da sentido a que haya
+/// treinta presentes en vez de ciento veinte.
+class _DialogoNuevaLlamada extends StatefulWidget {
+  const _DialogoNuevaLlamada();
+
+  @override
+  State<_DialogoNuevaLlamada> createState() => _DialogoNuevaLlamadaState();
+}
+
+class _DialogoNuevaLlamadaState extends State<_DialogoNuevaLlamada> {
+  final _nota = TextEditingController();
+
+  @override
+  void dispose() {
+    _nota.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Llamar lista'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Se abre una vuelta nueva. Lo que se registre a partir de ahora va '
+            'a esta.',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _nota,
+            autofocus: true,
+            maxLength: 200,
+            decoration: const InputDecoration(
+              labelText: 'Nota (opcional)',
+              hintText: 'Después del cuarto intermedio',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_nota.text.trim()),
+          child: const Text('Abrir'),
+        ),
+      ],
     );
   }
 }

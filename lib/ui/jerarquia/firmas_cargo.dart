@@ -5,22 +5,13 @@ import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../productores/visor_imagen.dart';
 import '../widgets/estados.dart';
+import 'preparar_imagen_directorio.dart';
 
-/// Firma y pie de firma de un período del directorio.
-///
-/// Se suben en cualquier tamaño; el servidor las reduce a 200 píxeles de lado
-/// mayor conservando la proporción, de modo que una firma apaisada no termine
-/// estirada en un cuadrado.
+/// Firma manuscrita y vista del pie de firma construido automáticamente.
 class FirmasCargo extends StatefulWidget {
-  const FirmasCargo({
-    super.key,
-    required this.cargo,
-    required this.alCambiar,
-  });
+  const FirmasCargo({super.key, required this.cargo, required this.alCambiar});
 
   final Cargo cargo;
-
-  /// Se llama tras subir o borrar, para que la pantalla se recargue.
   final VoidCallback alCambiar;
 
   @override
@@ -28,96 +19,94 @@ class FirmasCargo extends StatefulWidget {
 }
 
 class _FirmasCargoState extends State<FirmasCargo> {
-  TipoImagenCargo? _ocupadoEn;
+  bool _ocupado = false;
 
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            Icon(Icons.draw_outlined, size: 16, color: tema.colorScheme.outline),
+            Icon(
+              Icons.draw_outlined,
+              size: 16,
+              color: tema.colorScheme.outline,
+            ),
             const SizedBox(width: 6),
-            Text('Firmas',
-                style: tema.textTheme.labelLarge
-                    ?.copyWith(color: tema.colorScheme.outline)),
+            Text(
+              'Firma',
+              style: tema.textTheme.labelLarge?.copyWith(
+                color: tema.colorScheme.outline,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            for (final tipo in TipoImagenCargo.values) ...[
-              Expanded(child: _ranura(context, tipo)),
-              if (tipo != TipoImagenCargo.values.last) const SizedBox(width: 8),
-            ],
-          ],
+        LayoutBuilder(
+          builder: (context, restricciones) {
+            final firma = _ranuraFirma(context);
+            final pie = _pieAutomatico(context);
+            if (restricciones.maxWidth < 430) {
+              return Column(children: [firma, const SizedBox(height: 12), pie]);
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: 150, child: firma),
+                const SizedBox(width: 12),
+                Expanded(child: pie),
+              ],
+            );
+          },
         ),
       ],
     );
   }
 
-  Widget _ranura(BuildContext context, TipoImagenCargo tipo) {
+  Widget _ranuraFirma(BuildContext context) {
     final tema = Theme.of(context);
-    final url = widget.cargo.urlDe(tipo);
-    final ocupado = _ocupadoEn == tipo;
-
+    final url = widget.cargo.firmaUrl;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Tooltip(
-          message: tipo.detalle,
-          child: Container(
-            height: 78,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              // Fondo claro siempre: una firma es trazo oscuro sobre papel, y
-              // en tema oscuro sobre fondo oscuro no se vería.
-              color: Colors.white,
-              border: Border.all(
-                color: url == null
-                    ? tema.colorScheme.outlineVariant
-                    : tema.colorScheme.primary,
-              ),
+        Container(
+          height: 88,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.white,
+            border: Border.all(
+              color: url == null
+                  ? tema.colorScheme.outlineVariant
+                  : tema.colorScheme.primary,
             ),
-            clipBehavior: Clip.antiAlias,
-            child: ocupado
-                ? const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : url == null
-                    ? _vacia(context, tipo)
-                    : _vista(context, tipo, url),
           ),
+          clipBehavior: Clip.antiAlias,
+          child: _ocupado
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+              : url == null
+              ? InkWell(
+                  onTap: _subirFirma,
+                  child: const Center(
+                    child: Icon(
+                      Icons.add_photo_alternate_outlined,
+                      color: Colors.black26,
+                    ),
+                  ),
+                )
+              : _vistaFirma(url),
         ),
-        const SizedBox(height: 4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        Wrap(
+          alignment: WrapAlignment.center,
           children: [
-            Flexible(
-              child: TextButton(
-                onPressed: ocupado ? null : () => _subir(tipo),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: const Size(0, 32),
-                ),
-                child: Text(
-                  url == null ? tipo.etiqueta : 'Cambiar',
-                  style: tema.textTheme.bodySmall,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+            TextButton(
+              onPressed: _ocupado ? null : _subirFirma,
+              child: Text(url == null ? 'Subir firma' : 'Cambiar'),
             ),
             if (url != null)
               IconButton(
-                tooltip: 'Borrar ${tipo.etiqueta.toLowerCase()}',
-                onPressed: ocupado ? null : () => _borrar(tipo),
+                tooltip: 'Borrar firma',
+                onPressed: _ocupado ? null : _borrarFirma,
                 visualDensity: VisualDensity.compact,
                 iconSize: 16,
                 icon: Icon(Icons.close, color: tema.colorScheme.error),
@@ -128,23 +117,48 @@ class _FirmasCargoState extends State<FirmasCargo> {
     );
   }
 
-  Widget _vacia(BuildContext context, TipoImagenCargo tipo) {
-    return InkWell(
-      onTap: () => _subir(tipo),
-      child: Center(
-        child: Icon(Icons.add_photo_alternate_outlined,
-            size: 22, color: Colors.black26),
+  Widget _pieAutomatico(BuildContext context) {
+    final tema = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: tema.colorScheme.surfaceContainerHighest.withValues(alpha: .45),
+        border: Border.all(color: tema.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Pie de firma automático', style: tema.textTheme.labelMedium),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              widget.cargo.pieFirma ?? '',
+              textAlign: TextAlign.center,
+              style: tema.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Se construye con el productor, el cargo y la organización.',
+            style: tema.textTheme.bodySmall?.copyWith(
+              color: tema.colorScheme.outline,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _vista(BuildContext context, TipoImagenCargo tipo, String url) {
+  Widget _vistaFirma(String url) {
     final absoluta = ApiConfig.urlAbsoluta(url);
     return InkWell(
       onTap: () => VisorImagen.mostrar(
         context,
         url: absoluta,
-        titulo: tipo.etiqueta,
+        titulo: 'Firma',
         subtitulo: widget.cargo.productorNombre,
       ),
       child: Padding(
@@ -152,18 +166,15 @@ class _FirmasCargoState extends State<FirmasCargo> {
         child: Image.network(
           absoluta,
           fit: BoxFit.contain,
-          errorBuilder: (context, error, _) => const Center(
-            child: Icon(Icons.broken_image_outlined,
-                size: 20, color: Colors.black26),
+          errorBuilder: (_, _, _) => const Center(
+            child: Icon(Icons.broken_image_outlined, color: Colors.black26),
           ),
         ),
       ),
     );
   }
 
-  // ---------- Acciones ----------
-
-  Future<void> _subir(TipoImagenCargo tipo) async {
+  Future<void> _subirFirma() async {
     final PlatformFile elegido;
     try {
       final resultado = await FilePicker.pickFiles(
@@ -177,41 +188,48 @@ class _FirmasCargoState extends State<FirmasCargo> {
       if (mounted) mostrarError(context, e);
       return;
     }
-
     if (!mounted) return;
-    setState(() => _ocupadoEn = tipo);
-
+    final preparada = await prepararImagenDirectorio(
+      context,
+      archivo: elegido,
+      clase: ClaseImagenDirectorio.firma,
+    );
+    if (preparada == null || !mounted) return;
+    setState(() => _ocupado = true);
     try {
       await PadronScope.of(context).directorios.subirImagen(
-            cargoId: widget.cargo.id,
-            tipo: tipo,
-            bytes: elegido.bytes!,
-            nombreArchivo: elegido.name,
-          );
+        cargoId: widget.cargo.id,
+        tipo: TipoImagenCargo.firma,
+        bytes: preparada.bytes,
+        nombreArchivo: preparada.nombreArchivo,
+      );
       if (!mounted) return;
-      setState(() => _ocupadoEn = null);
-      mostrarExito(context, '${tipo.etiqueta} guardada',
-          detalle: 'Reducida a 200 px de lado mayor.');
+      setState(() => _ocupado = false);
+      mostrarExito(
+        context,
+        'Firma guardada',
+        detalle: 'Guardada como PNG con transparencia.',
+      );
       widget.alCambiar();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _ocupadoEn = null);
+      setState(() => _ocupado = false);
       mostrarError(context, e);
     }
   }
 
-  Future<void> _borrar(TipoImagenCargo tipo) async {
-    setState(() => _ocupadoEn = tipo);
+  Future<void> _borrarFirma() async {
+    setState(() => _ocupado = true);
     try {
-      await PadronScope.of(context)
-          .directorios
-          .eliminarImagen(widget.cargo.id, tipo);
+      await PadronScope.of(
+        context,
+      ).directorios.eliminarImagen(widget.cargo.id, TipoImagenCargo.firma);
       if (!mounted) return;
-      setState(() => _ocupadoEn = null);
+      setState(() => _ocupado = false);
       widget.alCambiar();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _ocupadoEn = null);
+      setState(() => _ocupado = false);
       mostrarError(context, e);
     }
   }

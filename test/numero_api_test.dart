@@ -5,7 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fede/repositories/padron.dart';
 
-/// Número de central y de sindicato, contra el backend real.
+/// Número de federación y de sindicato, y abreviatura de central, contra el
+/// backend real.
 ///
 /// Todo se hace sobre centrales y sindicatos propios, creados al empezar y
 /// borrados al terminar. No se toca la jerarquía real.
@@ -18,11 +19,19 @@ void main() {
   late int federacionId;
   final centrales = <int>[];
   final sindicatos = <int>[];
+  final federaciones = <int>[];
 
-  Future<Central> central(String nombre, {String? numero}) async {
+  Future<Federacion> federacion(String nombre, {String? numero}) async {
+    final f = await padron.federaciones
+        .crear(FederacionRequest(nombre: nombre, numero: numero));
+    federaciones.add(f.id);
+    return f;
+  }
+
+  Future<Central> central(String nombre, {String? abreviatura}) async {
     final c = await padron.centrales.crear(CentralRequest(
       nombre: nombre,
-      numero: numero,
+      abreviatura: abreviatura,
       federacionId: federacionId,
     ));
     centrales.add(c.id);
@@ -62,75 +71,189 @@ void main() {
         // Ídem.
       }
     }
+    // Las federaciones van al final: el backend no deja borrar una que todavía
+    // tenga centrales colgando.
+    for (final id in federaciones) {
+      try {
+        await padron.federaciones.eliminar(id);
+      } on ApiException {
+        // Ídem.
+      }
+    }
   });
 
-  group('central', () {
+  group('federación', () {
     test('se crea con número y vuelve con él', () async {
-      final c = await central('ZZZ CON NUMERO', numero: '9001');
+      final f = await federacion('ZZZ FED CON NUMERO', numero: '9501');
 
-      expect(c.numero, '9001');
-      expect((await padron.centrales.obtener(c.id)).numero, '9001');
+      expect(f.numero, '9501');
+      expect((await padron.federaciones.obtener(f.id)).numero, '9501');
     });
 
     test('el número es opcional', () async {
-      final c = await central('ZZZ SIN NUMERO');
+      final f = await federacion('ZZZ FED SIN NUMERO');
 
-      expect(c.numero, isNull);
+      expect(f.numero, isNull);
     });
 
     test('dos sin número conviven', () async {
       // La clave única admite varios NULL. Si no fuera así, la segunda alta
-      // reventaría acá y la mayoría de las centrales no se podrían cargar.
-      await central('ZZZ SIN NUMERO 2');
-      await central('ZZZ SIN NUMERO 3');
+      // reventaría acá.
+      await federacion('ZZZ FED SIN NUMERO 2');
+      await federacion('ZZZ FED SIN NUMERO 3');
     });
 
     test('un número vacío se guarda como sin número', () async {
-      final c = await central('ZZZ NUMERO VACIO', numero: '   ');
+      final f = await federacion('ZZZ FED NUMERO VACIO', numero: '   ');
 
-      expect(c.numero, isNull);
+      expect(f.numero, isNull);
     });
 
     test('repetir el número se rechaza diciendo quién lo tiene', () async {
-      await central('ZZZ DUENA DEL 9002', numero: '9002');
+      await federacion('ZZZ FED DUENA DEL 9502', numero: '9502');
 
       await expectLater(
-        central('ZZZ QUIERE EL 9002', numero: '9002'),
+        federacion('ZZZ FED QUIERE EL 9502', numero: '9502'),
         throwsA(isA<ApiException>()
             .having((e) => e.esConflicto, 'esConflicto', isTrue)
             .having((e) => e.mensaje, 'mensaje',
-                contains('ZZZ DUENA DEL 9002'))),
+                contains('ZZZ FED DUENA DEL 9502'))),
       );
     });
 
     test('conservar el número propio al editar no es conflicto', () async {
-      final c = await central('ZZZ EDITABLE', numero: '9003');
+      final f = await federacion('ZZZ FED EDITABLE', numero: '9503');
+
+      final editada = await padron.federaciones.actualizar(
+        f.id,
+        FederacionRequest(nombre: 'ZZZ FED EDITADA', numero: '9503'),
+      );
+
+      expect(editada.nombre, 'ZZZ FED EDITADA');
+      expect(editada.numero, '9503');
+    });
+
+    test('se le puede quitar el número', () async {
+      final f = await federacion('ZZZ FED PIERDE NUMERO', numero: '9504');
+
+      final sinNumero = await padron.federaciones.actualizar(
+        f.id,
+        FederacionRequest(nombre: f.nombre),
+      );
+
+      expect(sinNumero.numero, isNull);
+      // Y el número queda libre para otra.
+      final otra = await federacion('ZZZ FED HEREDA EL 9504', numero: '9504');
+      expect(otra.numero, '9504');
+    });
+
+  });
+
+  group('central', () {
+    test('se crea con abreviatura y vuelve con ella', () async {
+      final c = await central('ZZZ CON SIGLA', abreviatura: 'ZQA');
+
+      expect(c.abreviatura, 'ZQA');
+      expect((await padron.centrales.obtener(c.id)).abreviatura, 'ZQA');
+    });
+
+    test('la abreviatura es opcional', () async {
+      final c = await central('ZZZ SIN SIGLA');
+
+      expect(c.abreviatura, isNull);
+    });
+
+    test('dos sin abreviatura conviven', () async {
+      // La clave única admite varios NULL. Si no fuera así, la segunda alta
+      // reventaría acá y la mayoría de las centrales no se podrían cargar.
+      await central('ZZZ SIN SIGLA 2');
+      await central('ZZZ SIN SIGLA 3');
+    });
+
+    test('una abreviatura vacía se guarda como sin abreviatura', () async {
+      final c = await central('ZZZ SIGLA VACIA', abreviatura: '   ');
+
+      expect(c.abreviatura, isNull);
+    });
+
+    test('se guarda en mayúsculas aunque llegue en minúsculas', () async {
+      final c = await central('ZZZ SIGLA MINUSCULA', abreviatura: 'zqb');
+
+      expect(c.abreviatura, 'ZQB');
+    });
+
+    test('repetir la abreviatura se rechaza diciendo quién la tiene', () async {
+      await central('ZZZ DUENA DE ZQC', abreviatura: 'ZQC');
+
+      await expectLater(
+        central('ZZZ QUIERE ZQC', abreviatura: 'ZQC'),
+        throwsA(isA<ApiException>()
+            .having((e) => e.esConflicto, 'esConflicto', isTrue)
+            .having((e) => e.mensaje, 'mensaje',
+                contains('ZZZ DUENA DE ZQC'))),
+      );
+    });
+
+    test('cambiarle la caja no la vuelve otra abreviatura', () async {
+      // Es lo que justifica pasar a mayúsculas en el servidor: si "zqd" y "ZQD"
+      // entraran como dos siglas distintas, la unicidad no significaría nada.
+      await central('ZZZ DUENA DE ZQD', abreviatura: 'ZQD');
+
+      await expectLater(
+        central('ZZZ QUIERE ZQD', abreviatura: 'zqd'),
+        throwsA(isA<ApiException>()
+            .having((e) => e.esConflicto, 'esConflicto', isTrue)),
+      );
+    });
+
+    test('con menos de tres caracteres se rechaza', () async {
+      await expectLater(
+        central('ZZZ SIGLA CORTA', abreviatura: 'ZQ'),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    test('acepta números: la sigla de 1RO DE MAYO es 1MO', () async {
+      final c = await central('ZZZ SIGLA CON DIGITO', abreviatura: 'Z1A');
+
+      expect(c.abreviatura, 'Z1A');
+    });
+
+    test('con signos se rechaza', () async {
+      await expectLater(
+        central('ZZZ SIGLA CON SIGNO', abreviatura: 'Z-A'),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    test('conservar la abreviatura propia al editar no es conflicto', () async {
+      final c = await central('ZZZ EDITABLE', abreviatura: 'ZQE');
 
       final editada = await padron.centrales.actualizar(
         c.id,
         CentralRequest(
           nombre: 'ZZZ EDITADA',
-          numero: '9003',
+          abreviatura: 'ZQE',
           federacionId: federacionId,
         ),
       );
 
       expect(editada.nombre, 'ZZZ EDITADA');
-      expect(editada.numero, '9003');
+      expect(editada.abreviatura, 'ZQE');
     });
 
-    test('se le puede quitar el número', () async {
-      final c = await central('ZZZ PIERDE NUMERO', numero: '9004');
+    test('se le puede quitar la abreviatura', () async {
+      final c = await central('ZZZ PIERDE SIGLA', abreviatura: 'ZQF');
 
-      final sinNumero = await padron.centrales.actualizar(
+      final sinSigla = await padron.centrales.actualizar(
         c.id,
         CentralRequest(nombre: c.nombre, federacionId: federacionId),
       );
 
-      expect(sinNumero.numero, isNull);
-      // Y el número queda libre para otra.
-      final otra = await central('ZZZ HEREDA EL 9004', numero: '9004');
-      expect(otra.numero, '9004');
+      expect(sinSigla.abreviatura, isNull);
+      // Y la sigla queda libre para otra.
+      final otra = await central('ZZZ HEREDA ZQF', abreviatura: 'ZQF');
+      expect(otra.abreviatura, 'ZQF');
     });
   });
 
@@ -159,14 +282,5 @@ void main() {
       );
     });
 
-    test('un sindicato y una central pueden tener el mismo número', () async {
-      // Son numeraciones distintas: que la central 7001 exista no impide que
-      // haya un sindicato 7001.
-      final c = await central('ZZZ CENTRAL 7001', numero: '7001');
-      final s = await sindicato('ZZZ SIND 7001', c.id, numero: '7001');
-
-      expect(c.numero, '7001');
-      expect(s.numero, '7001');
-    });
   });
 }

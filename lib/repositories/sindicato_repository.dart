@@ -1,5 +1,6 @@
 import '../core/api_client.dart';
 import '../core/api_config.dart';
+import '../models/credencial_previa.dart';
 import '../models/sindicato.dart';
 
 class SindicatoRepository {
@@ -30,6 +31,15 @@ class SindicatoRepository {
   /// Dirección del pliego de credenciales: las de todos sus productores, en
   /// hojas carta listas para imprimir a doble cara y recortar.
   Uri urlCredenciales(int id) => ApiConfig.uri('$_ruta/$id/credenciales.pdf');
+
+  /// Cuántas credenciales saldrían y a quiénes les falta algo.
+  ///
+  /// El pliego es todo o nada: se imprime a doble cara y se recorta, así que
+  /// una tarjeta incompleta en el medio obliga a rehacer la hoja.
+  Future<PliegoPrevio> previaCredenciales(int id) async {
+    final datos = await _api.obtener('$_ruta/$id/credenciales/previa');
+    return PliegoPrevio.desdeJson(datos.comoObjeto);
+  }
 
   /// Códigos de lote que aparecen más de una vez dentro del sindicato.
   /// Devuelve los códigos, no los lotes.

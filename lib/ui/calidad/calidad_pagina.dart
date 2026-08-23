@@ -7,12 +7,13 @@ import '../widgets/estados.dart';
 import 'duplicados_pagina.dart';
 import 'lotes_desconocidos_pagina.dart';
 import 'sin_foto_pagina.dart';
+import '../vetos/vetados_pagina.dart';
 
 /// Panel de saneamiento del padrón.
 ///
-/// Reúne los seis endpoints de diagnóstico que el backend expone y que ninguna
-/// otra pantalla usa: duplicados de cédula y carné, productores sin foto, lotes
-/// con estado sin reconocer y observaciones sin resolver.
+/// Reúne los endpoints de diagnóstico que el backend expone y que ninguna otra
+/// pantalla usa: duplicados de cédula y carné, productores sin foto y lotes con
+/// estado sin reconocer.
 class CalidadPagina extends StatefulWidget {
   const CalidadPagina({super.key});
 
@@ -79,12 +80,11 @@ class _CalidadPaginaState extends State<CalidadPagina> {
                     childAspectRatio: columnas == 1 ? 3.2 : 1.9,
                     children: [
                       _Tarjeta(
-                        icono: Icons.flag_outlined,
-                        titulo: 'Observaciones pendientes',
-                        valor: resumen.observacionesPendientes,
-                        detalle: 'Sin resolver en toda la base',
-                        color: Theme.of(context).colorScheme.error,
-                        alTocar: null,
+                        icono: Icons.block,
+                        titulo: 'Vetados',
+                        valor: resumen.vetados,
+                        detalle: 'Su credencial no se emite',
+                        alTocar: () => _ir(const VetadosPagina()),
                       ),
                       _Tarjeta(
                         icono: Icons.no_photography_outlined,
@@ -101,16 +101,7 @@ class _CalidadPaginaState extends State<CalidadPagina> {
                         valor: resumen.cedulasDuplicadas,
                         detalle: 'Asignadas a más de una persona',
                         alTocar: () => _ir(
-                          const DuplicadosPagina(tipo: TipoDuplicado.cedula),
-                        ),
-                      ),
-                      _Tarjeta(
-                        icono: Icons.credit_card_outlined,
-                        titulo: 'Carnés duplicados',
-                        valor: resumen.carnetsDuplicados,
-                        detalle: 'Asignados a más de una persona',
-                        alTocar: () => _ir(
-                          const DuplicadosPagina(tipo: TipoDuplicado.carnet),
+                          const DuplicadosPagina(),
                         ),
                       ),
                       _Tarjeta(
@@ -146,22 +137,22 @@ class _Resumen {
     required this.totalProductores,
     required this.sinFoto,
     required this.cedulasDuplicadas,
-    required this.carnetsDuplicados,
     required this.lotesDesconocidos,
-    required this.observacionesPendientes,
+    required this.vetados,
   });
 
   final int totalProductores;
   final int sinFoto;
   final int cedulasDuplicadas;
-  final int carnetsDuplicados;
   final int lotesDesconocidos;
-  final int observacionesPendientes;
+
+  /// Cuántos están observados por decisión de asamblea.
+  final int vetados;
 
   int get porcentajeSinFoto =>
       totalProductores == 0 ? 0 : (sinFoto * 100 / totalProductores).round();
 
-  /// Las seis consultas van en paralelo: son independientes entre sí y el
+  /// Las cinco consultas van en paralelo: son independientes entre sí y el
   /// panel no puede pintar nada hasta tenerlas todas.
   static Future<_Resumen> cargar(Padron padron) async {
     // Pedimos una sola fila: lo único que interesa es totalElements.
@@ -171,18 +162,16 @@ class _Resumen {
       padron.productores.listar(paginacion: sonda),
       padron.productores.sinFoto(paginacion: sonda),
       padron.productores.cedulasDuplicadas(),
-      padron.productores.carnetsDuplicados(),
       padron.lotes.estadoDesconocido(),
-      padron.observaciones.totalPendientes(),
+      padron.vetos.buscar(),
     ]);
 
     return _Resumen(
       totalProductores: (resultados[0] as Pagina<Productor>).totalElementos,
       sinFoto: (resultados[1] as Pagina<Productor>).totalElementos,
       cedulasDuplicadas: (resultados[2] as List<String>).length,
-      carnetsDuplicados: (resultados[3] as List<String>).length,
-      lotesDesconocidos: (resultados[4] as List<Lote>).length,
-      observacionesPendientes: resultados[5] as int,
+      lotesDesconocidos: (resultados[3] as List<Lote>).length,
+      vetados: (resultados[4] as List<Veto>).length,
     );
   }
 }
@@ -243,7 +232,6 @@ class _Tarjeta extends StatelessWidget {
     required this.valor,
     required this.detalle,
     required this.alTocar,
-    this.color,
   });
 
   final IconData icono;
@@ -251,13 +239,12 @@ class _Tarjeta extends StatelessWidget {
   final int valor;
   final String detalle;
   final VoidCallback? alTocar;
-  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final resaltado = valor > 0;
-    final tinte = color ?? tema.colorScheme.primary;
+    final tinte = tema.colorScheme.primary;
 
     return Card(
       clipBehavior: Clip.antiAlias,

@@ -56,7 +56,7 @@ void main() {
 
     // El IndexedStack conserva las cuatro secciones vivas: si el cambio de
     // tema dejó alguna en mal estado, se nota al mostrarla.
-    for (final seccion in ['Jerarquía', 'Observaciones', 'Calidad']) {
+    for (final seccion in ['Jerarquía', 'Reuniones', 'Calidad']) {
       await tester.tap(find.text(seccion).last);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: seccion);

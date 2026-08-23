@@ -36,28 +36,36 @@ void main() {
   late Uint8List firma;
 
   Future<Productor> crear(String nombres, Sindicato sindicato) =>
-      padron.productores.crear(ProductorRequest(
-        nombres: nombres,
-        apellidos: 'DEL DIRECTORIO',
-        sindicatoId: sindicato.id,
-      ));
+      padron.productores.crear(
+        ProductorRequest(
+          nombres: nombres,
+          apellidos: 'DEL DIRECTORIO',
+          sindicatoId: sindicato.id,
+        ),
+      );
 
   setUpAll(() async {
     padron = Padron();
     firma = File('test/fixtures/foto-grande.jpg').readAsBytesSync();
 
-    fed = await padron.federaciones
-        .crear(const FederacionRequest(nombre: 'ZZZ FED NIVELES'));
-    centralA = await padron.centrales
-        .crear(CentralRequest(nombre: 'ZZZ CEN A', federacionId: fed.id));
-    centralB = await padron.centrales
-        .crear(CentralRequest(nombre: 'ZZZ CEN B', federacionId: fed.id));
-    sindA1 = await padron.sindicatos
-        .crear(SindicatoRequest(nombre: 'ZZZ SIN A1', centralId: centralA.id));
-    sindA2 = await padron.sindicatos
-        .crear(SindicatoRequest(nombre: 'ZZZ SIN A2', centralId: centralA.id));
-    sindB1 = await padron.sindicatos
-        .crear(SindicatoRequest(nombre: 'ZZZ SIN B1', centralId: centralB.id));
+    fed = await padron.federaciones.crear(
+      const FederacionRequest(nombre: 'ZZZ FED NIVELES'),
+    );
+    centralA = await padron.centrales.crear(
+      CentralRequest(nombre: 'ZZZ CEN A', federacionId: fed.id),
+    );
+    centralB = await padron.centrales.crear(
+      CentralRequest(nombre: 'ZZZ CEN B', federacionId: fed.id),
+    );
+    sindA1 = await padron.sindicatos.crear(
+      SindicatoRequest(nombre: 'ZZZ SIN A1', centralId: centralA.id),
+    );
+    sindA2 = await padron.sindicatos.crear(
+      SindicatoRequest(nombre: 'ZZZ SIN A2', centralId: centralA.id),
+    );
+    sindB1 = await padron.sindicatos.crear(
+      SindicatoRequest(nombre: 'ZZZ SIN B1', centralId: centralB.id),
+    );
 
     ana = await crear('ZZZ ANA', sindA1);
     bruno = await crear('ZZZ BRUNO', sindA1);
@@ -77,10 +85,13 @@ void main() {
       (Ambito.sindicato, sindA2.id),
       (Ambito.sindicato, sindB1.id),
     ]) {
-      for (final cargo in TipoCargo.values) {
+      for (final cargo in TipoCargo.vigentes) {
         try {
-          await padron.directorios
-              .terminar(ambito: ambito, id: id, cargo: cargo);
+          await padron.directorios.terminar(
+            ambito: ambito,
+            id: id,
+            cargo: cargo,
+          );
         } on ApiException {
           // Vacante o no existe en ese nivel: es lo que se quería.
         }
@@ -102,71 +113,99 @@ void main() {
   });
 
   group('cargos de cada nivel', () {
-    test('el sindicato tiene dos, la central tres y la federación cuatro',
-        () async {
-      final s = await padron.directorios.obtener(Ambito.sindicato, sindA1.id);
-      final c = await padron.directorios.obtener(Ambito.central, centralA.id);
+    test(
+      'sindicato y central tienen cuatro cargos y la federación cinco',
+      () async {
+        final s = await padron.directorios.obtener(Ambito.sindicato, sindA1.id);
+        final c = await padron.directorios.obtener(Ambito.central, centralA.id);
+        final f = await padron.directorios.obtener(Ambito.federacion, fed.id);
+
+        expect(s.puestos.map((p) => p.cargo), [
+          TipoCargo.secretarioGeneral,
+          TipoCargo.secretarioRelaciones,
+          TipoCargo.haciendas,
+          TipoCargo.vocal,
+        ]);
+        expect(c.puestos.map((p) => p.cargo), [
+          TipoCargo.secretarioGeneral,
+          TipoCargo.secretarioRelaciones,
+          TipoCargo.haciendas,
+          TipoCargo.vocal,
+        ]);
+        expect(f.puestos.map((p) => p.cargo), [
+          TipoCargo.ejecutivo,
+          TipoCargo.secretarioGeneral,
+          TipoCargo.secretarioRelaciones,
+          TipoCargo.haciendas,
+          TipoCargo.vocal,
+        ]);
+      },
+    );
+
+    test('en federación firma únicamente el Ejecutivo', () async {
       final f = await padron.directorios.obtener(Ambito.federacion, fed.id);
 
-      expect(s.puestos.map((p) => p.cargo),
-          [TipoCargo.presidente, TipoCargo.secretario]);
-      expect(c.puestos.map((p) => p.cargo),
-          [TipoCargo.presidente, TipoCargo.secretario, TipoCargo.haciendas]);
-      expect(f.puestos.map((p) => p.cargo), [
-        TipoCargo.presidente,
-        TipoCargo.secretario,
-        TipoCargo.haciendas,
-        TipoCargo.vocal,
-      ]);
-    });
-
-    test('solo presidente y secretario declaran que pueden firmar', () async {
-      final f = await padron.directorios.obtener(Ambito.federacion, fed.id);
-
-      expect(f.puestoDe(TipoCargo.presidente)!.puedeFirmar, isTrue);
-      expect(f.puestoDe(TipoCargo.secretario)!.puedeFirmar, isTrue);
+      expect(f.puestoDe(TipoCargo.ejecutivo)!.puedeFirmar, isTrue);
+      expect(f.puestoDe(TipoCargo.secretarioGeneral)!.puedeFirmar, isFalse);
+      expect(f.puestoDe(TipoCargo.secretarioRelaciones)!.puedeFirmar, isFalse);
       expect(f.puestoDe(TipoCargo.haciendas)!.puedeFirmar, isFalse);
       expect(f.puestoDe(TipoCargo.vocal)!.puedeFirmar, isFalse);
     });
 
     test('un cargo que el nivel no admite se rechaza', () async {
-      // La central no tiene vocal, y pedirlo tiene que decirlo con claridad.
+      // La central no tiene Ejecutivo, y pedirlo tiene que decirlo con claridad.
       await expectLater(
         padron.directorios.asignar(
           ambito: Ambito.central,
           id: centralA.id,
-          cargo: TipoCargo.vocal,
+          cargo: TipoCargo.ejecutivo,
           productorId: ana.id,
         ),
-        throwsA(isA<ApiException>()
-            .having((e) => e.esConflicto, 'esConflicto', isTrue)
-            .having((e) => e.mensaje, 'mensaje', contains('no tiene el cargo'))),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.esConflicto, 'esConflicto', isTrue)
+              .having(
+                (e) => e.mensaje,
+                'mensaje',
+                contains('no tiene el cargo'),
+              ),
+        ),
       );
     });
   });
 
   group('de dónde salen los candidatos', () {
     test('la central toma de todos sus sindicatos', () async {
-      final candidatos =
-          await padron.directorios.candidatos(Ambito.central, centralA.id);
+      final candidatos = await padron.directorios.candidatos(
+        Ambito.central,
+        centralA.id,
+      );
 
       // Los cuatro de A1 y A2, y ninguno de la central B.
-      expect(candidatos.map((p) => p.id),
-          containsAll([ana.id, bruno.id, carla.id, diego.id]));
+      expect(
+        candidatos.map((p) => p.id),
+        containsAll([ana.id, bruno.id, carla.id, diego.id]),
+      );
       expect(candidatos.map((p) => p.id), isNot(contains(elena.id)));
     });
 
     test('la federación toma de todas sus centrales', () async {
-      final candidatos =
-          await padron.directorios.candidatos(Ambito.federacion, fed.id);
+      final candidatos = await padron.directorios.candidatos(
+        Ambito.federacion,
+        fed.id,
+      );
 
-      expect(candidatos.map((p) => p.id),
-          containsAll([ana.id, bruno.id, carla.id, diego.id, elena.id]));
+      expect(
+        candidatos.map((p) => p.id),
+        containsAll([ana.id, bruno.id, carla.id, diego.id, elena.id]),
+      );
     });
 
     test('el sindicato solo toma de los suyos', () async {
-      final candidatos =
-          await padron.directorios.candidatos(Ambito.sindicato, sindA1.id);
+      final candidatos = await padron.directorios.candidatos(
+        Ambito.sindicato,
+        sindA1.id,
+      );
 
       expect(candidatos.map((p) => p.id), [ana.id, bruno.id]);
     });
@@ -179,8 +218,13 @@ void main() {
           cargo: TipoCargo.haciendas,
           productorId: elena.id,
         ),
-        throwsA(isA<ApiException>().having(
-            (e) => e.mensaje, 'mensaje', contains('no pertenece'))),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.mensaje,
+            'mensaje',
+            contains('no pertenece'),
+          ),
+        ),
       );
     });
   });
@@ -190,7 +234,7 @@ void main() {
       await padron.directorios.asignar(
         ambito: Ambito.sindicato,
         id: sindA1.id,
-        cargo: TipoCargo.presidente,
+        cargo: TipoCargo.secretarioGeneral,
         productorId: ana.id,
       );
 
@@ -198,13 +242,18 @@ void main() {
         padron.directorios.asignar(
           ambito: Ambito.central,
           id: centralA.id,
-          cargo: TipoCargo.presidente,
+          cargo: TipoCargo.secretarioGeneral,
           productorId: ana.id,
         ),
-        throwsA(isA<ApiException>()
-            .having((e) => e.esConflicto, 'esConflicto', isTrue)
-            .having((e) => e.mensaje, 'mensaje',
-                contains('Nadie puede ocupar dos cargos'))),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.esConflicto, 'esConflicto', isTrue)
+              .having(
+                (e) => e.mensaje,
+                'mensaje',
+                contains('Nadie puede ocupar dos cargos'),
+              ),
+        ),
       );
     });
 
@@ -224,9 +273,11 @@ void main() {
           cargo: TipoCargo.vocal,
           productorId: diego.id,
         ),
-        throwsA(isA<ApiException>()
-            .having((e) => e.mensaje, 'mensaje', contains('haciendas'))
-            .having((e) => e.mensaje, 'mensaje', contains('ZZZ CEN A'))),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.mensaje, 'mensaje', contains('haciendas'))
+              .having((e) => e.mensaje, 'mensaje', contains('ZZZ CEN A')),
+        ),
       );
     });
 
@@ -234,22 +285,26 @@ void main() {
       await padron.directorios.asignar(
         ambito: Ambito.sindicato,
         id: sindA1.id,
-        cargo: TipoCargo.presidente,
+        cargo: TipoCargo.secretarioGeneral,
         productorId: bruno.id,
       );
 
-      final deLaFederacion =
-          await padron.directorios.candidatos(Ambito.federacion, fed.id);
+      final deLaFederacion = await padron.directorios.candidatos(
+        Ambito.federacion,
+        fed.id,
+      );
       expect(deLaFederacion.map((p) => p.id), isNot(contains(bruno.id)));
 
       // Y vuelve en cuanto queda libre.
       await padron.directorios.terminar(
         ambito: Ambito.sindicato,
         id: sindA1.id,
-        cargo: TipoCargo.presidente,
+        cargo: TipoCargo.secretarioGeneral,
       );
-      final despues =
-          await padron.directorios.candidatos(Ambito.federacion, fed.id);
+      final despues = await padron.directorios.candidatos(
+        Ambito.federacion,
+        fed.id,
+      );
       expect(despues.map((p) => p.id), contains(bruno.id));
     });
 
@@ -257,35 +312,38 @@ void main() {
       await padron.directorios.asignar(
         ambito: Ambito.sindicato,
         id: sindA2.id,
-        cargo: TipoCargo.secretario,
+        cargo: TipoCargo.secretarioRelaciones,
         productorId: carla.id,
       );
       await padron.directorios.terminar(
         ambito: Ambito.sindicato,
         id: sindA2.id,
-        cargo: TipoCargo.secretario,
+        cargo: TipoCargo.secretarioRelaciones,
       );
 
       final directorio = await padron.directorios.asignar(
         ambito: Ambito.federacion,
         id: fed.id,
-        cargo: TipoCargo.presidente,
+        cargo: TipoCargo.secretarioGeneral,
         productorId: carla.id,
       );
 
-      expect(directorio.cargoDe(TipoCargo.presidente)!.productorId, carla.id);
+      expect(
+        directorio.cargoDe(TipoCargo.secretarioGeneral)!.productorId,
+        carla.id,
+      );
     });
   });
 
   group('firmas', () {
-    test('el presidente de la central puede cargar la suya', () async {
+    test('el Secretario General de la central puede cargar su firma', () async {
       final directorio = await padron.directorios.asignar(
         ambito: Ambito.central,
         id: centralA.id,
-        cargo: TipoCargo.presidente,
+        cargo: TipoCargo.secretarioGeneral,
         productorId: carla.id,
       );
-      final cargoId = directorio.cargoDe(TipoCargo.presidente)!.id;
+      final cargoId = directorio.cargoDe(TipoCargo.secretarioGeneral)!.id;
 
       final actualizado = await padron.directorios.subirImagen(
         cargoId: cargoId,
@@ -295,8 +353,7 @@ void main() {
       );
 
       expect(actualizado.firmaUrl, isNotNull);
-      await padron.directorios
-          .eliminarImagen(cargoId, TipoImagenCargo.firma);
+      await padron.directorios.eliminarImagen(cargoId, TipoImagenCargo.firma);
     });
 
     test('haciendas y vocal no admiten firma', () async {
@@ -324,10 +381,15 @@ void main() {
             bytes: firma,
             nombreArchivo: 'firma.jpg',
           ),
-          throwsA(isA<ApiException>()
-              .having((e) => e.esConflicto, 'esConflicto', isTrue)
-              .having((e) => e.mensaje, 'mensaje',
-                  contains('no lleva firma'))),
+          throwsA(
+            isA<ApiException>()
+                .having((e) => e.esConflicto, 'esConflicto', isTrue)
+                .having(
+                  (e) => e.mensaje,
+                  'mensaje',
+                  contains('no lleva firma'),
+                ),
+          ),
           reason: 'cargo $cargoId',
         );
       }
@@ -339,20 +401,24 @@ void main() {
       await padron.directorios.asignar(
         ambito: Ambito.central,
         id: centralA.id,
-        cargo: TipoCargo.presidente,
+        cargo: TipoCargo.secretarioGeneral,
         productorId: ana.id,
       );
       await padron.directorios.asignar(
         ambito: Ambito.federacion,
         id: fed.id,
-        cargo: TipoCargo.presidente,
+        cargo: TipoCargo.secretarioGeneral,
         productorId: bruno.id,
       );
 
-      final deCentral =
-          await padron.directorios.historial(Ambito.central, centralA.id);
-      final deFederacion =
-          await padron.directorios.historial(Ambito.federacion, fed.id);
+      final deCentral = await padron.directorios.historial(
+        Ambito.central,
+        centralA.id,
+      );
+      final deFederacion = await padron.directorios.historial(
+        Ambito.federacion,
+        fed.id,
+      );
 
       expect(deCentral.map((c) => c.productorId), contains(ana.id));
       expect(deCentral.map((c) => c.productorId), isNot(contains(bruno.id)));
@@ -360,21 +426,23 @@ void main() {
       expect(deFederacion.every((c) => c.ambito == Ambito.federacion), isTrue);
     });
 
-    test('el historial del productor dice de qué nivel era cada cargo',
-        () async {
-      await padron.directorios.asignar(
-        ambito: Ambito.federacion,
-        id: fed.id,
-        cargo: TipoCargo.haciendas,
-        productorId: elena.id,
-      );
+    test(
+      'el historial del productor dice de qué nivel era cada cargo',
+      () async {
+        await padron.directorios.asignar(
+          ambito: Ambito.federacion,
+          id: fed.id,
+          cargo: TipoCargo.haciendas,
+          productorId: elena.id,
+        );
 
-      final cargos = await padron.productores.cargos(elena.id);
-      final ultimo = cargos.first;
+        final cargos = await padron.productores.cargos(elena.id);
+        final ultimo = cargos.first;
 
-      expect(ultimo.ambito, Ambito.federacion);
-      expect(ultimo.ambitoNombre, 'ZZZ FED NIVELES');
-      expect(ultimo.cargo, TipoCargo.haciendas);
-    });
+        expect(ultimo.ambito, Ambito.federacion);
+        expect(ultimo.ambitoNombre, 'ZZZ FED NIVELES');
+        expect(ultimo.cargo, TipoCargo.haciendas);
+      },
+    );
   });
 }

@@ -1,6 +1,8 @@
 @Tags(['integracion'])
 library;
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -14,7 +16,12 @@ import 'package:fede/repositories/padron.dart';
 /// verifica en el backend, en `CredencialProductorPdfTest`, que puede leer el
 /// contenido del PDF.
 ///
-/// Todo se hace sobre un sindicato propio que se crea y se borra. No se toca
+/// El armado del principio no es decorativo: desde que existe la vista previa,
+/// el PDF **exige los datos completos**. Acá se arma un sindicato con fotos,
+/// los tres firmantes jerárquicos, sus firmas y sellos, y todo lo demás; qué pasa cuando
+/// falta algo se prueba en `credencial_previa_api_test`.
+///
+/// Todo se hace sobre una jerarquía propia que se crea y se borra. No se toca
 /// ningún registro del padrón.
 ///
 /// ```
@@ -22,28 +29,87 @@ import 'package:fede/repositories/padron.dart';
 /// ```
 void main() {
   late Padron padron;
+  late Federacion fede;
+  late Central central;
   late Sindicato sindicato;
   late Sindicato vacio;
   final productores = <Productor>[];
 
   setUpAll(() async {
     padron = Padron();
-    final existentes = await padron.sindicatos.listar();
-    expect(existentes, isNotEmpty);
-    final centralId = existentes.first.centralId;
+    final imagen = File('test/fixtures/foto-prueba.png').readAsBytesSync();
 
+    // Jerarquía propia con número y sigla: el código del padrón es parte de la
+    // credencial, y sin ellos la emisión se bloquearía.
+    fede = await padron.federaciones.crear(
+      const FederacionRequest(nombre: 'ZZZ CRED FEDE', numero: '89'),
+    );
+    central = await padron.centrales.crear(
+      CentralRequest(
+        nombre: 'ZZZ CRED CENTRAL',
+        abreviatura: 'ZCR',
+        federacionId: fede.id,
+      ),
+    );
     sindicato = await padron.sindicatos.crear(
-        SindicatoRequest(nombre: 'ZZZ CREDENCIALES', centralId: centralId));
+      SindicatoRequest(nombre: 'ZZZ CREDENCIALES', centralId: central.id),
+    );
     vacio = await padron.sindicatos.crear(
-        SindicatoRequest(nombre: 'ZZZ CREDENCIALES VACIO', centralId: centralId));
+      SindicatoRequest(nombre: 'ZZZ CREDENCIALES VACIO', centralId: central.id),
+    );
 
     for (final nombre in ['ZZZ ANA', 'ZZZ BRUNO', 'ZZZ CARLA']) {
-      productores.add(await padron.productores.crear(ProductorRequest(
-        nombres: nombre,
-        apellidos: 'DE LA CREDENCIAL',
-        ci: '900${productores.length}',
-        sindicatoId: sindicato.id,
-      )));
+      final creado = await padron.productores.crear(
+        ProductorRequest(
+          nombres: nombre,
+          apellidos: 'DE LA CREDENCIAL',
+          ci: '900${productores.length}',
+          sindicatoId: sindicato.id,
+        ),
+      );
+      productores.add(creado);
+      await padron.productores.subirImagen(
+        productorId: creado.id,
+        bytes: imagen,
+        nombreArchivo: 'foto.png',
+      );
+    }
+
+    for (final (ambito, id, cargo, quien) in [
+      (Ambito.federacion, fede.id, TipoCargo.ejecutivo, productores[0]),
+      (Ambito.central, central.id, TipoCargo.secretarioGeneral, productores[1]),
+      (
+        Ambito.sindicato,
+        sindicato.id,
+        TipoCargo.secretarioGeneral,
+        productores[2],
+      ),
+    ]) {
+      final directorio = await padron.directorios.asignar(
+        ambito: ambito,
+        id: id,
+        cargo: cargo,
+        productorId: quien.id,
+      );
+      final cargoId = directorio.cargoDe(cargo)!.id;
+      await padron.directorios.subirImagen(
+        cargoId: cargoId,
+        tipo: TipoImagenCargo.firma,
+        bytes: imagen,
+        nombreArchivo: 'firma.png',
+      );
+    }
+    for (final (ambito, id) in [
+      (Ambito.federacion, fede.id),
+      (Ambito.central, central.id),
+      (Ambito.sindicato, sindicato.id),
+    ]) {
+      await padron.directorios.subirSello(
+        ambito: ambito,
+        id: id,
+        bytes: imagen,
+        nombreArchivo: 'sello.png',
+      );
     }
   });
 
@@ -53,6 +119,8 @@ void main() {
     }
     await padron.sindicatos.eliminar(sindicato.id);
     await padron.sindicatos.eliminar(vacio.id);
+    await padron.centrales.eliminar(central.id);
+    await padron.federaciones.eliminar(fede.id);
   });
 
   Future<http.Response> credencial(int productorId) =>
@@ -80,13 +148,30 @@ void main() {
       expect(disposicion, contains('zzz-ana-de-la-credencial'));
     });
 
-    test('sale igual sin foto y sin directorio cargados', () async {
-      // Estos productores no tienen foto ni presidente asignado. La credencial
-      // se emite lo mismo, con los espacios en blanco.
-      final respuesta = await credencial(productores.last.id);
+    test('sin los datos completos no se emite, y el motivo lo dice', () async {
+      // Antes salía con los espacios en blanco. Desde la vista previa la regla
+      // es la contraria: la credencial se plastifica y se reparte, así que se
+      // completa primero y se imprime después.
+      final sinFoto = await padron.productores.crear(
+        ProductorRequest(
+          nombres: 'ZZZ SIN FOTO',
+          apellidos: 'DE LA CREDENCIAL',
+          ci: '9099',
+          sindicatoId: sindicato.id,
+        ),
+      );
 
-      expect(respuesta.statusCode, 200);
-      expect(String.fromCharCodes(respuesta.bodyBytes.take(4)), '%PDF');
+      try {
+        final respuesta = await credencial(sinFoto.id);
+
+        expect(respuesta.statusCode, 409);
+        expect(respuesta.headers['content-type'], isNot(contains('pdf')));
+        expect(respuesta.body, contains('fotografía'));
+      } finally {
+        // Se borra acá y no en el tearDown: si quedara en el sindicato, el
+        // pliego que se prueba después se bloquearía por su culpa.
+        await padron.productores.eliminar(sinFoto.id);
+      }
     });
 
     test('un productor que no existe da 404 y no un PDF vacío', () async {
@@ -104,8 +189,10 @@ void main() {
       expect(respuesta.statusCode, 200);
       expect(respuesta.headers['content-type'], contains('application/pdf'));
       expect(String.fromCharCodes(respuesta.bodyBytes.take(4)), '%PDF');
-      expect(respuesta.headers['content-disposition'],
-          contains('credenciales-zzz-credenciales'));
+      expect(
+        respuesta.headers['content-disposition'],
+        contains('credenciales-zzz-credenciales'),
+      );
     });
 
     test('un sindicato sin productores se rechaza con un motivo', () async {

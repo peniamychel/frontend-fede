@@ -36,6 +36,7 @@ class RecortadorImagen extends StatefulWidget {
     required this.bytes,
     required this.alCambiar,
     this.alCargarImagen,
+    this.proporcionFija,
   });
 
   final Uint8List bytes;
@@ -47,6 +48,10 @@ class RecortadorImagen extends StatefulWidget {
   /// Avisa el tamaño real de la imagen una vez decodificada. Lo necesita quien
   /// tenga que comparar el recorte contra la imagen entera.
   final void Function(int ancho, int alto)? alCargarImagen;
+
+  /// Cuando se define, la persona no puede cambiar la relación del marco.
+  /// Las fotos para la credencial usan un único encuadre cuadrado.
+  final Proporcion? proporcionFija;
 
   @override
   State<RecortadorImagen> createState() => _RecortadorImagenState();
@@ -63,7 +68,7 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
   ui.Image? _imagen;
   Object? _error;
 
-  Proporcion _proporcion = Proporcion.libre;
+  late Proporcion _proporcion;
 
   /// Recorte en coordenadas del área de dibujo, no de la imagen.
   Rect? _recorte;
@@ -74,6 +79,7 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
   @override
   void initState() {
     super.initState();
+    _proporcion = widget.proporcionFija ?? Proporcion.libre;
     _decodificar();
   }
 
@@ -103,8 +109,12 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
     final imagen = _imagen;
 
     if (_error != null) {
-      return _mensaje(context, 'El archivo no se puede mostrar como imagen. '
-          'El servidor también lo va a rechazar.', esError: true);
+      return _mensaje(
+        context,
+        'El archivo no se puede mostrar como imagen. '
+        'El servidor también lo va a rechazar.',
+        esError: true,
+      );
     }
     if (imagen == null) {
       return const SizedBox(
@@ -148,9 +158,7 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
     );
 
     if (_recorte == null) {
-      // Arranca con la imagen entera: quien no quiera recortar no tiene que
-      // hacer nada.
-      _recorte = _areaImagen;
+      _recorte = _rectanguloInicial();
       // Después del primer cuadro, para no notificar durante el build.
       WidgetsBinding.instance.addPostFrameCallback((_) => _notificar());
     }
@@ -209,7 +217,8 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
         behavior: HitTestBehavior.opaque,
         onPanUpdate: (d) => _redimensionar(esquina, d.delta),
         child: MouseRegion(
-          cursor: esquina == _Esquina.superiorIzquierda ||
+          cursor:
+              esquina == _Esquina.superiorIzquierda ||
                   esquina == _Esquina.inferiorDerecha
               ? SystemMouseCursors.resizeUpLeftDownRight
               : SystemMouseCursors.resizeUpRightDownLeft,
@@ -236,39 +245,43 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
 
     return Column(
       children: [
-        Wrap(
-          spacing: 8,
-          alignment: WrapAlignment.center,
-          children: [
-            for (final p in Proporcion.values)
-              ChoiceChip(
-                label: Text(p.etiqueta),
-                selected: _proporcion == p,
-                onSelected: (_) => _aplicarProporcion(p),
+        if (widget.proporcionFija == null)
+          Wrap(
+            spacing: 8,
+            alignment: WrapAlignment.center,
+            children: [
+              for (final p in Proporcion.values)
+                ChoiceChip(
+                  label: Text(p.etiqueta),
+                  selected: _proporcion == p,
+                  onSelected: (_) => _aplicarProporcion(p),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ActionChip(
+                avatar: const Icon(Icons.crop_free, size: 16),
+                label: const Text('Todo'),
+                onPressed: () {
+                  setState(() {
+                    _proporcion = Proporcion.libre;
+                    _recorte = _areaImagen;
+                  });
+                  _notificar();
+                },
                 visualDensity: VisualDensity.compact,
               ),
-            ActionChip(
-              avatar: const Icon(Icons.crop_free, size: 16),
-              label: const Text('Todo'),
-              onPressed: () {
-                setState(() {
-                  _proporcion = Proporcion.libre;
-                  _recorte = _areaImagen;
-                });
-                _notificar();
-              },
-              visualDensity: VisualDensity.compact,
-            ),
-          ],
-        ),
+            ],
+          )
+        else
+          const Text('Formato de fotografía: cuadrado (1:1)'),
         const SizedBox(height: 8),
         Text(
           actual == null
               ? '${imagen.width} × ${imagen.height}'
               : 'Se guardará ${actual.ancho} × ${actual.alto} '
-                  'de ${imagen.width} × ${imagen.height}',
-          style: tema.textTheme.bodySmall
-              ?.copyWith(color: tema.colorScheme.outline),
+                    'de ${imagen.width} × ${imagen.height}',
+          style: tema.textTheme.bodySmall?.copyWith(
+            color: tema.colorScheme.outline,
+          ),
         ),
       ],
     );
@@ -281,7 +294,8 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
         texto,
         textAlign: TextAlign.center,
         style: TextStyle(
-            color: esError ? Theme.of(context).colorScheme.error : null),
+          color: esError ? Theme.of(context).colorScheme.error : null,
+        ),
       ),
     );
   }
@@ -297,13 +311,13 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
     final dx = movido.left < _areaImagen.left
         ? _areaImagen.left - movido.left
         : movido.right > _areaImagen.right
-            ? _areaImagen.right - movido.right
-            : 0.0;
+        ? _areaImagen.right - movido.right
+        : 0.0;
     final dy = movido.top < _areaImagen.top
         ? _areaImagen.top - movido.top
         : movido.bottom > _areaImagen.bottom
-            ? _areaImagen.bottom - movido.bottom
-            : 0.0;
+        ? _areaImagen.bottom - movido.bottom
+        : 0.0;
     movido = movido.shift(Offset(dx, dy));
 
     setState(() => _recorte = movido);
@@ -368,12 +382,24 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
     };
 
     final ajustado = switch (esquina) {
-      _Esquina.superiorIzquierda =>
-        Rect.fromLTWH(fijo.dx - ancho, fijo.dy - alto, ancho, alto),
-      _Esquina.superiorDerecha =>
-        Rect.fromLTWH(fijo.dx, fijo.dy - alto, ancho, alto),
-      _Esquina.inferiorIzquierda =>
-        Rect.fromLTWH(fijo.dx - ancho, fijo.dy, ancho, alto),
+      _Esquina.superiorIzquierda => Rect.fromLTWH(
+        fijo.dx - ancho,
+        fijo.dy - alto,
+        ancho,
+        alto,
+      ),
+      _Esquina.superiorDerecha => Rect.fromLTWH(
+        fijo.dx,
+        fijo.dy - alto,
+        ancho,
+        alto,
+      ),
+      _Esquina.inferiorIzquierda => Rect.fromLTWH(
+        fijo.dx - ancho,
+        fijo.dy,
+        ancho,
+        alto,
+      ),
       _Esquina.inferiorDerecha => Rect.fromLTWH(fijo.dx, fijo.dy, ancho, alto),
     };
 
@@ -408,13 +434,28 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
         ancho = _areaImagen.width;
         alto = ancho / relacion;
       }
-      _recorte = _dentroDelArea(Rect.fromCenter(
-        center: recorte.center,
-        width: ancho,
-        height: alto,
-      ));
+      _recorte = _dentroDelArea(
+        Rect.fromCenter(center: recorte.center, width: ancho, height: alto),
+      );
     });
     _notificar();
+  }
+
+  Rect _rectanguloInicial() {
+    final relacion = _proporcion.relacion;
+    if (relacion == null) return _areaImagen;
+
+    double ancho = _areaImagen.width;
+    double alto = ancho / relacion;
+    if (alto > _areaImagen.height) {
+      alto = _areaImagen.height;
+      ancho = alto * relacion;
+    }
+    return Rect.fromCenter(
+      center: _areaImagen.center,
+      width: ancho,
+      height: alto,
+    );
   }
 
   // ---------- Conversión ----------
@@ -488,8 +529,16 @@ class _PintorRecorte extends CustomPainter {
     for (var i = 1; i < 3; i++) {
       final dx = recorte.left + recorte.width * i / 3;
       final dy = recorte.top + recorte.height * i / 3;
-      lienzo.drawLine(Offset(dx, recorte.top), Offset(dx, recorte.bottom), guia);
-      lienzo.drawLine(Offset(recorte.left, dy), Offset(recorte.right, dy), guia);
+      lienzo.drawLine(
+        Offset(dx, recorte.top),
+        Offset(dx, recorte.bottom),
+        guia,
+      );
+      lienzo.drawLine(
+        Offset(recorte.left, dy),
+        Offset(recorte.right, dy),
+        guia,
+      );
     }
   }
 

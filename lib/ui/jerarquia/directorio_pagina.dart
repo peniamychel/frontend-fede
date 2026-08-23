@@ -6,6 +6,7 @@ import '../productores/productor_detalle_pagina.dart';
 import '../widgets/descargas.dart';
 import '../widgets/estados.dart';
 import 'firmas_cargo.dart';
+import 'sello_directorio.dart';
 
 /// Directorio de un sindicato, una central o la federación.
 ///
@@ -23,22 +24,22 @@ class DirectorioPagina extends StatefulWidget {
 
   /// Directorio de un sindicato, con la central como subtítulo.
   DirectorioPagina.deSindicato(Sindicato sindicato, {super.key})
-      : ambito = Ambito.sindicato,
-        id = sindicato.id,
-        nombre = sindicato.nombre,
-        subtitulo = 'Central ${sindicato.centralNombre}';
+    : ambito = Ambito.sindicato,
+      id = sindicato.id,
+      nombre = sindicato.nombre,
+      subtitulo = 'Central ${sindicato.centralNombre}';
 
   DirectorioPagina.deCentral(Central central, {super.key})
-      : ambito = Ambito.central,
-        id = central.id,
-        nombre = central.nombre,
-        subtitulo = 'Federación ${central.federacionNombre}';
+    : ambito = Ambito.central,
+      id = central.id,
+      nombre = central.nombre,
+      subtitulo = 'Federación ${central.federacionNombre}';
 
   DirectorioPagina.deFederacion(Federacion federacion, {super.key})
-      : ambito = Ambito.federacion,
-        id = federacion.id,
-        nombre = federacion.nombre,
-        subtitulo = null;
+    : ambito = Ambito.federacion,
+      id = federacion.id,
+      nombre = federacion.nombre,
+      subtitulo = null;
 
   final Ambito ambito;
   final int id;
@@ -73,8 +74,11 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Directorio de ${widget.nombre}',
-                maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(
+              'Directorio de ${widget.nombre}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             Text(
               widget.subtitulo ?? widget.ambito.etiqueta,
               style: Theme.of(context).textTheme.bodySmall,
@@ -103,6 +107,11 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    SelloDirectorio(
+                      directorio: datos.directorio,
+                      alCambiar: _recargar,
+                    ),
+                    const SizedBox(height: 24),
                     _puestos(context, datos.directorio),
                     const SizedBox(height: 24),
                     _historial(context, datos.historial),
@@ -169,8 +178,9 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
         const SizedBox(height: 4),
         Text(
           'Cada cambio queda registrado. Nadie se borra al ser reemplazado.',
-          style: tema.textTheme.bodySmall
-              ?.copyWith(color: tema.colorScheme.outline),
+          style: tema.textTheme.bodySmall?.copyWith(
+            color: tema.colorScheme.outline,
+          ),
         ),
         const SizedBox(height: 12),
         if (historial.isEmpty)
@@ -179,8 +189,9 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
               padding: const EdgeInsets.all(20),
               child: Text(
                 'Todavía no se registró ningún cargo acá.',
-                style: tema.textTheme.bodyMedium
-                    ?.copyWith(color: tema.colorScheme.outline),
+                style: tema.textTheme.bodyMedium?.copyWith(
+                  color: tema.colorScheme.outline,
+                ),
               ),
             ),
           )
@@ -220,8 +231,9 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
           const SizedBox(height: 8),
           Text(
             'Todavía no hubo relevos.',
-            style: tema.textTheme.bodySmall
-                ?.copyWith(color: tema.colorScheme.outline),
+            style: tema.textTheme.bodySmall?.copyWith(
+              color: tema.colorScheme.outline,
+            ),
           ),
         ],
       ],
@@ -239,7 +251,10 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
     // las dos versiones no se separen nunca.
     final List<Productor> candidatos;
     try {
-      candidatos = await padron.directorios.candidatos(widget.ambito, widget.id);
+      candidatos = await padron.directorios.candidatos(
+        widget.ambito,
+        widget.id,
+      );
     } catch (e) {
       if (mounted) mostrarError(context, e);
       return;
@@ -247,9 +262,13 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
     if (!mounted) return;
 
     if (candidatos.isEmpty) {
-      mostrarAviso(context, 'No hay productores disponibles',
-          detalle: 'El directorio se elige entre los productores de '
-              '${widget.nombre}, y los que ya ocupan un cargo no cuentan.');
+      mostrarAviso(
+        context,
+        'No hay productores disponibles',
+        detalle:
+            'El directorio se elige entre los productores de '
+            '${widget.nombre}, y los que ya ocupan un cargo no cuentan.',
+      );
       return;
     }
 
@@ -273,11 +292,14 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
       );
       if (!mounted) return;
       setState(() => _ocupado = false);
-      mostrarExito(context, '${puesto.etiqueta} asignado',
-          detalle: actual == null
-              ? elegido.nombreCompleto
-              : '${elegido.nombreCompleto} reemplaza a '
-                  '${actual.productorNombre}.');
+      mostrarExito(
+        context,
+        '${puesto.etiqueta} asignado',
+        detalle: actual == null
+            ? elegido.nombreCompleto
+            : '${elegido.nombreCompleto} reemplaza a '
+                  '${actual.productorNombre}.',
+      );
       _recargar();
     } catch (e) {
       if (!mounted) return;
@@ -315,10 +337,10 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
     setState(() => _ocupado = true);
     try {
       await PadronScope.of(context).directorios.terminar(
-            ambito: widget.ambito,
-            id: widget.id,
-            cargo: puesto.cargo,
-          );
+        ambito: widget.ambito,
+        id: widget.id,
+        cargo: puesto.cargo,
+      );
       if (!mounted) return;
       setState(() => _ocupado = false);
       _recargar();
@@ -331,18 +353,23 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
 
   Future<void> _abrirProductor(int id) async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ProductorDetallePagina(productorId: id)),
+      MaterialPageRoute(
+        builder: (_) => ProductorDetallePagina(productorId: id),
+      ),
     );
     if (mounted) _recargar();
   }
 }
 
 IconData _icono(TipoCargo cargo) => switch (cargo) {
-      TipoCargo.presidente => Icons.workspace_premium_outlined,
-      TipoCargo.secretario => Icons.assignment_ind_outlined,
-      TipoCargo.haciendas => Icons.account_balance_wallet_outlined,
-      TipoCargo.vocal => Icons.record_voice_over_outlined,
-    };
+  TipoCargo.ejecutivo => Icons.workspace_premium_outlined,
+  TipoCargo.secretarioGeneral => Icons.workspace_premium_outlined,
+  TipoCargo.secretarioRelaciones => Icons.handshake_outlined,
+  TipoCargo.haciendas => Icons.account_balance_wallet_outlined,
+  TipoCargo.vocal => Icons.record_voice_over_outlined,
+  TipoCargo.presidente => Icons.history,
+  TipoCargo.secretario => Icons.history,
+};
 
 /// Las dos consultas de la pantalla, pedidas juntas.
 class _Datos {
@@ -352,7 +379,10 @@ class _Datos {
   final List<Cargo> historial;
 
   static Future<_Datos> cargar(
-      DirectorioRepository repo, Ambito ambito, int id) async {
+    DirectorioRepository repo,
+    Ambito ambito,
+    int id,
+  ) async {
     // En paralelo: son independientes y esperar una para pedir la otra
     // duplicaría el tiempo de carga sin motivo.
     final resultados = await Future.wait([
@@ -406,11 +436,13 @@ class _TarjetaCargo extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             if (actual == null) ...[
-              Text('Vacante',
-                  style: tema.textTheme.bodyLarge?.copyWith(
-                    color: tema.colorScheme.outline,
-                    fontStyle: FontStyle.italic,
-                  )),
+              Text(
+                'Vacante',
+                style: tema.textTheme.bodyLarge?.copyWith(
+                  color: tema.colorScheme.outline,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
               const SizedBox(height: 4),
               // Se dice acá que las firmas vienen después: si no, el usuario
               // las busca en esta pantalla y no las encuentra, porque una firma
@@ -418,23 +450,29 @@ class _TarjetaCargo extends StatelessWidget {
               Text(
                 puesto.puedeFirmar
                     ? 'Asigná a alguien y después vas a poder cargar su firma y '
-                        'su pie de firma.'
+                          'escribir su pie de firma.'
                     : 'Nadie ocupa este cargo.',
-                style: tema.textTheme.bodySmall
-                    ?.copyWith(color: tema.colorScheme.outline),
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.outline,
+                ),
               ),
             ] else ...[
               InkWell(
                 onTap: () => alAbrirProductor(actual.productorId),
-                child: Text(actual.productorNombre,
-                    style: tema.textTheme.titleMedium),
+                child: Text(
+                  actual.productorNombre,
+                  style: tema.textTheme.titleMedium,
+                ),
               ),
               const SizedBox(height: 2),
-              Text('En funciones ${actual.periodo}',
-                  style: tema.textTheme.bodySmall
-                      ?.copyWith(color: tema.colorScheme.outline)),
+              Text(
+                'En funciones ${actual.periodo}',
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.outline,
+                ),
+              ),
               // Las firmas solo tienen sentido con alguien en el cargo, y solo
-              // en los que firman: presidente y secretario. Al resto ni se le
+              // en los dos cargos firmantes del nivel. Al resto ni se le
               // ofrece, porque el backend las rechaza y ningún documento las usa.
               if (puesto.puedeFirmar) ...[
                 const SizedBox(height: 16),
@@ -447,8 +485,9 @@ class _TarjetaCargo extends StatelessWidget {
                 FilledButton.tonalIcon(
                   onPressed: ocupado ? null : alAsignar,
                   icon: Icon(
-                      actual == null ? Icons.person_add_alt : Icons.swap_horiz,
-                      size: 18),
+                    actual == null ? Icons.person_add_alt : Icons.swap_horiz,
+                    size: 18,
+                  ),
                   label: Text(actual == null ? 'Asignar' : 'Cambiar'),
                 ),
                 if (actual != null) ...[
@@ -462,8 +501,10 @@ class _TarjetaCargo extends StatelessWidget {
                   const Spacer(),
                   TextButton(
                     onPressed: ocupado ? null : alTerminar,
-                    child: Text('Dejar vacante',
-                        style: TextStyle(color: tema.colorScheme.error)),
+                    child: Text(
+                      'Dejar vacante',
+                      style: TextStyle(color: tema.colorScheme.error),
+                    ),
                   ),
                 ],
               ],
@@ -501,8 +542,8 @@ class _SelectorProductorState extends State<_SelectorProductor> {
     final visibles = filtro.isEmpty
         ? widget.candidatos
         : widget.candidatos
-            .where((p) => p.nombreCompleto.toUpperCase().contains(filtro))
-            .toList();
+              .where((p) => p.nombreCompleto.toUpperCase().contains(filtro))
+              .toList();
 
     final origen = switch (widget.ambito) {
       Ambito.sindicato => 'del sindicato',
@@ -531,17 +572,21 @@ class _SelectorProductorState extends State<_SelectorProductor> {
               child: Text(
                 '${widget.candidatos.length} disponibles $origen. '
                 'Los que ya ocupan un cargo no aparecen.',
-                style: tema.textTheme.bodySmall
-                    ?.copyWith(color: tema.colorScheme.outline),
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.outline,
+                ),
               ),
             ),
             const SizedBox(height: 8),
             Expanded(
               child: visibles.isEmpty
                   ? Center(
-                      child: Text('Ninguno coincide.',
-                          style: tema.textTheme.bodyMedium
-                              ?.copyWith(color: tema.colorScheme.outline)),
+                      child: Text(
+                        'Ninguno coincide.',
+                        style: tema.textTheme.bodyMedium?.copyWith(
+                          color: tema.colorScheme.outline,
+                        ),
+                      ),
                     )
                   : ListView.builder(
                       itemCount: visibles.length,
@@ -551,10 +596,12 @@ class _SelectorProductorState extends State<_SelectorProductor> {
                           dense: true,
                           leading: const Icon(Icons.person_outline, size: 20),
                           title: Text(p.nombreCompleto),
-                          subtitle: Text([
-                            if (p.ci != null) 'CI ${p.ci}',
-                            p.sindicatoNombre,
-                          ].join(' · ')),
+                          subtitle: Text(
+                            [
+                              if (p.ci != null) 'CI ${p.ci}',
+                              p.sindicatoNombre,
+                            ].join(' · '),
+                          ),
                           onTap: () => Navigator.of(context).pop(p),
                         );
                       },

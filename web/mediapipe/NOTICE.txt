@@ -1,0 +1,9 @@
+MediaPipe Selfie Segmentation
+Version: 0.1.1675465747
+License: Apache-2.0
+Source: https://www.npmjs.com/package/@mediapipe/selfie_segmentation
+
+The files in this directory are the unmodified runtime and model assets from
+the MediaPipe package identified above. They are bundled locally so that the
+background-removal feature does not need to upload photographs to a third
+party service.

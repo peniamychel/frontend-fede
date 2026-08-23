@@ -69,16 +69,12 @@ void main() {
         containsAll(['nombres', 'sindicato']));
   });
 
-  test('cuenta lotes y observaciones, troceando las comas', () async {
+  test('cuenta los lotes, sin contar el marcador de dato ausente', () async {
     final informe = await analizar();
 
     // Cuatro filas traen número de lote; la que tiene "-" no cuenta, porque el
     // guion es el marcador de dato ausente del padrón.
     expect(informe.lotes, equals(4));
-
-    // Una celda dice "falta foto" y otra junta tres motivos separados por
-    // coma: el backend guarda cada motivo por separado.
-    expect(informe.observaciones, equals(4));
   });
 
   test('avisa qué jerarquía crearía', () async {
@@ -109,14 +105,18 @@ void main() {
   });
 
   test('la simulación no deja rastro en el padrón', () async {
+    // Se cuenta antes y después la misma búsqueda acotada, en vez de mirar el
+    // total de la base o de exigir que no haya ninguno. El total lo mueven los
+    // otros archivos de prueba, que corren en paralelo; y «no haya ninguno»
+    // fallaba en cuanto el padrón real sumó una CONSTANTINA de verdad —la
+    // planilla de ejemplo salió del padrón, así que sus nombres existen—.
+    final antes = await padron.productores.listar(texto: 'CONSTANTINA');
+
     await analizar();
 
-    // Se busca lo que la simulación habría creado, en vez de comparar el total
-    // de productores antes y después. El total es de toda la base, y los demás
-    // archivos de prueba corren en paralelo creando y borrando los suyos: la
-    // comparación fallaba por culpa de ellos y no por la importación.
-    final creados = await padron.productores.listar(texto: 'CONSTANTINA');
-    expect(creados.contenido, isEmpty,
+    final despues = await padron.productores.listar(texto: 'CONSTANTINA');
+    expect(despues.contenido.map((p) => p.id),
+        unorderedEquals(antes.contenido.map((p) => p.id)),
         reason: 'ningún productor de la planilla debe haberse guardado');
 
     final centrales = await padron.centrales.listar();
@@ -171,8 +171,6 @@ void main() {
     // desincronizaran, acá aparecerían filas rechazadas.
     expect(informe.filasRechazadas, isZero);
     expect(informe.filasValidas, equals(2), reason: 'las dos filas de ejemplo');
-    // La celda de ejemplo junta dos motivos con una coma.
-    expect(informe.observaciones, equals(2));
   });
 
   test('una federación inexistente da 404', () async {

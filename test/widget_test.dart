@@ -10,13 +10,12 @@ import 'package:fede/ui/app.dart';
 /// hay que verificar, porque es lo que va a ver el usuario cuando Spring Boot
 /// no esté levantado.
 void main() {
-  testWidgets('la app arranca y muestra las cuatro secciones', (tester) async {
+  testWidgets('la app arranca y muestra sus secciones', (tester) async {
     await tester.pumpWidget(const PadronApp());
     await tester.pump();
 
     expect(find.text('Productores'), findsWidgets);
     expect(find.text('Jerarquía'), findsWidgets);
-    expect(find.text('Observaciones'), findsWidgets);
     expect(find.text('Calidad'), findsWidgets);
   });
 
@@ -48,7 +47,7 @@ void main() {
     expect(find.byType(NavigationRail), findsNothing);
   });
 
-  testWidgets('a 360 px nada se desborda y los cuatro destinos caben',
+  testWidgets('a 360 px nada se desborda y los cinco destinos caben',
       (tester) async {
     // El teléfono más angosto que se usa en la práctica. Si algo se sale,
     // Flutter lanza «A RenderFlex overflowed by N pixels» y takeException lo
@@ -67,8 +66,9 @@ void main() {
     for (final etiqueta in [
       'Productores',
       'Jerarquía',
-      'Observaciones',
+      'Reuniones',
       'Calidad',
+      'Respaldos',
     ]) {
       expect(
         find.descendant(of: barra, matching: find.text(etiqueta)),

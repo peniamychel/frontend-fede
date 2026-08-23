@@ -86,6 +86,8 @@ Future<bool> cambiarEstadoConAviso(
   required String nombre,
   required bool habilitado,
   required Future<void> Function(bool estado) accion,
+  String? titulo,
+  String? mensaje,
 }) async {
   final nuevo = !habilitado;
 
@@ -93,10 +95,12 @@ Future<bool> cambiarEstadoConAviso(
     final confirmado = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('¿Deshabilitar?'),
+        title: Text(titulo ?? '¿Deshabilitar?'),
         content: Text(
-          '«$nombre» va a quedar marcado como deshabilitado. No se borra nada: '
-          'sigue en la lista y lo podés volver a habilitar cuando quieras.',
+          mensaje ??
+              '«$nombre» va a quedar marcado como deshabilitado. No se borra '
+                  'nada: sigue en la lista y lo podés volver a habilitar '
+                  'cuando quieras.',
         ),
         actions: [
           TextButton(

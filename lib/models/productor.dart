@@ -1,7 +1,6 @@
 import 'auditoria.dart';
 import 'imagen.dart';
 import 'lote.dart';
-import 'observacion.dart';
 
 /// Una fila del padrón.
 ///
@@ -19,7 +18,6 @@ class Productor {
     required this.apellidos,
     required this.nombreCompleto,
     required this.ci,
-    required this.carnetProductor,
     required this.nombresCorregidos,
     required this.apellidosCorregidos,
     required this.fotoDescripcion,
@@ -32,12 +30,21 @@ class Productor {
     this.miniaturaUrl,
     this.fotoUrl,
     this.codigo,
+    this.codigoPadron,
     this.auditoria = Auditoria.habilitado,
   });
 
   /// Código de su credencial: lo que dice el QR, y lo que se escribe a mano
   /// cuando la cámara no lee.
   final String? codigo;
+
+  /// Código en el padrón: número de la federación, sigla de la central y número
+  /// del productor dentro de esa central, como `2-IVI-1`.
+  ///
+  /// Null mientras la federación no tenga número o la central no tenga sigla.
+  /// El backend prefiere no devolver nada antes que un código a medias, porque
+  /// esto se imprime en la credencial.
+  final String? codigoPadron;
 
   final Auditoria auditoria;
 
@@ -54,9 +61,6 @@ class Productor {
   /// Es texto, no número: admite complemento como `8005906-1V`. No es único —
   /// el padrón tiene 27 cédulas repetidas.
   final String? ci;
-
-  /// También texto, admite el valor `NUEVO`. Tampoco es único: 208 repetidos.
-  final String? carnetProductor;
 
   final String? nombresCorregidos;
   final String? apellidosCorregidos;
@@ -101,27 +105,26 @@ class Productor {
   String get ruta => '$centralNombre › $sindicatoNombre';
 
   factory Productor.desdeJson(Map<String, dynamic> json) => Productor(
-        id: (json['id'] as num?)?.toInt() ?? 0,
-        nombres: json['nombres'] as String? ?? '',
-        apellidos: json['apellidos'] as String?,
-        nombreCompleto: json['nombreCompleto'] as String? ?? '',
-        ci: json['ci'] as String?,
-        carnetProductor: json['carnetProductor'] as String?,
-        nombresCorregidos: json['nombresCorregidos'] as String?,
-        apellidosCorregidos: json['apellidosCorregidos'] as String?,
-        fotoDescripcion: json['fotoDescripcion'] as String?,
-        tieneFoto: json['tieneFoto'] as bool? ?? false,
-        marcado: json['marcado'] as bool? ?? false,
-        sindicatoId: (json['sindicatoId'] as num?)?.toInt() ?? 0,
-        sindicatoNombre: json['sindicatoNombre'] as String? ?? '',
-        centralId: (json['centralId'] as num?)?.toInt() ?? 0,
-        centralNombre: json['centralNombre'] as String? ?? '',
-        miniaturaUrl: json['miniaturaUrl'] as String?,
-        fotoUrl: json['fotoUrl'] as String?,
-        codigo: json['codigo'] as String?,
-        auditoria:
-            Auditoria.desdeJson(json['auditoria'] as Map<String, dynamic>?),
-      );
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    nombres: json['nombres'] as String? ?? '',
+    apellidos: json['apellidos'] as String?,
+    nombreCompleto: json['nombreCompleto'] as String? ?? '',
+    ci: json['ci'] as String?,
+    nombresCorregidos: json['nombresCorregidos'] as String?,
+    apellidosCorregidos: json['apellidosCorregidos'] as String?,
+    fotoDescripcion: json['fotoDescripcion'] as String?,
+    tieneFoto: json['tieneFoto'] as bool? ?? false,
+    marcado: json['marcado'] as bool? ?? false,
+    sindicatoId: (json['sindicatoId'] as num?)?.toInt() ?? 0,
+    sindicatoNombre: json['sindicatoNombre'] as String? ?? '',
+    centralId: (json['centralId'] as num?)?.toInt() ?? 0,
+    centralNombre: json['centralNombre'] as String? ?? '',
+    miniaturaUrl: json['miniaturaUrl'] as String?,
+    fotoUrl: json['fotoUrl'] as String?,
+    codigo: json['codigo'] as String?,
+    codigoPadron: json['codigoPadron'] as String?,
+    auditoria: Auditoria.desdeJson(json['auditoria'] as Map<String, dynamic>?),
+  );
 
   @override
   bool operator ==(Object other) => other is Productor && other.id == id;
@@ -130,25 +133,19 @@ class Productor {
   int get hashCode => id.hashCode;
 }
 
-/// Ficha completa: el productor con sus lotes y sus observaciones.
+/// Ficha completa: el productor con sus lotes y sus imágenes.
 class ProductorDetalle {
   const ProductorDetalle({
     required this.productor,
     required this.lotes,
-    required this.observaciones,
     required this.imagenes,
   });
 
   final Productor productor;
   final List<Lote> lotes;
-  final List<Observacion> observaciones;
   final List<Imagen> imagenes;
 
-  Iterable<Observacion> get observacionesPendientes =>
-      observaciones.where((o) => o.pendiente);
-
-  Iterable<Lote> get lotesPorRevisar =>
-      lotes.where((l) => l.necesitaRevision);
+  Iterable<Lote> get lotesPorRevisar => lotes.where((l) => l.necesitaRevision);
 
   /// La imagen de ese tipo, o null si el productor no la tiene cargada.
   Imagen? imagen(TipoImagen tipo) {
@@ -161,15 +158,14 @@ class ProductorDetalle {
   factory ProductorDetalle.desdeJson(Map<String, dynamic> json) {
     List<T> lista<T>(Object? crudo, T Function(Map<String, dynamic>) mapear) =>
         crudo is List
-            ? crudo.whereType<Map<String, dynamic>>().map(mapear).toList()
-            : const [];
+        ? crudo.whereType<Map<String, dynamic>>().map(mapear).toList()
+        : const [];
 
     return ProductorDetalle(
       productor: Productor.desdeJson(
         (json['productor'] as Map<String, dynamic>?) ?? const {},
       ),
       lotes: lista(json['lotes'], Lote.desdeJson),
-      observaciones: lista(json['observaciones'], Observacion.desdeJson),
       imagenes: lista(json['imagenes'], Imagen.desdeJson),
     );
   }
@@ -186,7 +182,6 @@ class ProductorRequest {
     required this.sindicatoId,
     this.apellidos,
     this.ci,
-    this.carnetProductor,
     this.nombresCorregidos,
     this.apellidosCorregidos,
     this.fotoDescripcion,
@@ -196,14 +191,12 @@ class ProductorRequest {
   static const int maxNombres = 60;
   static const int maxApellidos = 60;
   static const int maxCi = 20;
-  static const int maxCarnet = 20;
   static const int maxFotoDescripcion = 120;
 
   final String nombres;
   final int sindicatoId;
   final String? apellidos;
   final String? ci;
-  final String? carnetProductor;
   final String? nombresCorregidos;
   final String? apellidosCorregidos;
   final String? fotoDescripcion;
@@ -212,27 +205,54 @@ class ProductorRequest {
   /// Copia los datos de un productor existente, para precargar el formulario
   /// de edición.
   factory ProductorRequest.desde(Productor p) => ProductorRequest(
-        nombres: p.nombres,
-        sindicatoId: p.sindicatoId,
-        apellidos: p.apellidos,
-        ci: p.ci,
-        carnetProductor: p.carnetProductor,
-        nombresCorregidos: p.nombresCorregidos,
-        apellidosCorregidos: p.apellidosCorregidos,
-        fotoDescripcion: p.fotoDescripcion,
-        marcado: p.marcado,
-      );
+    nombres: p.nombres,
+    sindicatoId: p.sindicatoId,
+    apellidos: p.apellidos,
+    ci: p.ci,
+    nombresCorregidos: p.nombresCorregidos,
+    apellidosCorregidos: p.apellidosCorregidos,
+    fotoDescripcion: p.fotoDescripcion,
+    marcado: p.marcado,
+  );
 
   Map<String, dynamic> aJson() => {
-        'nombres': nombres,
-        'sindicatoId': sindicatoId,
-        if (apellidos != null) 'apellidos': apellidos,
-        if (ci != null) 'ci': ci,
-        if (carnetProductor != null) 'carnetProductor': carnetProductor,
-        if (nombresCorregidos != null) 'nombresCorregidos': nombresCorregidos,
-        if (apellidosCorregidos != null)
-          'apellidosCorregidos': apellidosCorregidos,
-        if (fotoDescripcion != null) 'fotoDescripcion': fotoDescripcion,
-        'marcado': marcado,
-      };
+    'nombres': nombres,
+    'sindicatoId': sindicatoId,
+    if (apellidos != null) 'apellidos': apellidos,
+    if (ci != null) 'ci': ci,
+    if (nombresCorregidos != null) 'nombresCorregidos': nombresCorregidos,
+    if (apellidosCorregidos != null) 'apellidosCorregidos': apellidosCorregidos,
+    if (fotoDescripcion != null) 'fotoDescripcion': fotoDescripcion,
+    'marcado': marcado,
+  };
+}
+
+enum EstadoConsultaPersona { encontrada, noEncontrada, noDisponible }
+
+class ConsultaPersona {
+  const ConsultaPersona({
+    required this.estado,
+    this.nombres,
+    this.apellidos,
+    this.mensaje,
+  });
+
+  final EstadoConsultaPersona estado;
+  final String? nombres;
+  final String? apellidos;
+  final String? mensaje;
+
+  bool get encontrada => estado == EstadoConsultaPersona.encontrada;
+
+  factory ConsultaPersona.desdeJson(Map<String, dynamic> json) =>
+      ConsultaPersona(
+        estado: switch (json['estado']) {
+          'ENCONTRADA' => EstadoConsultaPersona.encontrada,
+          'NO_ENCONTRADA' => EstadoConsultaPersona.noEncontrada,
+          _ => EstadoConsultaPersona.noDisponible,
+        },
+        nombres: json['nombres'] as String?,
+        apellidos: json['apellidos'] as String?,
+        mensaje: json['mensaje'] as String?,
+      );
 }

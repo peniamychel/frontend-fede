@@ -4,7 +4,13 @@ Cliente Flutter del padrón de productores. Consume la API de Spring Boot del
 repositorio `backend-fede`.
 
 Jerarquía del dominio: **Federación › Central › Sindicato › Productor**, y cada
-productor tiene lotes y observaciones.
+productor tiene lotes.
+
+Cada productor lleva un código del padrón —`2-13J-1`: número de la federación,
+sigla de la central, y su número dentro de esa central—. La numeración de cada
+central arranca en 1 y **saltea los números que llevan 666**: el 666, el 1666,
+el 2666. No es una superstición del sistema, es de la gente; y en centrales de
+más de tres mil afiliados el número aparecería varias veces.
 
 Además del padrón, la app cubre:
 
@@ -14,8 +20,30 @@ Además del padrón, la app cubre:
 - **Documentos**: la nómina del sindicato con su acta de entrega, la credencial
   del afiliado (apaisada) y la del dirigente (vertical), las dos del tamaño de
   una cédula y con QR.
-- **Reuniones y pase de lista**. Cuatro tipos de convocatoria, cada uno con su
-  propia lista, y registro leyendo el QR con la cámara.
+- **Reuniones**, en cuadros: quién convoca, llamar lista, el acta y los vetos.
+  Cuatro tipos de convocatoria, cada uno con su propia lista. Se llama lista
+  varias veces por asamblea —al empezar, más tarde para los que llegaron con
+  retraso— y cada vuelta tiene sus presentes; se registra leyendo el QR con la
+  cámara. El acta se sube hoja por hoja, que es como se fotografía el cuaderno,
+  y con el número que lleva en el libro del sindicato: sin él, meses después
+  nadie puede ir al original a cotejar lo que la pantalla dice que se decidió.
+
+  El listado se divide por tipo y tiene buscador. Se busca por el detalle de la
+  reunión —título, lugar, notas, número del acta— **y por a quién se vetó en
+  ella**: nombre, cédula, cualquiera de sus dos códigos, o el motivo escrito.
+  «¿En qué reunión vetaron a Fulano?» es una pregunta que se hace sola.
+- **Vetos**, decididos en asamblea. Se ponen y se quitan **desde la reunión que
+  los decidió**, no desde la ficha de la persona: buscando a quien sea por
+  nombre, cédula o código. Se habilitan por reunión, porque no toda asamblea es
+  para sancionar, y hace falta el acta: sin el documento la sanción sería la
+  palabra de quien la cargó.
+
+  Mientras el veto rige, la persona queda suspendida de sus derechos: no se le
+  emite credencial —ni la de afiliado ni la de dirigente—, no puede ocupar un
+  cargo —y deja el que tuviera al quedar observada—, y no se le toma asistencia
+  ni cuenta para el quórum. Sigue siendo afiliada: conserva su parcela, su
+  código y su historial. Levantarlo se decide en otra reunión, también con su
+  acta.
 
 ## Cómo correrlo
 
@@ -107,8 +135,9 @@ lib/
 └── ui/
     ├── productores/ listado, ficha y formulario
     ├── jerarquia/   navegación Federación › Central › Sindicato
-    ├── reuniones/    convocatoria y pase de lista con la cámara
-    ├── observaciones/
+    ├── reuniones/    la reunión en cuadros, y el pase de lista con la cámara
+    ├── vetos/        buscar a quién se observó, y por qué
+    ├── credenciales/ vista previa antes de imprimir
     ├── calidad/      panel de duplicados, sin foto y lotes sin reconocer
     └── importacion/  carga masiva desde Excel
 ```

@@ -43,6 +43,23 @@ void main() {
     return s;
   }
 
+  /// Suelta todas las parcelas al terminar cada prueba.
+  ///
+  /// Nadie puede tener dos parcelas a su nombre a la vez, y estas pruebas
+  /// comparten a Ana, Bruno y Carla: sin esto, la primera que le da tierra a
+  /// Ana dejaría a todas las siguientes chocando contra esa regla en vez de
+  /// probar lo suyo.
+  tearDown(() async {
+    for (final id in lotes) {
+      try {
+        await padron.lotes
+            .traspasar(id, const TraspasoRequest(motivo: MotivoTraspaso.otro));
+      } on ApiException {
+        // Ya estaba sin tenedor, o el lote se borró dentro de la prueba.
+      }
+    }
+  });
+
   setUpAll(() async {
     padron = Padron();
     fed = await padron.federaciones

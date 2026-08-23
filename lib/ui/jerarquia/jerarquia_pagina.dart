@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/boton_tema.dart';
+import '../credenciales/pliego_previa_pagina.dart';
 import '../lotes/lotes_sindicato_pagina.dart';
 import '../widgets/descargas.dart';
 import '../widgets/dialogo_nombre_numero.dart';
-import '../widgets/dialogo_texto.dart';
 import '../widgets/estados.dart';
 import '../widgets/marca_estado.dart';
 import 'directorio_pagina.dart';
@@ -196,6 +196,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                   leading: const Icon(Icons.account_balance_outlined),
                   title: TituloConEstado(
                       nombre: f.nombre, habilitado: f.habilitado),
+                  subtitle: _numero(f.numero),
                   onTap: () => _elegirFederacion(f),
                   trailing: _menu(
                     alEditar: () => _editarFederacion(f),
@@ -240,24 +241,34 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   }
 
   Future<void> _crearFederacion() async {
-    final nombre = await _pedirNombre(titulo: 'Nueva federación');
-    if (nombre == null || !mounted) return;
+    final datos = await DialogoNombreNumero.mostrar(
+      context,
+      titulo: 'Nueva federación',
+      etiquetaNombre: 'Nombre de la federación',
+    );
+    if (datos == null || !mounted) return;
     await _ejecutar(
-      () => PadronScope.of(context)
-          .federaciones
-          .crear(FederacionRequest(nombre: nombre)),
+      () => PadronScope.of(context).federaciones.crear(
+            FederacionRequest(nombre: datos.nombre, numero: datos.numero),
+          ),
       _recargarFederaciones,
     );
   }
 
   Future<void> _editarFederacion(Federacion f) async {
-    final nombre =
-        await _pedirNombre(titulo: 'Editar federación', inicial: f.nombre);
-    if (nombre == null || !mounted) return;
+    final datos = await DialogoNombreNumero.mostrar(
+      context,
+      titulo: 'Editar federación',
+      etiquetaNombre: 'Nombre de la federación',
+      nombreInicial: f.nombre,
+      numeroInicial: f.numero,
+    );
+    if (datos == null || !mounted) return;
     await _ejecutar(
-      () => PadronScope.of(context)
-          .federaciones
-          .actualizar(f.id, FederacionRequest(nombre: nombre)),
+      () => PadronScope.of(context).federaciones.actualizar(
+            f.id,
+            FederacionRequest(nombre: datos.nombre, numero: datos.numero),
+          ),
       _recargarFederaciones,
     );
   }
@@ -298,7 +309,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                   leading: const Icon(Icons.hub_outlined),
                   title: TituloConEstado(
                       nombre: c.nombre, habilitado: c.habilitado),
-                  subtitle: _numero(c.numero),
+                  subtitle: _abreviatura(c.abreviatura),
                   onTap: () => _elegirCentral(c),
                   trailing: _menu(
                     alEditar: () => _editarCentral(c),
@@ -344,12 +355,13 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       context,
       titulo: 'Nueva central',
       etiquetaNombre: 'Nombre de la central',
+      segundo: SegundoCampo.abreviatura,
     );
     if (datos == null || !mounted) return;
     await _ejecutar(
       () => PadronScope.of(context).centrales.crear(CentralRequest(
             nombre: datos.nombre,
-            numero: datos.numero,
+            abreviatura: datos.numero,
             federacionId: f.id,
           )),
       _recargarCentrales,
@@ -362,7 +374,8 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       titulo: 'Editar central',
       etiquetaNombre: 'Nombre de la central',
       nombreInicial: c.nombre,
-      numeroInicial: c.numero,
+      numeroInicial: c.abreviatura,
+      segundo: SegundoCampo.abreviatura,
     );
     if (datos == null || !mounted) return;
     await _ejecutar(
@@ -370,7 +383,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
             c.id,
             CentralRequest(
               nombre: datos.nombre,
-              numero: datos.numero,
+              abreviatura: datos.numero,
               federacionId: c.federacionId,
             ),
           ),
@@ -456,7 +469,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                         icon: const Icon(Icons.crop_landscape, size: 20),
                       ),
                       IconButton(
-                        tooltip: 'Directorio: presidente y secretario',
+                        tooltip: 'Directorio del sindicato',
                         onPressed: () =>
                             _verDirectorio(DirectorioPagina.deSindicato(s)),
                         icon: const Icon(Icons.groups_2_outlined, size: 20),
@@ -489,7 +502,9 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                         alDescargarInforme: () =>
                             descargarInformeSindicato(context, s),
                         alDescargarCredenciales: () =>
-                            descargarCredencialesSindicato(context, s),
+                            Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => PliegoPreviaPagina(sindicato: s),
+                        )),
                         alEliminar: () => _eliminar(
                           nombre: s.nombre,
                           tipo: 'el sindicato',
@@ -594,13 +609,16 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
 
   // ---------- Auxiliares ----------
 
-  /// Subtítulo con el número, o nada si todavía no se lo asignaron. Se devuelve
-  /// null y no un texto tipo «sin número» para no llenar la lista de ruido:
-  /// hoy casi ninguna central lo tiene.
-  Widget? _numero(String? numero) {
-    if (numero == null) return null;
+  /// Subtítulo con la sigla de la central, o nada si todavía no se la
+  /// asignaron. Se devuelve null y no un texto tipo «sin abreviatura» para no
+  /// llenar la lista de ruido: hoy casi ninguna la tiene.
+  ///
+  /// Va sola, sin etiqueta delante: tres letras en mayúsculas debajo del nombre
+  /// completo ya se leen como lo que son.
+  Widget? _abreviatura(String? abreviatura) {
+    if (abreviatura == null) return null;
     return Text(
-      'N° $numero',
+      abreviatura,
       style: Theme.of(context)
           .textTheme
           .bodySmall
@@ -672,17 +690,18 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     );
   }
 
-  /// Pide un nombre con [DialogoTexto].
-  ///
-  /// El diálogo administra su propio controlador. Crearlo acá y desecharlo tras
-  /// `await showDialog` es lo que rompía la pantalla al editar: cuando
-  /// showDialog devuelve, la ruta sigue animando su salida y el campo todavía
-  /// usa el controlador.
-  Future<String?> _pedirNombre({
-    required String titulo,
-    String inicial = '',
-  }) {
-    return DialogoTexto.mostrar(context, titulo: titulo, inicial: inicial);
+  /// Subtítulo con el número de la federación, o nada si todavía no se lo
+  /// asignaron. Se devuelve null y no un texto tipo «sin número» para no llenar
+  /// la lista de ruido.
+  Widget? _numero(String? numero) {
+    if (numero == null) return null;
+    return Text(
+      'N° $numero',
+      style: Theme.of(context)
+          .textTheme
+          .bodySmall
+          ?.copyWith(fontWeight: FontWeight.w600),
+    );
   }
 
   Future<void> _eliminar({

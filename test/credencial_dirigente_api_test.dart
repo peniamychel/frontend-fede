@@ -1,6 +1,8 @@
 @Tags(['integracion'])
 library;
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -27,25 +29,38 @@ void main() {
 
   setUpAll(() async {
     padron = Padron();
-    fed = await padron.federaciones
-        .crear(const FederacionRequest(nombre: 'ZZZ FED CARNET DIR'));
-    central = await padron.centrales
-        .crear(CentralRequest(nombre: 'ZZZ CEN CARNET', federacionId: fed.id));
-    sindicato = await padron.sindicatos
-        .crear(SindicatoRequest(nombre: 'ZZZ SIN CARNET', centralId: central.id));
+    // Con número y sigla: la última prueba baja también la credencial de
+    // productor, que desde la vista previa exige los datos completos.
+    fed = await padron.federaciones.crear(
+      const FederacionRequest(nombre: 'ZZZ FED CARNET DIR', numero: '86'),
+    );
+    central = await padron.centrales.crear(
+      CentralRequest(
+        nombre: 'ZZZ CEN CARNET',
+        abreviatura: 'ZDR',
+        federacionId: fed.id,
+      ),
+    );
+    sindicato = await padron.sindicatos.crear(
+      SindicatoRequest(nombre: 'ZZZ SIN CARNET', centralId: central.id),
+    );
 
-    ana = await padron.productores.crear(ProductorRequest(
-      nombres: 'ZZZ ANA',
-      apellidos: 'DIRIGENTE',
-      ci: '7001',
-      sindicatoId: sindicato.id,
-    ));
-    bruno = await padron.productores.crear(ProductorRequest(
-      nombres: 'ZZZ BRUNO',
-      apellidos: 'DIRIGENTE',
-      ci: '7002',
-      sindicatoId: sindicato.id,
-    ));
+    ana = await padron.productores.crear(
+      ProductorRequest(
+        nombres: 'ZZZ ANA',
+        apellidos: 'DIRIGENTE',
+        ci: '7001',
+        sindicatoId: sindicato.id,
+      ),
+    );
+    bruno = await padron.productores.crear(
+      ProductorRequest(
+        nombres: 'ZZZ BRUNO',
+        apellidos: 'DIRIGENTE',
+        ci: '7002',
+        sindicatoId: sindicato.id,
+      ),
+    );
   });
 
   tearDownAll(() async {
@@ -60,38 +75,42 @@ void main() {
   Future<http.Response> bajar(int cargoId) =>
       http.get(padron.directorios.urlCredencial(cargoId));
 
-  test('el presidente de un sindicato tiene credencial', () async {
+  test('el Secretario General de un sindicato tiene credencial', () async {
     final directorio = await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicato.id,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
       productorId: ana.id,
     );
-    final cargoId = directorio.cargoDe(TipoCargo.presidente)!.id;
+    final cargoId = directorio.cargoDe(TipoCargo.secretarioGeneral)!.id;
 
     final respuesta = await bajar(cargoId);
 
     expect(respuesta.statusCode, 200);
     expect(respuesta.headers['content-type'], contains('application/pdf'));
     expect(String.fromCharCodes(respuesta.bodyBytes.take(4)), '%PDF');
-    expect(respuesta.headers['content-disposition'],
-        contains('credencial-presidente-zzz-ana-dirigente'));
+    expect(
+      respuesta.headers['content-disposition'],
+      contains('credencial-secretario-general-zzz-ana-dirigente'),
+    );
   });
 
-  test('el secretario también', () async {
+  test('el Secretario Relaciones también', () async {
     final directorio = await padron.directorios.asignar(
       ambito: Ambito.sindicato,
       id: sindicato.id,
-      cargo: TipoCargo.secretario,
+      cargo: TipoCargo.secretarioRelaciones,
       productorId: bruno.id,
     );
-    final cargoId = directorio.cargoDe(TipoCargo.secretario)!.id;
+    final cargoId = directorio.cargoDe(TipoCargo.secretarioRelaciones)!.id;
 
     final respuesta = await bajar(cargoId);
 
     expect(respuesta.statusCode, 200);
-    expect(respuesta.headers['content-disposition'],
-        contains('credencial-secretario-'));
+    expect(
+      respuesta.headers['content-disposition'],
+      contains('credencial-secretario-relaciones-'),
+    );
   });
 
   test('un período ya cerrado también se puede imprimir', () async {
@@ -100,11 +119,13 @@ void main() {
     await padron.directorios.terminar(
       ambito: Ambito.sindicato,
       id: sindicato.id,
-      cargo: TipoCargo.presidente,
+      cargo: TipoCargo.secretarioGeneral,
     );
 
-    final historial =
-        await padron.directorios.historial(Ambito.sindicato, sindicato.id);
+    final historial = await padron.directorios.historial(
+      Ambito.sindicato,
+      sindicato.id,
+    );
     final cerrado = historial.firstWhere((c) => !c.vigente);
 
     final respuesta = await bajar(cerrado.id);
@@ -120,22 +141,59 @@ void main() {
     expect(respuesta.headers['content-type'], isNot(contains('pdf')));
   });
 
-  test('la del dirigente y la del productor son documentos distintos',
-      () async {
+  test('la del dirigente y la del productor son documentos distintos', () async {
     // Misma persona, dos credenciales: una la acredita como afiliada y otra
     // como dirigente. No pueden salir del mismo endpoint ni pesar lo mismo.
-    final directorio =
-        await padron.directorios.obtener(Ambito.sindicato, sindicato.id);
-    final cargoId = directorio.cargoDe(TipoCargo.secretario)!.id;
+    //
+    // La de productor exige los datos completos, así que primero se termina de
+    // armar lo que las pruebas anteriores dejaron a medias: la foto de Bruno,
+    // el Secretario General que la prueba del período cerrado dejó vacante, y las
+    // firmas de los dos cargos.
+    final imagen = File('test/fixtures/foto-prueba.png').readAsBytesSync();
+    await padron.productores.subirImagen(
+      productorId: bruno.id,
+      bytes: imagen,
+      nombreArchivo: 'foto.png',
+    );
+    await padron.directorios.asignar(
+      ambito: Ambito.sindicato,
+      id: sindicato.id,
+      cargo: TipoCargo.secretarioGeneral,
+      productorId: ana.id,
+    );
+    final directorio = await padron.directorios.obtener(
+      Ambito.sindicato,
+      sindicato.id,
+    );
+    for (final cargo in [
+      TipoCargo.secretarioGeneral,
+      TipoCargo.secretarioRelaciones,
+    ]) {
+      final cargoId = directorio.cargoDe(cargo)!.id;
+      await padron.directorios.subirImagen(
+        cargoId: cargoId,
+        tipo: TipoImagenCargo.firma,
+        bytes: imagen,
+        nombreArchivo: 'firma.png',
+      );
+      await padron.directorios.actualizarPieFirma(
+        cargoId,
+        'FIRMANTE\n${cargo.etiqueta.toUpperCase()}',
+      );
+    }
+    final cargoId = directorio.cargoDe(TipoCargo.secretarioRelaciones)!.id;
 
     final deDirigente = await bajar(cargoId);
-    final deProductor =
-        await http.get(padron.productores.urlCredencial(bruno.id));
+    final deProductor = await http.get(
+      padron.productores.urlCredencial(bruno.id),
+    );
 
     expect(deDirigente.statusCode, 200);
     expect(deProductor.statusCode, 200);
     expect(deDirigente.bodyBytes, isNot(deProductor.bodyBytes));
-    expect(deProductor.headers['content-disposition'],
-        isNot(contains('secretario')));
+    expect(
+      deProductor.headers['content-disposition'],
+      isNot(contains('secretario-relaciones')),
+    );
   });
 }

@@ -20,13 +20,14 @@ void main() {
     centralNombre: 'IVIRGARZAMA',
   );
 
-  Widget envolver(Widget hijo) => PadronScope(
-        padron: Padron(),
-        child: MaterialApp(home: hijo),
-      );
+  Widget envolver(Widget hijo, {ApiClient? api}) => PadronScope(
+    padron: Padron(api: api),
+    child: MaterialApp(home: hijo),
+  );
 
-  testWidgets('con sindicato fijado el formulario es usable sin servidor',
-      (tester) async {
+  testWidgets('con sindicato fijado el formulario es usable sin servidor', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       envolver(const ProductorFormulario(sindicatoFijo: libertad)),
     );
@@ -57,14 +58,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('«Cambiar» suelta el sindicato y pasa a los desplegables',
-      (tester) async {
+  testWidgets('«Cambiar» suelta el sindicato y pasa a los desplegables', (
+    tester,
+  ) async {
     await tester.pumpWidget(
-      envolver(const ProductorFormulario(sindicatoFijo: libertad)),
+      envolver(
+        const ProductorFormulario(sindicatoFijo: libertad),
+        api: _ApiCedulaNoDisponible(),
+      ),
     );
     await tester.pumpAndSettle(const Duration(seconds: 1));
     expect(find.text('Cambiar'), findsOneWidget);
 
+    await tester.enterText(
+      find.ancestor(
+        of: find.text('Cédula de identidad *'),
+        matching: find.byType(TextFormField),
+      ),
+      '9990003',
+    );
+    await tester.tap(find.byTooltip('Verificar cédula'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continuar manualmente'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Cambiar'));
     await tester.tap(find.text('Cambiar'));
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
@@ -83,7 +101,6 @@ void main() {
       apellidos: 'NINGUNO',
       nombreCompleto: 'NINGUNO NINGUNO',
       ci: null,
-      carnetProductor: null,
       nombresCorregidos: null,
       apellidosCorregidos: null,
       fotoDescripcion: null,
@@ -96,10 +113,12 @@ void main() {
     );
 
     await tester.pumpWidget(
-      envolver(const ProductorFormulario(
-        productor: productor,
-        sindicatoFijo: libertad,
-      )),
+      envolver(
+        const ProductorFormulario(
+          productor: productor,
+          sindicatoFijo: libertad,
+        ),
+      ),
     );
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
@@ -110,4 +129,29 @@ void main() {
     expect(find.text('Reintentar'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+class _ApiCedulaNoDisponible extends ApiClient {
+  @override
+  Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) {
+    if (ruta.startsWith('/productores/por-cedula/')) {
+      return Future.value(<dynamic>[]);
+    }
+    return super.obtener(ruta, query: query);
+  }
+
+  @override
+  Future<Object?> crear(
+    String ruta,
+    Object cuerpo, {
+    Map<String, dynamic>? query,
+  }) {
+    if (ruta == '/personas/consulta') {
+      return Future.value({
+        'estado': 'NO_DISPONIBLE',
+        'mensaje': 'SIE no disponible',
+      });
+    }
+    return super.crear(ruta, cuerpo);
+  }
 }

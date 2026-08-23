@@ -37,8 +37,8 @@ void main() {
     expect(espia.rutas.any((r) => r.startsWith('/productores')), isTrue,
         reason: 'la sección visible tiene que cargar sus datos');
 
-    // Lo de las otras cuatro, no.
-    for (final ajena in ['/reuniones', '/observaciones', '/federaciones']) {
+    // Lo de las otras tres, no.
+    for (final ajena in ['/reuniones', '/federaciones']) {
       expect(espia.rutas.any((r) => r.startsWith(ajena)), isFalse,
           reason: 'no se puede consultar $ajena antes de entrar a esa sección');
     }
@@ -55,7 +55,7 @@ void main() {
     await tester.pump();
 
     expect(espia.rutas.any((r) => r.startsWith('/reuniones')), isTrue);
-    expect(espia.rutas.any((r) => r.startsWith('/observaciones')), isFalse,
+    expect(espia.rutas.any((r) => r.startsWith('/federaciones')), isFalse,
         reason: 'entrar a una sección no puede arrastrar a las demás');
   });
 

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'administracion/backups_pagina.dart';
 import 'calidad/calidad_pagina.dart';
+import 'credenciales/editor_credencial_pagina.dart';
 import 'jerarquia/jerarquia_pagina.dart';
-import 'observaciones/observaciones_pagina.dart';
 import 'productores/productores_pagina.dart';
 import 'reuniones/reuniones_pagina.dart';
 
@@ -25,8 +26,9 @@ class _InicioState extends State<Inicio> {
     _Destino('Productores', Icons.people_outline, Icons.people),
     _Destino('Jerarquía', Icons.account_tree_outlined, Icons.account_tree),
     _Destino('Reuniones', Icons.event_note_outlined, Icons.event_note),
-    _Destino('Observaciones', Icons.flag_outlined, Icons.flag),
     _Destino('Calidad', Icons.fact_check_outlined, Icons.fact_check),
+    _Destino('Carnet', Icons.badge_outlined, Icons.badge),
+    _Destino('Respaldos', Icons.backup_outlined, Icons.backup),
   ];
 
   /// Secciones que el usuario ya visitó.
@@ -47,8 +49,9 @@ class _InicioState extends State<Inicio> {
       ProductoresPagina(),
       JerarquiaPagina(),
       ReunionesPagina(),
-      ObservacionesPagina(),
       CalidadPagina(),
+      EditorCredencialPagina(),
+      BackupsPagina(),
     ];
 
     final contenido = IndexedStack(
@@ -98,9 +101,13 @@ class _InicioState extends State<Inicio> {
                           children: [
                             Icon(Icons.badge_outlined),
                             SizedBox(width: 12),
-                            Text('Padrón FEDERA',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w600, fontSize: 16)),
+                            Text(
+                              'Padrón FEDERA',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                            ),
                           ],
                         ),
                       )
@@ -124,11 +131,11 @@ class _InicioState extends State<Inicio> {
   }
 
   void _ir(int indice) => setState(() {
-        _seccion = indice;
-        // Queda anotada para siempre: a partir de acá esta sección se
-        // construye como antes y conserva su estado al ir y volver.
-        _visitadas.add(indice);
-      });
+    _seccion = indice;
+    // Queda anotada para siempre: a partir de acá esta sección se
+    // construye como antes y conserva su estado al ir y volver.
+    _visitadas.add(indice);
+  });
 }
 
 class _Destino {

@@ -32,10 +32,17 @@ enum Ambito {
 /// dice cuáles en la respuesta del directorio, así que acá no se duplica esa
 /// regla.
 enum TipoCargo {
-  presidente('PRESIDENTE', 'Presidente'),
-  secretario('SECRETARIO', 'Secretario'),
+  ejecutivo('EJECUTIVO', 'Ejecutivo'),
+  secretarioGeneral('SECRETARIO_GENERAL', 'Secretario General'),
+  secretarioRelaciones('SECRETARIO_RELACIONES', 'Secretario Relaciones'),
   haciendas('HACIENDAS', 'Haciendas'),
-  vocal('VOCAL', 'Vocal');
+  vocal('VOCAL', 'Vocal'),
+
+  // Solo para poder leer historiales antes de ejecutar la migración SQL.
+  @Deprecated('Usar secretarioGeneral o ejecutivo según el nivel')
+  presidente('PRESIDENTE', 'Presidente (histórico)'),
+  @Deprecated('Usar secretarioGeneral o secretarioRelaciones según el nivel')
+  secretario('SECRETARIO', 'Secretario (histórico)');
 
   const TipoCargo(this.valor, this.etiqueta);
 
@@ -43,9 +50,19 @@ enum TipoCargo {
   final String valor;
   final String etiqueta;
 
-  /// Si este cargo lleva firma y pie de firma. Solo presidente y secretario.
-  bool get puedeFirmar =>
+  bool get esHistorico =>
       this == TipoCargo.presidente || this == TipoCargo.secretario;
+
+  static Iterable<TipoCargo> get vigentes =>
+      values.where((c) => !c.esHistorico);
+
+  /// Posibles firmantes. El backend decide según el nivel del directorio.
+  bool get puedeFirmar =>
+      this == TipoCargo.ejecutivo ||
+      this == TipoCargo.secretarioGeneral ||
+      this == TipoCargo.secretarioRelaciones ||
+      this == TipoCargo.presidente ||
+      this == TipoCargo.secretario;
 
   static TipoCargo? desde(Object? crudo) {
     if (crudo == null) return null;
@@ -57,13 +74,19 @@ enum TipoCargo {
   }
 }
 
-/// Las dos imágenes que acompañan a un cargo.
+/// Imágenes históricas que acompañan a un cargo.
 ///
 /// Van atadas al período y no a la persona: la firma con la que alguien
 /// autorizó documentos siendo presidente pertenece a ese mandato.
 enum TipoImagenCargo {
   firma('FIRMA', 'Firma', 'La firma manuscrita'),
-  pieFirma('PIE_FIRMA', 'Pie de firma', 'El sello o la línea con nombre y cargo');
+  // Se conserva para poder leer y borrar archivos cargados antes de que el pie
+  // de firma pasara a ser texto. La interfaz ya no ofrece nuevas cargas.
+  pieFirma(
+    'PIE_FIRMA',
+    'Pie de firma',
+    'El sello o la línea con nombre y cargo',
+  );
 
   const TipoImagenCargo(this.valor, this.etiqueta, this.detalle);
 
@@ -93,6 +116,7 @@ class Cargo {
     required this.hasta,
     required this.vigente,
     this.firmaUrl,
+    this.pieFirma,
     this.pieFirmaUrl,
   });
 
@@ -114,12 +138,17 @@ class Cargo {
 
   /// Direcciones de las imágenes de este período, o null si no se cargaron.
   final String? firmaUrl;
+
+  /// Texto automático: productor, cargo y organización.
+  final String? pieFirma;
+
+  /// Solo para compatibilidad con datos históricos.
   final String? pieFirmaUrl;
 
   String? urlDe(TipoImagenCargo tipo) =>
       tipo == TipoImagenCargo.firma ? firmaUrl : pieFirmaUrl;
 
-  bool get tieneFirmas => firmaUrl != null && pieFirmaUrl != null;
+  bool get tieneFirmas => firmaUrl != null;
 
   String get periodo {
     final inicio = _fecha(desde);
@@ -133,22 +162,23 @@ class Cargo {
   }
 
   factory Cargo.desdeJson(Map<String, dynamic> json) => Cargo(
-        id: (json['id'] as num?)?.toInt() ?? 0,
-        cargo: TipoCargo.desde(json['cargo']) ?? TipoCargo.presidente,
-        productorId: (json['productorId'] as num?)?.toInt() ?? 0,
-        productorNombre: json['productorNombre'] as String? ?? '',
-        ambito: Ambito.desde(json['ambito']) ?? Ambito.sindicato,
-        ambitoId: (json['ambitoId'] as num?)?.toInt() ?? 0,
-        ambitoNombre: json['ambitoNombre'] as String? ?? '',
-        desde: DateTime.tryParse('${json['desde']}') ?? DateTime(1970),
-        hasta: switch (json['hasta']) {
-          final String s => DateTime.tryParse(s),
-          _ => null,
-        },
-        vigente: json['vigente'] as bool? ?? false,
-        firmaUrl: json['firmaUrl'] as String?,
-        pieFirmaUrl: json['pieFirmaUrl'] as String?,
-      );
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    cargo: TipoCargo.desde(json['cargo']) ?? TipoCargo.secretarioGeneral,
+    productorId: (json['productorId'] as num?)?.toInt() ?? 0,
+    productorNombre: json['productorNombre'] as String? ?? '',
+    ambito: Ambito.desde(json['ambito']) ?? Ambito.sindicato,
+    ambitoId: (json['ambitoId'] as num?)?.toInt() ?? 0,
+    ambitoNombre: json['ambitoNombre'] as String? ?? '',
+    desde: DateTime.tryParse('${json['desde']}') ?? DateTime(1970),
+    hasta: switch (json['hasta']) {
+      final String s => DateTime.tryParse(s),
+      _ => null,
+    },
+    vigente: json['vigente'] as bool? ?? false,
+    firmaUrl: json['firmaUrl'] as String?,
+    pieFirma: json['pieFirma'] as String?,
+    pieFirmaUrl: json['pieFirmaUrl'] as String?,
+  );
 }
 
 /// Un cargo del directorio y quién lo ocupa.
@@ -176,7 +206,7 @@ class Puesto {
   bool get ocupado => actual != null;
 
   factory Puesto.desdeJson(Map<String, dynamic> json) {
-    final tipo = TipoCargo.desde(json['cargo']) ?? TipoCargo.presidente;
+    final tipo = TipoCargo.desde(json['cargo']) ?? TipoCargo.secretarioGeneral;
     return Puesto(
       cargo: tipo,
       etiqueta: json['etiqueta'] as String? ?? tipo.etiqueta,
@@ -196,11 +226,13 @@ class Directorio {
     required this.ambitoId,
     required this.ambitoNombre,
     required this.puestos,
+    this.selloUrl,
   });
 
   final Ambito ambito;
   final int ambitoId;
   final String ambitoNombre;
+  final String? selloUrl;
   final List<Puesto> puestos;
 
   bool get estaCompleto => puestos.every((p) => p.ocupado);
@@ -216,15 +248,17 @@ class Directorio {
   Cargo? cargoDe(TipoCargo tipo) => puestoDe(tipo)?.actual;
 
   factory Directorio.desdeJson(Map<String, dynamic> json) => Directorio(
-        ambito: Ambito.desde(json['ambito']) ?? Ambito.sindicato,
-        ambitoId: (json['ambitoId'] as num?)?.toInt() ?? 0,
-        ambitoNombre: json['ambitoNombre'] as String? ?? '',
-        puestos: switch (json['puestos']) {
-          final List<dynamic> lista => lista
-              .whereType<Map<String, dynamic>>()
-              .map(Puesto.desdeJson)
-              .toList(growable: false),
-          _ => const <Puesto>[],
-        },
-      );
+    ambito: Ambito.desde(json['ambito']) ?? Ambito.sindicato,
+    ambitoId: (json['ambitoId'] as num?)?.toInt() ?? 0,
+    ambitoNombre: json['ambitoNombre'] as String? ?? '',
+    selloUrl: json['selloUrl'] as String?,
+    puestos: switch (json['puestos']) {
+      final List<dynamic> lista =>
+        lista
+            .whereType<Map<String, dynamic>>()
+            .map(Puesto.desdeJson)
+            .toList(growable: false),
+      _ => const <Puesto>[],
+    },
+  );
 }

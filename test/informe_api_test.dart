@@ -51,10 +51,6 @@ void main() {
       productorId: productores.first.id,
       numero: '99',
     ));
-    await padron.observaciones.crear(ObservacionRequest(
-      mensaje: 'FALTA FOTO',
-      productorId: productores.first.id,
-    ));
   });
 
   tearDownAll(() async {
