@@ -18,8 +18,24 @@ import '../widgets/ubicacion_pagina.dart';
 /// En pantallas anchas los tres niveles van en columnas simultáneas; en móvil
 /// se colapsa a un solo panel con miga de pan, porque tres columnas de 120 px
 /// no las lee nadie.
+class JerarquiaControlador {
+  _JerarquiaPaginaState? _estado;
+
+  /// Intenta volver un nivel dentro de Federación › Central › Sindicato.
+  /// Devuelve false cuando la jerarquía ya está en Federaciones.
+  bool retroceder() => _estado?._retroceder() ?? false;
+
+  void _conectar(_JerarquiaPaginaState estado) => _estado = estado;
+
+  void _desconectar(_JerarquiaPaginaState estado) {
+    if (identical(_estado, estado)) _estado = null;
+  }
+}
+
 class JerarquiaPagina extends StatefulWidget {
-  const JerarquiaPagina({super.key});
+  const JerarquiaPagina({super.key, this.controlador});
+
+  final JerarquiaControlador? controlador;
 
   @override
   State<JerarquiaPagina> createState() => _JerarquiaPaginaState();
@@ -36,7 +52,23 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   @override
   void initState() {
     super.initState();
+    widget.controlador?._conectar(this);
     _recargarFederaciones();
+  }
+
+  @override
+  void didUpdateWidget(covariant JerarquiaPagina oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controlador, widget.controlador)) {
+      oldWidget.controlador?._desconectar(this);
+      widget.controlador?._conectar(this);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controlador?._desconectar(this);
+    super.dispose();
   }
 
   void _recargarFederaciones() {
@@ -57,8 +89,9 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   void _recargarSindicatos() {
     final c = _central;
     setState(() {
-      _sindicatos =
-          c == null ? null : PadronScope.of(context).centrales.sindicatos(c.id);
+      _sindicatos = c == null
+          ? null
+          : PadronScope.of(context).centrales.sindicatos(c.id);
     });
   }
 
@@ -74,6 +107,24 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   void _elegirCentral(Central c) {
     setState(() => _central = c);
     _recargarSindicatos();
+  }
+
+  bool _retroceder() {
+    if (_central != null) {
+      setState(() {
+        _central = null;
+        _sindicatos = null;
+      });
+      return true;
+    }
+    if (_federacion != null) {
+      setState(() {
+        _federacion = null;
+        _centrales = null;
+      });
+      return true;
+    }
+    return false;
   }
 
   @override
@@ -145,15 +196,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
             IconButton(
               icon: const Icon(Icons.arrow_back),
               tooltip: 'Volver',
-              onPressed: () => setState(() {
-                if (_central != null) {
-                  _central = null;
-                  _sindicatos = null;
-                } else {
-                  _federacion = null;
-                  _centrales = null;
-                }
-              }),
+              onPressed: _retroceder,
             ),
             Expanded(
               child: Text(
@@ -195,30 +238,32 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                   selected: _federacion?.id == f.id,
                   leading: const Icon(Icons.account_balance_outlined),
                   title: TituloConEstado(
-                      nombre: f.nombre, habilitado: f.habilitado),
+                    nombre: f.nombre,
+                    habilitado: f.habilitado,
+                  ),
                   subtitle: _numero(f.numero),
                   onTap: () => _elegirFederacion(f),
                   trailing: _menu(
                     alEditar: () => _editarFederacion(f),
-                    alVerDirectorio: () => _verDirectorio(
-                        DirectorioPagina.deFederacion(f)),
+                    alVerDirectorio: () =>
+                        _verDirectorio(DirectorioPagina.deFederacion(f)),
                     habilitado: f.habilitado,
-                    alCambiarEstado: () => cambiarEstadoConAviso(
-                      context,
-                      nombre: f.nombre,
-                      habilitado: f.habilitado,
-                      accion: (estado) => PadronScope.of(context)
-                          .federaciones
-                          .cambiarEstado(f.id, estado),
-                    ).then((cambio) {
-                      if (cambio) _recargarFederaciones();
-                    }),
+                    alCambiarEstado: () =>
+                        cambiarEstadoConAviso(
+                          context,
+                          nombre: f.nombre,
+                          habilitado: f.habilitado,
+                          accion: (estado) => PadronScope.of(
+                            context,
+                          ).federaciones.cambiarEstado(f.id, estado),
+                        ).then((cambio) {
+                          if (cambio) _recargarFederaciones();
+                        }),
                     alEliminar: () => _eliminar(
                       nombre: f.nombre,
                       tipo: 'la federación',
-                      accion: () => PadronScope.of(context)
-                          .federaciones
-                          .eliminar(f.id),
+                      accion: () =>
+                          PadronScope.of(context).federaciones.eliminar(f.id),
                       alTerminar: () {
                         if (_federacion?.id == f.id) {
                           setState(() {
@@ -249,8 +294,8 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     if (datos == null || !mounted) return;
     await _ejecutar(
       () => PadronScope.of(context).federaciones.crear(
-            FederacionRequest(nombre: datos.nombre, numero: datos.numero),
-          ),
+        FederacionRequest(nombre: datos.nombre, numero: datos.numero),
+      ),
       _recargarFederaciones,
     );
   }
@@ -266,9 +311,9 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     if (datos == null || !mounted) return;
     await _ejecutar(
       () => PadronScope.of(context).federaciones.actualizar(
-            f.id,
-            FederacionRequest(nombre: datos.nombre, numero: datos.numero),
-          ),
+        f.id,
+        FederacionRequest(nombre: datos.nombre, numero: datos.numero),
+      ),
       _recargarFederaciones,
     );
   }
@@ -308,7 +353,9 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                   selected: _central?.id == c.id,
                   leading: const Icon(Icons.hub_outlined),
                   title: TituloConEstado(
-                      nombre: c.nombre, habilitado: c.habilitado),
+                    nombre: c.nombre,
+                    habilitado: c.habilitado,
+                  ),
                   subtitle: _abreviatura(c.abreviatura),
                   onTap: () => _elegirCentral(c),
                   trailing: _menu(
@@ -316,16 +363,17 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                     alVerDirectorio: () =>
                         _verDirectorio(DirectorioPagina.deCentral(c)),
                     habilitado: c.habilitado,
-                    alCambiarEstado: () => cambiarEstadoConAviso(
-                      context,
-                      nombre: c.nombre,
-                      habilitado: c.habilitado,
-                      accion: (estado) => PadronScope.of(context)
-                          .centrales
-                          .cambiarEstado(c.id, estado),
-                    ).then((cambio) {
-                      if (cambio) _recargarCentrales();
-                    }),
+                    alCambiarEstado: () =>
+                        cambiarEstadoConAviso(
+                          context,
+                          nombre: c.nombre,
+                          habilitado: c.habilitado,
+                          accion: (estado) => PadronScope.of(
+                            context,
+                          ).centrales.cambiarEstado(c.id, estado),
+                        ).then((cambio) {
+                          if (cambio) _recargarCentrales();
+                        }),
                     alEliminar: () => _eliminar(
                       nombre: c.nombre,
                       tipo: 'la central',
@@ -359,11 +407,13 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     );
     if (datos == null || !mounted) return;
     await _ejecutar(
-      () => PadronScope.of(context).centrales.crear(CentralRequest(
-            nombre: datos.nombre,
-            abreviatura: datos.numero,
-            federacionId: f.id,
-          )),
+      () => PadronScope.of(context).centrales.crear(
+        CentralRequest(
+          nombre: datos.nombre,
+          abreviatura: datos.numero,
+          federacionId: f.id,
+        ),
+      ),
       _recargarCentrales,
     );
   }
@@ -380,13 +430,13 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     if (datos == null || !mounted) return;
     await _ejecutar(
       () => PadronScope.of(context).centrales.actualizar(
-            c.id,
-            CentralRequest(
-              nombre: datos.nombre,
-              abreviatura: datos.numero,
-              federacionId: c.federacionId,
-            ),
-          ),
+        c.id,
+        CentralRequest(
+          nombre: datos.nombre,
+          abreviatura: datos.numero,
+          federacionId: c.federacionId,
+        ),
+      ),
       _recargarCentrales,
     );
   }
@@ -425,15 +475,15 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                 ListTile(
                   leading: const Icon(Icons.groups_outlined),
                   title: TituloConEstado(
-                      nombre: s.nombre, habilitado: s.habilitado),
+                    nombre: s.nombre,
+                    habilitado: s.habilitado,
+                  ),
                   subtitle: Row(
                     children: [
                       if (s.numero != null) ...[
                         Text(
                           'N° ${s.numero}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         const Text(' · '),
@@ -489,22 +539,26 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                       _menu(
                         alEditar: () => _editarSindicato(s),
                         habilitado: s.habilitado,
-                        alCambiarEstado: () => cambiarEstadoConAviso(
-                          context,
-                          nombre: s.nombre,
-                          habilitado: s.habilitado,
-                          accion: (estado) => PadronScope.of(context)
-                              .sindicatos
-                              .cambiarEstado(s.id, estado),
-                        ).then((cambio) {
-                          if (cambio) _recargarSindicatos();
-                        }),
+                        alCambiarEstado: () =>
+                            cambiarEstadoConAviso(
+                              context,
+                              nombre: s.nombre,
+                              habilitado: s.habilitado,
+                              accion: (estado) => PadronScope.of(
+                                context,
+                              ).sindicatos.cambiarEstado(s.id, estado),
+                            ).then((cambio) {
+                              if (cambio) _recargarSindicatos();
+                            }),
                         alDescargarInforme: () =>
                             descargarInformeSindicato(context, s),
                         alDescargarCredenciales: () =>
-                            Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => PliegoPreviaPagina(sindicato: s),
-                        )),
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    PliegoPreviaPagina(sindicato: s),
+                              ),
+                            ),
                         alEliminar: () => _eliminar(
                           nombre: s.nombre,
                           tipo: 'el sindicato',
@@ -543,9 +597,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
 
   /// Abre el directorio de cualquiera de los tres niveles.
   Future<void> _verDirectorio(DirectorioPagina pagina) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => pagina),
-    );
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => pagina));
     if (mounted) _recargarSindicatos();
   }
 
@@ -576,11 +628,13 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     );
     if (datos == null || !mounted) return;
     await _ejecutar(
-      () => PadronScope.of(context).sindicatos.crear(SindicatoRequest(
-            nombre: datos.nombre,
-            numero: datos.numero,
-            centralId: c.id,
-          )),
+      () => PadronScope.of(context).sindicatos.crear(
+        SindicatoRequest(
+          nombre: datos.nombre,
+          numero: datos.numero,
+          centralId: c.id,
+        ),
+      ),
       _recargarSindicatos,
     );
   }
@@ -596,13 +650,13 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     if (datos == null || !mounted) return;
     await _ejecutar(
       () => PadronScope.of(context).sindicatos.actualizar(
-            s.id,
-            SindicatoRequest(
-              nombre: datos.nombre,
-              numero: datos.numero,
-              centralId: s.centralId,
-            ),
-          ),
+        s.id,
+        SindicatoRequest(
+          nombre: datos.nombre,
+          numero: datos.numero,
+          centralId: s.centralId,
+        ),
+      ),
       _recargarSindicatos,
     );
   }
@@ -619,10 +673,9 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     if (abreviatura == null) return null;
     return Text(
       abreviatura,
-      style: Theme.of(context)
-          .textTheme
-          .bodySmall
-          ?.copyWith(fontWeight: FontWeight.w600),
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
     );
   }
 
@@ -697,10 +750,9 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     if (numero == null) return null;
     return Text(
       'N° $numero',
-      style: Theme.of(context)
-          .textTheme
-          .bodySmall
-          ?.copyWith(fontWeight: FontWeight.w600),
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
     );
   }
 

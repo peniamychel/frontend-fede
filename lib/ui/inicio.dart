@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'administracion/backups_pagina.dart';
 import 'calidad/calidad_pagina.dart';
@@ -21,6 +23,9 @@ class Inicio extends StatefulWidget {
 
 class _InicioState extends State<Inicio> {
   int _seccion = 0;
+  final List<int> _historialSecciones = [];
+  final JerarquiaControlador _jerarquia = JerarquiaControlador();
+  bool _preguntandoSalida = false;
 
   static const List<_Destino> _destinos = [
     _Destino('Productores', Icons.people_outline, Icons.people),
@@ -45,13 +50,13 @@ class _InicioState extends State<Inicio> {
 
   @override
   Widget build(BuildContext context) {
-    const paginas = [
-      ProductoresPagina(),
-      JerarquiaPagina(),
-      ReunionesPagina(),
-      CalidadPagina(),
-      EditorCredencialPagina(),
-      BackupsPagina(),
+    final paginas = [
+      const ProductoresPagina(),
+      JerarquiaPagina(controlador: _jerarquia),
+      const ReunionesPagina(),
+      const CalidadPagina(),
+      const EditorCredencialPagina(),
+      const BackupsPagina(),
     ];
 
     final contenido = IndexedStack(
@@ -62,7 +67,7 @@ class _InicioState extends State<Inicio> {
       ],
     );
 
-    return LayoutBuilder(
+    final armazon = LayoutBuilder(
       builder: (context, restricciones) {
         final ancho = restricciones.maxWidth;
 
@@ -128,14 +133,70 @@ class _InicioState extends State<Inicio> {
         );
       },
     );
+
+    return PopScope(
+      // En la raíz, web conserva el historial normal del navegador. Android
+      // intercepta siempre el último retroceso para confirmar antes de salir.
+      canPop: kIsWeb && _seccion == 0 && _historialSecciones.isEmpty,
+      onPopInvokedWithResult: (fueDescartado, _) {
+        if (!fueDescartado) _retroceder();
+      },
+      child: armazon,
+    );
   }
 
-  void _ir(int indice) => setState(() {
-    _seccion = indice;
-    // Queda anotada para siempre: a partir de acá esta sección se
-    // construye como antes y conserva su estado al ir y volver.
-    _visitadas.add(indice);
-  });
+  void _ir(int indice) {
+    if (indice == _seccion) return;
+    setState(() {
+      _historialSecciones.add(_seccion);
+      _seccion = indice;
+      // Queda anotada para siempre: a partir de acá esta sección se
+      // construye como antes y conserva su estado al ir y volver.
+      _visitadas.add(indice);
+    });
+  }
+
+  Future<void> _retroceder() async {
+    if (_seccion == 1 && _jerarquia.retroceder()) return;
+
+    if (_historialSecciones.isNotEmpty) {
+      setState(() => _seccion = _historialSecciones.removeLast());
+      return;
+    }
+
+    if (_seccion != 0) {
+      setState(() => _seccion = 0);
+      return;
+    }
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      await _confirmarSalida();
+    }
+  }
+
+  Future<void> _confirmarSalida() async {
+    if (_preguntandoSalida || !mounted) return;
+    _preguntandoSalida = true;
+    final salir = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Salir de la aplicación?'),
+        content: const Text('¿Querés cerrar Padrón FEDERA?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Salir'),
+          ),
+        ],
+      ),
+    );
+    _preguntandoSalida = false;
+    if (salir == true) await SystemNavigator.pop();
+  }
 }
 
 class _Destino {

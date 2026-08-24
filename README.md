@@ -65,24 +65,24 @@ equipo:
 flutter run --dart-define=API_HOST=192.168.1.X
 ```
 
-## Por qué no hay carpeta `windows/`
+## Aplicación para Windows
 
-Está apartada como `windows_desactivada`.
+El target `windows/` está activo. Para compilarlo hacen falta Visual Studio
+Community 2022 con la carga **Desarrollo para el escritorio con C++** y el modo
+de desarrollador de Windows, que permite registrar los plugins mediante enlaces
+simbólicos.
 
-`file_picker` —el selector de archivos de la pantalla de importación— es el
-primer plugin con código nativo del proyecto. Las plataformas de escritorio
-registran sus plugins con enlaces simbólicos, y Windows no deja crearlos sin el
-modo de desarrollador activado. Como el escritorio igual no compila sin Visual
-Studio, se apartó la carpeta en vez de tocar la configuración del sistema.
-
-Para recuperar el target de escritorio: activar el modo de desarrollador
-(`start ms-settings:developers`) y devolver la carpeta a su sitio.
-
-```bash
-Rename-Item windows_desactivada windows
+```powershell
+start ms-settings:developers
+flutter doctor -v
+flutter run -d windows
 ```
 
-Android y web no necesitan nada de eso.
+La aplicación de Windows usa `http://localhost:8080` por defecto, por lo que el
+backend debe estar ejecutándose en la misma computadora. Se puede apuntar a otra
+máquina con `--dart-define=API_HOST=192.168.1.X`.
+
+Android y web no necesitan Visual Studio.
 
 ## Google Maps (ubicación de sindicatos)
 

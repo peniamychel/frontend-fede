@@ -1,7 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/fondo_ia.dart';
 import '../../repositories/padron.dart';
@@ -36,7 +36,14 @@ class ImagenesProductor extends StatefulWidget {
 }
 
 class _ImagenesProductorState extends State<ImagenesProductor> {
+  final ImagePicker _selectorImagenes = ImagePicker();
   bool _ocupado = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _recuperarImagen());
+  }
 
   Imagen? get _original => _buscar(TipoImagen.original);
   Imagen? get _miniatura => _buscar(TipoImagen.miniatura);
@@ -234,21 +241,73 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
   // ---------- Acciones ----------
 
   Future<void> _elegirYSubir() async {
-    final PlatformFile elegido;
+    final origen = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Tomar foto'),
+              subtitle: const Text('Abrir la cámara del dispositivo'),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Elegir de galería'),
+              subtitle: const Text('Seleccionar una imagen guardada'),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (origen == null || !mounted) return;
+
     try {
-      final resultado = await FilePicker.pickFiles(
-        type: FileType.image,
-        withData: true,
+      final archivo = await _selectorImagenes.pickImage(
+        source: origen,
+        preferredCameraDevice: CameraDevice.rear,
+        requestFullMetadata: false,
       );
-      final archivo = resultado?.files.firstOrNull;
-      if (archivo == null || archivo.bytes == null) return;
-      elegido = archivo;
+      if (archivo == null || !mounted) return;
+      await _previsualizarYSubir(archivo);
     } catch (e) {
       if (mounted) mostrarError(context, e);
-      return;
     }
+  }
 
-    if (!mounted) return;
+  /// Android puede cerrar la actividad mientras su aplicación de cámara está
+  /// abierta. image_picker conserva el resultado para recuperarlo al volver.
+  Future<void> _recuperarImagen() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      final perdido = await _selectorImagenes.retrieveLostData();
+      if (!mounted || perdido.isEmpty) return;
+      if (perdido.exception != null) {
+        mostrarError(context, perdido.exception!);
+        return;
+      }
+      final archivo = perdido.file ?? perdido.files?.firstOrNull;
+      if (archivo != null) await _previsualizarYSubir(archivo);
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    }
+  }
+
+  Future<void> _previsualizarYSubir(XFile archivo) async {
+    final bytes = await archivo.readAsBytes();
+    if (!mounted || bytes.isEmpty) return;
+    final elegido = PlatformFile(
+      name: archivo.name.isEmpty
+          ? 'foto-${DateTime.now().millisecondsSinceEpoch}.jpg'
+          : archivo.name,
+      size: bytes.length,
+      bytes: bytes,
+    );
 
     final decision = await showDialog<_Decision>(
       context: context,
@@ -353,6 +412,7 @@ class _VistaPreviaState extends State<_VistaPrevia> {
   Uint8List? _fotoPreparada;
   bool _quitarFondo = true;
   bool _procesando = false;
+  bool _ajustandoRecorte = false;
   String? _errorPreparacion;
 
   @override
@@ -365,6 +425,9 @@ class _VistaPreviaState extends State<_VistaPrevia> {
       content: SizedBox(
         width: 460,
         child: SingleChildScrollView(
+          physics: _ajustandoRecorte
+              ? const NeverScrollableScrollPhysics()
+              : null,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -389,6 +452,10 @@ class _VistaPreviaState extends State<_VistaPrevia> {
                   });
                 },
                 proporcionFija: Proporcion.cuadrada,
+                alCambiarInteraccion: (ajustando) {
+                  if (!mounted || _ajustandoRecorte == ajustando) return;
+                  setState(() => _ajustandoRecorte = ajustando);
+                },
               ),
               const SizedBox(height: 12),
               SwitchListTile.adaptive(

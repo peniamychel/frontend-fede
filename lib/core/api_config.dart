@@ -14,15 +14,20 @@ class ApiConfig {
   const ApiConfig._();
 
   static const String _hostForzado = String.fromEnvironment('API_HOST');
-  static const int _puerto =
-      int.fromEnvironment('API_PUERTO', defaultValue: 8080);
+  static const int _puerto = int.fromEnvironment(
+    'API_PUERTO',
+    defaultValue: 8080,
+  );
 
   /// Prefijo común de los recursos versionados del backend.
   static const String prefijo = '/api/v1';
 
   static String get host {
     if (_hostForzado.isNotEmpty) return _hostForzado;
-    if (kIsWeb) return 'localhost';
+    // En web, el host debe acompañar al navegador. Así, si otro dispositivo
+    // abre la aplicación mediante 192.168.x.x, también consulta la API en esa
+    // máquina en vez de intentar usar el localhost del propio dispositivo.
+    if (kIsWeb) return Uri.base.host;
     if (defaultTargetPlatform == TargetPlatform.android) return '10.0.2.2';
     return 'localhost';
   }
@@ -44,8 +49,9 @@ class ApiConfig {
         rutaRelativa.startsWith('https://')) {
       return rutaRelativa;
     }
-    final camino =
-        rutaRelativa.startsWith('/') ? rutaRelativa : '/$rutaRelativa';
+    final camino = rutaRelativa.startsWith('/')
+        ? rutaRelativa
+        : '/$rutaRelativa';
     return 'http://$host:$puerto$camino';
   }
 

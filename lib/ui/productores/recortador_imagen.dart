@@ -37,6 +37,7 @@ class RecortadorImagen extends StatefulWidget {
     required this.alCambiar,
     this.alCargarImagen,
     this.proporcionFija,
+    this.alCambiarInteraccion,
   });
 
   final Uint8List bytes;
@@ -53,6 +54,11 @@ class RecortadorImagen extends StatefulWidget {
   /// Las fotos para la credencial usan un único encuadre cuadrado.
   final Proporcion? proporcionFija;
 
+  /// Permite que un contenedor desplazable se detenga mientras se manipula el
+  /// marco. En Android, si ambos reconocen el mismo arrastre vertical, el
+  /// diálogo puede desplazarse en vez de mover la esquina bajo el dedo.
+  final ValueChanged<bool>? alCambiarInteraccion;
+
   @override
   State<RecortadorImagen> createState() => _RecortadorImagenState();
 }
@@ -63,7 +69,7 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
   static const double _minimo = 48;
 
   /// Zona sensible de las esquinas.
-  static const double _asa = 28;
+  static const double _asa = 56;
 
   ui.Image? _imagen;
   Object? _error;
@@ -191,7 +197,10 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
           rect: recorte,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
+            onPanStart: (_) => widget.alCambiarInteraccion?.call(true),
             onPanUpdate: (d) => _mover(d.delta),
+            onPanEnd: (_) => widget.alCambiarInteraccion?.call(false),
+            onPanCancel: () => widget.alCambiarInteraccion?.call(false),
             child: const MouseRegion(cursor: SystemMouseCursors.move),
           ),
         ),
@@ -214,8 +223,12 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
       width: _asa,
       height: _asa,
       child: GestureDetector(
+        key: ValueKey('recorte-${esquina.name}'),
         behavior: HitTestBehavior.opaque,
+        onPanStart: (_) => widget.alCambiarInteraccion?.call(true),
         onPanUpdate: (d) => _redimensionar(esquina, d.delta),
+        onPanEnd: (_) => widget.alCambiarInteraccion?.call(false),
+        onPanCancel: () => widget.alCambiarInteraccion?.call(false),
         child: MouseRegion(
           cursor:
               esquina == _Esquina.superiorIzquierda ||
@@ -224,12 +237,14 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
               : SystemMouseCursors.resizeUpRightDownLeft,
           child: Center(
             child: Container(
-              width: 16,
-              height: 16,
+              // El área táctil sigue siendo de 56 px, pero el indicador
+              // visible es más discreto para no cubrir la fotografía.
+              width: 12,
+              height: 12,
               decoration: BoxDecoration(
                 color: tema.colorScheme.primary,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
+                border: Border.all(color: Colors.white, width: 1.25),
               ),
             ),
           ),
@@ -325,6 +340,14 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
   }
 
   void _redimensionar(_Esquina esquina, Offset delta) {
+    final relacion = _proporcion.relacion;
+    if (relacion != null) {
+      final nuevo = _redimensionarProporcional(esquina, delta, relacion);
+      setState(() => _recorte = nuevo);
+      _notificar();
+      return;
+    }
+
     final recorte = _recorte!;
     double izq = recorte.left;
     double arr = recorte.top;
@@ -351,37 +374,56 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
     der = der.clamp(izq + _minimo, _areaImagen.right);
     aba = aba.clamp(arr + _minimo, _areaImagen.bottom);
 
-    var nuevo = Rect.fromLTRB(izq, arr, der, aba);
-
-    final relacion = _proporcion.relacion;
-    if (relacion != null) {
-      nuevo = _forzarProporcion(nuevo, relacion, esquina);
-    }
-
-    setState(() => _recorte = nuevo);
+    setState(() => _recorte = Rect.fromLTRB(izq, arr, der, aba));
     _notificar();
   }
 
-  /// Ajusta el rectángulo a la proporción pedida moviendo el borde que el
-  /// usuario está arrastrando, para que la esquina opuesta quede quieta.
-  Rect _forzarProporcion(Rect rect, double relacion, _Esquina esquina) {
-    double ancho = rect.width;
-    double alto = rect.height;
-
-    if (ancho / alto > relacion) {
-      ancho = alto * relacion;
-    } else {
-      alto = ancho / relacion;
-    }
-
+  /// Redimensiona conservando la proporción y dejando quieta la esquina
+  /// opuesta. El eje que más se movió gobierna el tamaño: así un dedo no tiene
+  /// que recorrer una diagonal perfecta para que el asa lo siga en Android.
+  Rect _redimensionarProporcional(
+    _Esquina esquina,
+    Offset delta,
+    double relacion,
+  ) {
+    final recorte = _recorte!;
+    final esIzquierda =
+        esquina == _Esquina.superiorIzquierda ||
+        esquina == _Esquina.inferiorIzquierda;
+    final esSuperior =
+        esquina == _Esquina.superiorIzquierda ||
+        esquina == _Esquina.superiorDerecha;
     final fijo = switch (esquina) {
-      _Esquina.superiorIzquierda => rect.bottomRight,
-      _Esquina.superiorDerecha => rect.bottomLeft,
-      _Esquina.inferiorIzquierda => rect.topRight,
-      _Esquina.inferiorDerecha => rect.topLeft,
+      _Esquina.superiorIzquierda => recorte.bottomRight,
+      _Esquina.superiorDerecha => recorte.bottomLeft,
+      _Esquina.inferiorIzquierda => recorte.topRight,
+      _Esquina.inferiorDerecha => recorte.topLeft,
     };
 
-    final ajustado = switch (esquina) {
+    final cambioHorizontal = esIzquierda ? -delta.dx : delta.dx;
+    final cambioVerticalComoAncho =
+        (esSuperior ? -delta.dy : delta.dy) * relacion;
+    final cambio = cambioHorizontal.abs() >= cambioVerticalComoAncho.abs()
+        ? cambioHorizontal
+        : cambioVerticalComoAncho;
+
+    final maximoHorizontal = esIzquierda
+        ? fijo.dx - _areaImagen.left
+        : _areaImagen.right - fijo.dx;
+    final maximoVertical =
+        (esSuperior
+            ? fijo.dy - _areaImagen.top
+            : _areaImagen.bottom - fijo.dy) *
+        relacion;
+    final maximoAncho = math.min(maximoHorizontal, maximoVertical);
+    final minimoAncho = math.min(
+      maximoAncho,
+      math.max(_minimo, _minimo * relacion),
+    );
+    final ancho = (recorte.width + cambio).clamp(minimoAncho, maximoAncho);
+    final alto = ancho / relacion;
+
+    return switch (esquina) {
       _Esquina.superiorIzquierda => Rect.fromLTWH(
         fijo.dx - ancho,
         fijo.dy - alto,
@@ -402,9 +444,6 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
       ),
       _Esquina.inferiorDerecha => Rect.fromLTWH(fijo.dx, fijo.dy, ancho, alto),
     };
-
-    // Si al forzar la proporción se salió de la imagen, se recorta contra ella.
-    return _dentroDelArea(ajustado);
   }
 
   Rect _dentroDelArea(Rect rect) {

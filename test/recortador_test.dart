@@ -15,7 +15,11 @@ void main() {
     foto = File('test/fixtures/foto-prueba.png').readAsBytesSync();
   });
 
-  Widget banco({ValueChanged<Recorte?>? alCambiar}) {
+  Widget banco({
+    ValueChanged<Recorte?>? alCambiar,
+    Proporcion? proporcionFija,
+    ValueChanged<bool>? alCambiarInteraccion,
+  }) {
     return MaterialApp(
       home: Scaffold(
         body: Center(
@@ -24,6 +28,8 @@ void main() {
             child: RecortadorImagen(
               bytes: foto,
               alCambiar: alCambiar ?? (_) {},
+              proporcionFija: proporcionFija,
+              alCambiarInteraccion: alCambiarInteraccion,
             ),
           ),
         ),
@@ -90,31 +96,77 @@ void main() {
     expect(ultimo, isNotNull);
   });
 
-  testWidgets('sobrevive a que lo quiten del árbol mientras decodifica',
-      (tester) async {
+  testWidgets('la esquina cuadrada sigue un arrastre de un solo eje', (
+    tester,
+  ) async {
+    Recorte? ultimo;
+    await tester.pumpWidget(
+      banco(alCambiar: (r) => ultimo = r, proporcionFija: Proporcion.cuadrada),
+    );
+    await esperarImagen(tester);
+    final anchoInicial = ultimo!.ancho;
+
+    await tester.drag(
+      find.byKey(const ValueKey('recorte-inferiorDerecha')),
+      const Offset(-60, 0),
+    );
+    await tester.pump();
+
+    expect(ultimo!.ancho, lessThan(anchoInicial - 40));
+    expect(ultimo!.alto, closeTo(ultimo!.ancho, 2));
+  });
+
+  testWidgets('avisa mientras el dedo manipula una esquina', (tester) async {
+    final estados = <bool>[];
+    await tester.pumpWidget(
+      banco(
+        proporcionFija: Proporcion.cuadrada,
+        alCambiarInteraccion: estados.add,
+      ),
+    );
+    await esperarImagen(tester);
+
+    await tester.drag(
+      find.byKey(const ValueKey('recorte-inferiorDerecha')),
+      const Offset(-40, -40),
+    );
+    await tester.pump();
+
+    expect(estados, containsAllInOrder([true, false]));
+  });
+
+  testWidgets('sobrevive a que lo quiten del árbol mientras decodifica', (
+    tester,
+  ) async {
     // Es lo que pasa al cerrar el diálogo enseguida: si el widget avisa a un
     // padre que ya no está, el árbol queda inconsistente.
     await tester.pumpWidget(banco());
     await tester.pump();
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: SizedBox())),
+    );
     await esperarImagen(tester);
 
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('un archivo que no es imagen muestra el aviso, no una excepción',
-      (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: RecortadorImagen(
-          bytes: Uint8List.fromList('no soy una imagen'.codeUnits),
-          alCambiar: (_) {},
+  testWidgets(
+    'un archivo que no es imagen muestra el aviso, no una excepción',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RecortadorImagen(
+              bytes: Uint8List.fromList('no soy una imagen'.codeUnits),
+              alCambiar: (_) {},
+            ),
+          ),
         ),
-      ),
-    ));
-    await esperarImagen(tester);
+      );
+      await esperarImagen(tester);
 
-    expect(tester.takeException(), isNull);
-    expect(find.textContaining('no se puede mostrar'), findsOneWidget);
-  });
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('no se puede mostrar'), findsOneWidget);
+    },
+  );
 }
