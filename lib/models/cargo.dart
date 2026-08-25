@@ -80,12 +80,10 @@ enum TipoCargo {
 /// autorizó documentos siendo presidente pertenece a ese mandato.
 enum TipoImagenCargo {
   firma('FIRMA', 'Firma', 'La firma manuscrita'),
-  // Se conserva para poder leer y borrar archivos cargados antes de que el pie
-  // de firma pasara a ser texto. La interfaz ya no ofrece nuevas cargas.
   pieFirma(
     'PIE_FIRMA',
     'Pie de firma',
-    'El sello o la línea con nombre y cargo',
+    'La imagen con nombre, cargo y organización',
   );
 
   const TipoImagenCargo(this.valor, this.etiqueta, this.detalle);
@@ -227,12 +225,18 @@ class Directorio {
     required this.ambitoNombre,
     required this.puestos,
     this.selloUrl,
+    this.permitePieFirmaImagen = false,
+    this.firmaObligatoria = true,
+    this.selloObligatorio = true,
   });
 
   final Ambito ambito;
   final int ambitoId;
   final String ambitoNombre;
   final String? selloUrl;
+  final bool permitePieFirmaImagen;
+  final bool firmaObligatoria;
+  final bool selloObligatorio;
   final List<Puesto> puestos;
 
   bool get estaCompleto => puestos.every((p) => p.ocupado);
@@ -247,18 +251,26 @@ class Directorio {
 
   Cargo? cargoDe(TipoCargo tipo) => puestoDe(tipo)?.actual;
 
-  factory Directorio.desdeJson(Map<String, dynamic> json) => Directorio(
-    ambito: Ambito.desde(json['ambito']) ?? Ambito.sindicato,
-    ambitoId: (json['ambitoId'] as num?)?.toInt() ?? 0,
-    ambitoNombre: json['ambitoNombre'] as String? ?? '',
-    selloUrl: json['selloUrl'] as String?,
-    puestos: switch (json['puestos']) {
-      final List<dynamic> lista =>
-        lista
-            .whereType<Map<String, dynamic>>()
-            .map(Puesto.desdeJson)
-            .toList(growable: false),
-      _ => const <Puesto>[],
-    },
-  );
+  factory Directorio.desdeJson(Map<String, dynamic> json) {
+    final ambito = Ambito.desde(json['ambito']) ?? Ambito.sindicato;
+    return Directorio(
+      ambito: ambito,
+      ambitoId: (json['ambitoId'] as num?)?.toInt() ?? 0,
+      ambitoNombre: json['ambitoNombre'] as String? ?? '',
+      selloUrl: json['selloUrl'] as String?,
+      permitePieFirmaImagen:
+          json['permitePieFirmaImagen'] as bool? ?? ambito != Ambito.sindicato,
+      firmaObligatoria:
+          json['firmaObligatoria'] as bool? ?? ambito != Ambito.sindicato,
+      selloObligatorio: json['selloObligatorio'] as bool? ?? true,
+      puestos: switch (json['puestos']) {
+        final List<dynamic> lista =>
+          lista
+              .whereType<Map<String, dynamic>>()
+              .map(Puesto.desdeJson)
+              .toList(growable: false),
+        _ => const <Puesto>[],
+      },
+    );
+  }
 }

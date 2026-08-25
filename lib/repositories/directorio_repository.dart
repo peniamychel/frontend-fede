@@ -1,6 +1,7 @@
 import '../core/api_client.dart';
 import '../core/api_config.dart';
 import '../models/cargo.dart';
+import '../models/lado_credencial.dart';
 import '../models/productor.dart';
 
 /// Directorios de los tres niveles: sindicato, central y federación.
@@ -77,6 +78,15 @@ class DirectorioRepository {
   /// el cargo entre tales fechas.
   Uri urlCredencial(int cargoId) =>
       ApiConfig.uri('/cargos/$cargoId/credencial.pdf');
+
+  /// PDF de una sola página para una Zebra sin dúplex automático.
+  Future<DescargaBinaria> descargarLadoCredencial(
+    int cargoId,
+    LadoCredencial lado,
+  ) => _api.obtenerBytes(
+    '/cargos/$cargoId/credencial.pdf',
+    query: {'cara': lado.parametroApi},
+  );
 
   // ---------- Imágenes del período ----------
 

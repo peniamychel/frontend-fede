@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fede/core/preferencia_tema.dart';
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/credenciales/credencial_previa_pagina.dart';
+import 'package:fede/ui/credenciales/impresion_credencial.dart';
 import 'package:fede/ui/padron_scope.dart';
 
 /// La pantalla de vista previa de la credencial, con un servidor fingido.
@@ -14,6 +15,14 @@ import 'package:fede/ui/padron_scope.dart';
 /// recién al abrir la pantalla, así que sin esta prueba nadie lo veía hasta
 /// apretar el botón.
 void main() {
+  setUp(() {
+    debugImpresionDeCredencialesDisponible = true;
+  });
+
+  tearDown(() {
+    debugImpresionDeCredencialesDisponible = null;
+  });
+
   Map<String, dynamic> previa({
     required bool completa,
     List<Map<String, String>> faltantes = const [],
@@ -89,17 +98,24 @@ void main() {
     // El hueco del reverso se marca en rojo, no se deja en blanco.
     expect(find.text('SIN FIRMANTE'), findsOneWidget);
 
-    final boton = tester.widget<FilledButton>(
+    final anverso = tester.widget<FilledButton>(
       find.ancestor(
-        of: find.text('Generar el PDF'),
+        of: find.text('1. Imprimir anverso'),
         matching: find.byType(FilledButton),
       ),
     );
     expect(
-      boton.onPressed,
+      anverso.onPressed,
       isNull,
       reason: 'con faltantes el botón tiene que estar deshabilitado',
     );
+    final reverso = tester.widget<OutlinedButton>(
+      find.ancestor(
+        of: find.text('2. Imprimir reverso'),
+        matching: find.byType(OutlinedButton),
+      ),
+    );
+    expect(reverso.onPressed, isNull);
   });
 
   testWidgets('completa: dibuja la tarjeta y habilita el botón', (
@@ -116,11 +132,27 @@ void main() {
 
     final boton = tester.widget<FilledButton>(
       find.ancestor(
-        of: find.text('Generar el PDF'),
+        of: find.text('1. Imprimir anverso'),
         matching: find.byType(FilledButton),
       ),
     );
     expect(boton.onPressed, isNotNull);
+    expect(find.text('2. Imprimir reverso'), findsOneWidget);
+  });
+
+  testWidgets('Android conserva la vista previa sin botones de impresión', (
+    tester,
+  ) async {
+    debugImpresionDeCredencialesDisponible = false;
+    await tester.pumpWidget(pantalla(previa(completa: true)));
+    await tester.pump();
+
+    expect(find.text('JUAN MORALES'), findsOneWidget);
+    expect(
+      find.textContaining('La impresión física está disponible'),
+      findsOneWidget,
+    );
+    expect(find.text('1. Imprimir anverso'), findsNothing);
   });
 }
 

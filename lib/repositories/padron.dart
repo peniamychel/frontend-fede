@@ -24,6 +24,7 @@ export '../models/credencial_previa.dart';
 export '../models/diseno_credencial.dart';
 export '../models/federacion.dart';
 export '../models/imagen.dart';
+export '../models/lado_credencial.dart';
 export '../models/importacion.dart';
 export '../models/lote.dart';
 export '../models/productor.dart';

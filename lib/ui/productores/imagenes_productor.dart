@@ -7,6 +7,7 @@ import '../../core/fondo_ia.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/estados.dart';
+import '../widgets/zona_soltar_archivos.dart';
 import 'recortador_imagen.dart';
 import 'visor_imagen.dart';
 
@@ -60,31 +61,36 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
     final tema = Theme.of(context);
     final foto = _original;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 160,
-          child: AspectRatio(
-            aspectRatio: 3 / 4,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                color: tema.colorScheme.surfaceContainerHighest,
-                border: Border.all(color: tema.colorScheme.outlineVariant),
+    return ZonaSoltarArchivos(
+      habilitada: !_ocupado,
+      extensionesPermitidas: extensionesImagen,
+      alSoltar: (archivos) => _previsualizarYSubir(archivos.first),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 160,
+            child: AspectRatio(
+              aspectRatio: 3 / 4,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  color: tema.colorScheme.surfaceContainerHighest,
+                  border: Border.all(color: tema.colorScheme.outlineVariant),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _ocupado
+                    ? const Center(child: CircularProgressIndicator())
+                    : foto == null
+                    ? _vacia(context)
+                    : _vista(context, foto),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: _ocupado
-                  ? const Center(child: CircularProgressIndicator())
-                  : foto == null
-                  ? _vacia(context)
-                  : _vista(context, foto),
             ),
           ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(child: _detalle(context, foto)),
-      ],
+          const SizedBox(width: 16),
+          Expanded(child: _detalle(context, foto)),
+        ],
+      ),
     );
   }
 
@@ -145,6 +151,7 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
               ),
           ],
         ),
+        const AyudaArrastrarArchivo(),
       ],
     );
   }

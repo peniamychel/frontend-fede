@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
+import '../credenciales/impresion_credencial.dart';
 import '../padron_scope.dart';
 import '../productores/productor_detalle_pagina.dart';
-import '../widgets/descargas.dart';
 import '../widgets/estados.dart';
 import 'firmas_cargo.dart';
 import 'sello_directorio.dart';
@@ -153,6 +153,8 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
                   alTerminar: () => _terminar(puesto),
                   alAbrirProductor: _abrirProductor,
                   alCambiarFirmas: _recargar,
+                  permitePieFirmaImagen: directorio.permitePieFirmaImagen,
+                  firmaObligatoria: directorio.firmaObligatoria,
                 ),
               ),
           ],
@@ -401,6 +403,8 @@ class _TarjetaCargo extends StatelessWidget {
     required this.alTerminar,
     required this.alAbrirProductor,
     required this.alCambiarFirmas,
+    required this.permitePieFirmaImagen,
+    required this.firmaObligatoria,
   });
 
   final Puesto puesto;
@@ -409,6 +413,8 @@ class _TarjetaCargo extends StatelessWidget {
   final VoidCallback alTerminar;
   final ValueChanged<int> alAbrirProductor;
   final VoidCallback alCambiarFirmas;
+  final bool permitePieFirmaImagen;
+  final bool firmaObligatoria;
 
   @override
   Widget build(BuildContext context) {
@@ -450,7 +456,7 @@ class _TarjetaCargo extends StatelessWidget {
               Text(
                 puesto.puedeFirmar
                     ? 'Asigná a alguien y después vas a poder cargar su firma y '
-                          'escribir su pie de firma.'
+                          'su pie de firma.'
                     : 'Nadie ocupa este cargo.',
                 style: tema.textTheme.bodySmall?.copyWith(
                   color: tema.colorScheme.outline,
@@ -476,7 +482,12 @@ class _TarjetaCargo extends StatelessWidget {
               // ofrece, porque el backend las rechaza y ningún documento las usa.
               if (puesto.puedeFirmar) ...[
                 const SizedBox(height: 16),
-                FirmasCargo(cargo: actual, alCambiar: alCambiarFirmas),
+                FirmasCargo(
+                  cargo: actual,
+                  alCambiar: alCambiarFirmas,
+                  permitePieFirmaImagen: permitePieFirmaImagen,
+                  firmaObligatoria: firmaObligatoria,
+                ),
               ],
             ],
             const SizedBox(height: 14),
@@ -492,12 +503,19 @@ class _TarjetaCargo extends StatelessWidget {
                 ),
                 if (actual != null) ...[
                   const SizedBox(width: 4),
-                  IconButton(
-                    tooltip: 'Imprimir la credencial de dirigente',
-                    onPressed: () =>
-                        descargarCredencialDirigente(context, actual),
-                    icon: const Icon(Icons.badge_outlined, size: 20),
-                  ),
+                  if (impresionDeCredencialesDisponible)
+                    IconButton(
+                      tooltip: 'Imprimir la credencial de dirigente',
+                      onPressed: () => mostrarPanelImpresionCredencial(
+                        context,
+                        nombre: actual.productorNombre,
+                        vertical: true,
+                        cargar: (lado) => PadronScope.of(
+                          context,
+                        ).directorios.descargarLadoCredencial(actual.id, lado),
+                      ),
+                      icon: const Icon(Icons.badge_outlined, size: 20),
+                    ),
                   const Spacer(),
                   TextButton(
                     onPressed: ocupado ? null : alTerminar,

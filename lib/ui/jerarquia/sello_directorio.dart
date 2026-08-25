@@ -5,6 +5,8 @@ import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../productores/visor_imagen.dart';
 import '../widgets/estados.dart';
+import '../widgets/zona_soltar_archivos.dart';
+import 'elegir_imagen_directorio.dart';
 import 'preparar_imagen_directorio.dart';
 
 /// Sello institucional único del sindicato, central o federación.
@@ -29,101 +31,119 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final url = widget.directorio.selloUrl;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 150,
-              height: 110,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: tema.colorScheme.outlineVariant),
+    return ZonaSoltarArchivos(
+      habilitada: !_ocupado,
+      extensionesPermitidas: extensionesImagen,
+      alSoltar: (archivos) async {
+        final elegido = await archivoSoltadoAPlatformFile(archivos.first);
+        if (!mounted) return;
+        await _prepararYSubir(elegido);
+      },
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 150,
+                height: 110,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: tema.colorScheme.outlineVariant),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _ocupado
+                    ? const Center(
+                        child: SizedBox.square(
+                          dimension: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : url == null
+                    ? InkWell(
+                        onTap: _subir,
+                        child: const Center(
+                          child: Icon(
+                            Icons.approval_outlined,
+                            size: 34,
+                            color: Colors.black26,
+                          ),
+                        ),
+                      )
+                    : _imagen(url),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: _ocupado
-                  ? const Center(
-                      child: SizedBox.square(
-                        dimension: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : url == null
-                  ? InkWell(
-                      onTap: _subir,
-                      child: const Center(
-                        child: Icon(
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
                           Icons.approval_outlined,
-                          size: 34,
-                          color: Colors.black26,
+                          size: 20,
+                          color: tema.colorScheme.primary,
                         ),
-                      ),
-                    )
-                  : _imagen(url),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.approval_outlined,
-                        size: 20,
-                        color: tema.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Sello de ${widget.directorio.ambito.etiqueta.toLowerCase()}',
-                          style: tema.textTheme.titleMedium,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Sello de ${widget.directorio.ambito.etiqueta.toLowerCase()}',
+                            style: tema.textTheme.titleMedium,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Pertenece a ${widget.directorio.ambitoNombre}. Se mantiene aunque cambien '
-                    'las personas del directorio.',
-                    style: tema.textTheme.bodySmall?.copyWith(
-                      color: tema.colorScheme.outline,
+                        if (widget.directorio.selloObligatorio)
+                          Text(
+                            'Obligatorio',
+                            style: tema.textTheme.labelSmall?.copyWith(
+                              color: tema.colorScheme.error,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilledButton.tonalIcon(
-                        onPressed: _ocupado ? null : _subir,
-                        icon: const Icon(Icons.upload_outlined, size: 18),
-                        label: Text(
-                          url == null ? 'Subir sello' : 'Cambiar sello',
-                        ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Pertenece a ${widget.directorio.ambitoNombre}. Se mantiene aunque cambien '
+                      'las personas del directorio.',
+                      style: tema.textTheme.bodySmall?.copyWith(
+                        color: tema.colorScheme.outline,
                       ),
-                      if (url != null)
-                        TextButton.icon(
-                          onPressed: _ocupado ? null : _borrar,
-                          icon: Icon(
-                            Icons.delete_outline,
-                            size: 18,
-                            color: tema.colorScheme.error,
-                          ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: _ocupado ? null : _subir,
+                          icon: const Icon(Icons.upload_outlined, size: 18),
                           label: Text(
-                            'Borrar',
-                            style: TextStyle(color: tema.colorScheme.error),
+                            url == null ? 'Subir sello' : 'Cambiar sello',
                           ),
                         ),
-                    ],
-                  ),
-                ],
+                        if (url != null)
+                          TextButton.icon(
+                            onPressed: _ocupado ? null : _borrar,
+                            icon: Icon(
+                              Icons.delete_outline,
+                              size: 18,
+                              color: tema.colorScheme.error,
+                            ),
+                            label: Text(
+                              'Borrar',
+                              style: TextStyle(color: tema.colorScheme.error),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const AyudaArrastrarArchivo(),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -151,14 +171,10 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
   }
 
   Future<void> _subir() async {
-    final PlatformFile elegido;
+    late final PlatformFile elegido;
     try {
-      final resultado = await FilePicker.pickFiles(
-        type: FileType.image,
-        withData: true,
-      );
-      final archivo = resultado?.files.firstOrNull;
-      if (archivo == null || archivo.bytes == null) return;
+      final archivo = await elegirImagenDirectorio(context);
+      if (archivo == null) return;
       elegido = archivo;
     } catch (e) {
       if (mounted) mostrarError(context, e);
@@ -166,6 +182,10 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
     }
 
     if (!mounted) return;
+    await _prepararYSubir(elegido);
+  }
+
+  Future<void> _prepararYSubir(PlatformFile elegido) async {
     final preparada = await prepararImagenDirectorio(
       context,
       archivo: elegido,

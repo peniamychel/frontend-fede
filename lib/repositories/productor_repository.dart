@@ -4,6 +4,7 @@ import '../core/pagina.dart';
 import '../models/cargo.dart';
 import '../models/credencial_previa.dart';
 import '../models/imagen.dart';
+import '../models/lado_credencial.dart';
 import '../models/productor.dart';
 
 class ProductorRepository {
@@ -19,6 +20,15 @@ class ProductorRepository {
   /// Se devuelve la URL y no los bytes por lo mismo que el informe: el backend
   /// la marca como adjunto y el sistema la guarda solo.
   Uri urlCredencial(int id) => ApiConfig.uri('$_ruta/$id/credencial.pdf');
+
+  /// PDF de una sola página para imprimir cada lado por separado.
+  Future<DescargaBinaria> descargarLadoCredencial(
+    int id,
+    LadoCredencial lado,
+  ) => _api.obtenerBytes(
+    '$_ruta/$id/credencial.pdf',
+    query: {'cara': lado.parametroApi},
+  );
 
   /// Lo que va a salir impreso, y lo que falta para poder imprimirlo.
   ///

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter_litert/native.dart';
 import 'package:google_mlkit_selfie_segmentation/google_mlkit_selfie_segmentation.dart';
 import 'package:image/image.dart' as img;
 
@@ -75,6 +76,10 @@ Future<FotoSinFondo> prepararFotoSinFondo({
 }
 
 Future<img.Image> _aplicarMascara(img.Image origen) async {
+  if (Platform.isWindows) {
+    return _aplicarMascaraWindows(origen);
+  }
+
   final rgba = Uint8List.fromList(
     origen.getBytes(order: img.ChannelOrder.rgba),
   );
@@ -101,15 +106,19 @@ Future<img.Image> _aplicarMascara(img.Image origen) async {
   // Aunque normalmente ML Kit devuelve una máscara del mismo tamaño, se
   // interpola para tolerar modelos o dispositivos que entreguen tamaño crudo.
   for (var y = 0; y < origen.height; y++) {
-    final my = ((y + 0.5) * mascara.height / origen.height - 0.5)
-        .round()
-        .clamp(0, mascara.height - 1);
+    final my = ((y + 0.5) * mascara.height / origen.height - 0.5).round().clamp(
+      0,
+      mascara.height - 1,
+    );
     for (var x = 0; x < origen.width; x++) {
-      final mx = ((x + 0.5) * mascara.width / origen.width - 0.5)
-          .round()
-          .clamp(0, mascara.width - 1);
-      final confianza = mascara.confidences[my * mascara.width + mx]
-          .clamp(0.0, 1.0);
+      final mx = ((x + 0.5) * mascara.width / origen.width - 0.5).round().clamp(
+        0,
+        mascara.width - 1,
+      );
+      final confianza = mascara.confidences[my * mascara.width + mx].clamp(
+        0.0,
+        1.0,
+      );
       final pixel = origen.getPixel(x, y);
       pixel.a = (pixel.a * confianza).round();
     }
@@ -117,10 +126,79 @@ Future<img.Image> _aplicarMascara(img.Image origen) async {
   return origen;
 }
 
-({int x, int y, int lado}) _validarRecorte(
-  Recorte recorte,
-  img.Image imagen,
-) {
+/// En Windows ejecuta localmente el modelo oficial de segmentación de personas
+/// incluido con la aplicación. No necesita Internet ni envía la fotografía.
+Future<img.Image> _aplicarMascaraWindows(img.Image origen) async {
+  const ladoModelo = 256;
+  final entradaImagen = img.copyResize(
+    origen,
+    width: ladoModelo,
+    height: ladoModelo,
+    interpolation: img.Interpolation.cubic,
+  );
+  final entrada = [
+    List.generate(
+      ladoModelo,
+      (y) => List.generate(ladoModelo, (x) {
+        final pixel = entradaImagen.getPixel(x, y);
+        return [pixel.r / 255.0, pixel.g / 255.0, pixel.b / 255.0];
+      }),
+    ),
+  ];
+  final salida = [
+    List.generate(
+      ladoModelo,
+      (_) => List.generate(ladoModelo, (_) => <double>[0]),
+    ),
+  ];
+
+  final (opciones, delegado) = InterpreterFactory.create(
+    const PerformanceConfig.auto(),
+    addMediaPipeCustomOps: true,
+  );
+  Interpreter? interprete;
+  try {
+    interprete = await Interpreter.fromAsset(
+      'assets/models/selfie_segmenter.tflite',
+      options: opciones,
+    );
+    interprete.allocateTensors();
+    final formaEntrada = interprete.getInputTensor(0).shape;
+    final formaSalida = interprete.getOutputTensor(0).shape;
+    if (!_formaCompatible(formaEntrada) || !_formaCompatible(formaSalida)) {
+      throw StateError(
+        'El modelo de eliminación de fondo no tiene el formato esperado.',
+      );
+    }
+    interprete.run(entrada, salida);
+  } finally {
+    interprete?.close();
+    delegado?.delete();
+    opciones.delete();
+  }
+
+  for (var y = 0; y < origen.height; y++) {
+    final my = ((y + .5) * ladoModelo / origen.height - .5).round().clamp(
+      0,
+      ladoModelo - 1,
+    );
+    for (var x = 0; x < origen.width; x++) {
+      final mx = ((x + .5) * ladoModelo / origen.width - .5).round().clamp(
+        0,
+        ladoModelo - 1,
+      );
+      final confianza = salida[0][my][mx][0].clamp(0.0, 1.0);
+      final pixel = origen.getPixel(x, y);
+      pixel.a = (pixel.a * confianza).round();
+    }
+  }
+  return origen;
+}
+
+bool _formaCompatible(List<int> forma) =>
+    forma.length == 4 && forma[0] == 1 && forma[1] == 256 && forma[2] == 256;
+
+({int x, int y, int lado}) _validarRecorte(Recorte recorte, img.Image imagen) {
   if (recorte.ancho <= 0 ||
       recorte.alto <= 0 ||
       recorte.x < 0 ||
@@ -145,13 +223,119 @@ Future<ImagenPngPreparada> prepararDocumentoSinFondo({
   required double intensidad,
   required int ladoMaximo,
   required int pesoMaximo,
-}) {
-  throw UnsupportedError(
-    'La preparación transparente de firmas y sellos está disponible por '
-    'ahora en la versión web.',
+}) async {
+  final decodificada = img.decodeImage(bytes);
+  if (decodificada == null) {
+    throw StateError('No se pudo abrir la imagen del documento.');
+  }
+  final orientada = img.bakeOrientation(decodificada);
+  _validarRecorteLibre(recorte, orientada);
+  var preparada = img.copyCrop(
+    orientada,
+    x: recorte.x,
+    y: recorte.y,
+    width: recorte.ancho,
+    height: recorte.alto,
   );
+
+  final escala = math.min(
+    1.0,
+    ladoMaximo / math.max(preparada.width, preparada.height),
+  );
+  if (escala < 1) {
+    preparada = img.copyResize(
+      preparada,
+      width: math.max(1, (preparada.width * escala).round()),
+      height: math.max(1, (preparada.height * escala).round()),
+      interpolation: img.Interpolation.cubic,
+    );
+  }
+  preparada = preparada.convert(numChannels: 4);
+  if (quitarFondo) {
+    _quitarFondoUniforme(preparada, intensidad.clamp(0.0, 1.0));
+  }
+
+  while (true) {
+    final png = Uint8List.fromList(img.encodePng(preparada));
+    if (png.length <= pesoMaximo ||
+        math.max(preparada.width, preparada.height) <= 128) {
+      return ImagenPngPreparada(png);
+    }
+    preparada = img.copyResize(
+      preparada,
+      width: math.max(1, (preparada.width * .82).round()),
+      height: math.max(1, (preparada.height * .82).round()),
+      interpolation: img.Interpolation.cubic,
+    );
+  }
 }
 
-bool get fondoIaDisponible => Platform.isAndroid || Platform.isIOS;
+void _validarRecorteLibre(Recorte recorte, img.Image imagen) {
+  if (recorte.ancho <= 0 ||
+      recorte.alto <= 0 ||
+      recorte.x < 0 ||
+      recorte.y < 0 ||
+      recorte.x + recorte.ancho > imagen.width ||
+      recorte.y + recorte.alto > imagen.height) {
+    throw StateError('El recorte de la firma o sello no es válido.');
+  }
+}
 
-bool get fondoDocumentoDisponible => false;
+void _quitarFondoUniforme(img.Image imagen, double intensidad) {
+  final radio = math.max(
+    1,
+    math.min(
+      math.min(imagen.width, imagen.height),
+      math.min(imagen.width, imagen.height) ~/ 12,
+    ),
+  );
+  final rojos = <int>[];
+  final verdes = <int>[];
+  final azules = <int>[];
+  final esquinas = [
+    (0, 0),
+    (imagen.width - radio, 0),
+    (0, imagen.height - radio),
+    (imagen.width - radio, imagen.height - radio),
+  ];
+  for (final (inicioX, inicioY) in esquinas) {
+    for (var y = inicioY; y < inicioY + radio; y++) {
+      for (var x = inicioX; x < inicioX + radio; x++) {
+        final pixel = imagen.getPixel(x, y);
+        if (pixel.a == 0) continue;
+        rojos.add(pixel.r.round());
+        verdes.add(pixel.g.round());
+        azules.add(pixel.b.round());
+      }
+    }
+  }
+  if (rojos.isEmpty) return;
+  rojos.sort();
+  verdes.sort();
+  azules.sort();
+  final mitad = rojos.length ~/ 2;
+  final fondoR = rojos[mitad];
+  final fondoG = verdes[mitad];
+  final fondoB = azules[mitad];
+  final tolerancia = 45 + intensidad * 105;
+  final inicio = tolerancia * .38;
+
+  for (final pixel in imagen) {
+    if (pixel.a == 0) continue;
+    final dr = pixel.r - fondoR;
+    final dg = pixel.g - fondoG;
+    final db = pixel.b - fondoB;
+    final distancia = math.sqrt(dr * dr + dg * dg + db * db);
+    final opacidad = distancia <= inicio
+        ? 0.0
+        : distancia >= tolerancia
+        ? 1.0
+        : (distancia - inicio) / (tolerancia - inicio);
+    pixel.a = (pixel.a * opacidad).round();
+  }
+}
+
+bool get fondoIaDisponible =>
+    Platform.isAndroid || Platform.isIOS || Platform.isWindows;
+
+bool get fondoDocumentoDisponible => true;

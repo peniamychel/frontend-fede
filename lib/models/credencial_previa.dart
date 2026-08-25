@@ -17,6 +17,7 @@ class CredencialPrevia {
     required this.codigoQr,
     required this.faltantes,
     required this.completa,
+    this.firmaSindicatoObligatoria = false,
     this.bloqueo,
     this.codigoPadron,
     this.fotoUrl,
@@ -65,6 +66,7 @@ class CredencialPrevia {
   final FirmantePrevio? ejecutivoFederacion;
   final FirmantePrevio? secretarioGeneralCentral;
   final FirmantePrevio? secretarioGeneralSindicato;
+  final bool firmaSindicatoObligatoria;
 
   @Deprecated('Usar secretarioGeneralCentral')
   FirmantePrevio? get secretarioGeneral => secretarioGeneralCentral;
@@ -116,6 +118,8 @@ class CredencialPrevia {
         secretarioGeneralSindicato: FirmantePrevio.desdeJson(
           json['secretarioGeneralSindicato'] as Map<String, dynamic>?,
         ),
+        firmaSindicatoObligatoria:
+            json['firmaSindicatoObligatoria'] as bool? ?? false,
         // Las claves anteriores se leen durante la transición para que el
         // frontend nuevo también pueda hablar con un backend aún no reiniciado.
         secretarioGeneral: FirmantePrevio.desdeJson(
@@ -141,6 +145,7 @@ class FirmantePrevio {
     this.cargo = '',
     this.organizacion = '',
     this.firmaUrl,
+    this.pieFirmaUrl,
     bool? tieneFirma,
     bool? tieneSello,
   }) : _tieneFirmaAnterior = tieneFirma;
@@ -149,6 +154,7 @@ class FirmantePrevio {
   final String cargo;
   final String organizacion;
   final String? firmaUrl;
+  final String? pieFirmaUrl;
   final bool? _tieneFirmaAnterior;
 
   bool get tieneFirma => firmaUrl != null || (_tieneFirmaAnterior ?? false);
@@ -168,6 +174,7 @@ class FirmantePrevio {
       cargo: json['cargo'] as String? ?? '',
       organizacion: json['organizacion'] as String? ?? '',
       firmaUrl: json['firmaUrl'] as String?,
+      pieFirmaUrl: json['pieFirmaUrl'] as String?,
       tieneFirma: json['tieneFirma'] as bool?,
     );
   }

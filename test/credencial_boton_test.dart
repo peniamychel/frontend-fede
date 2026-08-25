@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fede/core/api_client.dart';
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/jerarquia/sindicato_productores_pagina.dart';
 import 'package:fede/ui/padron_scope.dart';
@@ -19,15 +20,14 @@ void main() {
   );
 
   Widget envolver(Widget hijo) => PadronScope(
-        padron: Padron(),
-        child: MaterialApp(home: hijo),
-      );
+    padron: Padron(),
+    child: MaterialApp(home: hijo),
+  );
 
   IconButton botonCon(WidgetTester tester, IconData icono) {
-    return tester.widget(find.ancestor(
-      of: find.byIcon(icono),
-      matching: find.byType(IconButton),
-    ));
+    return tester.widget(
+      find.ancestor(of: find.byIcon(icono), matching: find.byType(IconButton)),
+    );
   }
 
   group('URLs', () {
@@ -41,11 +41,34 @@ void main() {
     test('el pliego cuelga del sindicato, y no se pisa con el informe', () {
       final padron = Padron();
 
-      expect(padron.sindicatos.urlCredenciales(16).path,
-          '/api/v1/sindicatos/16/credenciales.pdf');
+      expect(
+        padron.sindicatos.urlCredenciales(16).path,
+        '/api/v1/sindicatos/16/credenciales.pdf',
+      );
       // Son dos documentos distintos: la nómina y las tarjetas.
-      expect(padron.sindicatos.urlCredenciales(16),
-          isNot(padron.sindicatos.urlInforme(16)));
+      expect(
+        padron.sindicatos.urlCredenciales(16),
+        isNot(padron.sindicatos.urlInforme(16)),
+      );
+    });
+
+    test('cada botón pide al backend una sola cara de la credencial', () async {
+      final api = _ApiDescarga();
+      final padron = Padron(api: api);
+
+      await padron.productores.descargarLadoCredencial(
+        812,
+        LadoCredencial.anverso,
+      );
+      expect(api.ruta, '/productores/812/credencial.pdf');
+      expect(api.query, {'cara': 'ANVERSO'});
+
+      await padron.directorios.descargarLadoCredencial(
+        91,
+        LadoCredencial.reverso,
+      );
+      expect(api.ruta, '/cargos/91/credencial.pdf');
+      expect(api.query, {'cara': 'REVERSO'});
     });
   });
 
@@ -56,8 +79,9 @@ void main() {
   // simulado, que este proyecto no tiene. Su botón de credencial usa la misma
   // URL que se verifica arriba.
 
-  testWidgets('la pantalla del sindicato ofrece las dos impresiones',
-      (tester) async {
+  testWidgets('la pantalla del sindicato ofrece las dos impresiones', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       envolver(const SindicatoProductoresPagina(sindicato: libertad)),
     );
@@ -68,9 +92,33 @@ void main() {
     expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
     expect(find.byIcon(Icons.badge_outlined), findsOneWidget);
 
-    expect(botonCon(tester, Icons.picture_as_pdf_outlined).tooltip,
-        contains('nómina'));
-    expect(botonCon(tester, Icons.badge_outlined).tooltip,
-        contains('credenciales'));
+    expect(
+      botonCon(tester, Icons.picture_as_pdf_outlined).tooltip,
+      contains('nómina'),
+    );
+    expect(
+      botonCon(tester, Icons.badge_outlined).tooltip,
+      contains('credenciales'),
+    );
   });
+}
+
+class _ApiDescarga extends ApiClient {
+  String? ruta;
+  Map<String, dynamic>? query;
+
+  @override
+  Future<DescargaBinaria> obtenerBytes(
+    String ruta, {
+    Map<String, dynamic>? query,
+    Duration tiempoLimite = const Duration(minutes: 5),
+  }) async {
+    this.ruta = ruta;
+    this.query = query;
+    return const DescargaBinaria(
+      bytes: [],
+      nombreArchivo: 'credencial.pdf',
+      tipoMime: 'application/pdf',
+    );
+  }
 }

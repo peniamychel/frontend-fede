@@ -1,3 +1,4 @@
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -5,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/estados.dart';
+import '../widgets/zona_soltar_archivos.dart';
 
 /// El acta de la reunión, hoja por hoja.
 ///
@@ -13,7 +15,11 @@ import '../widgets/estados.dart';
 /// hojas se suben de a una y quedan ordenadas, en vez de exigir un PDF armado
 /// antes, que es un paso que nadie hace en el campo.
 class TarjetaActa extends StatefulWidget {
-  const TarjetaActa({super.key, required this.reunion, required this.alCambiar});
+  const TarjetaActa({
+    super.key,
+    required this.reunion,
+    required this.alCambiar,
+  });
 
   final Reunion reunion;
 
@@ -32,71 +38,89 @@ class _TarjetaActaState extends State<TarjetaActa> {
     final tema = Theme.of(context);
     final hojas = widget.reunion.hojasActa;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.description_outlined, color: tema.colorScheme.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Acta', style: tema.textTheme.titleLarge),
-                ),
-                if (hojas.isNotEmpty)
-                  Text(
-                    hojas.length == 1 ? '1 hoja' : '${hojas.length} hojas',
-                    style: tema.textTheme.bodySmall
-                        ?.copyWith(color: tema.colorScheme.outline),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Toda reunión tiene acta. Se sube hoja por hoja, en el orden en '
-              'que están en el cuaderno, con el número que lleva en el libro.',
-              style: tema.textTheme.bodySmall
-                  ?.copyWith(color: tema.colorScheme.outline),
-            ),
-            const SizedBox(height: 12),
-            if (hojas.isEmpty)
-              _SinActa(tema: tema)
-            else ...[
-              _numero(context),
-              const SizedBox(height: 8),
-              Column(
+    return ZonaSoltarArchivos(
+      habilitada: !_subiendo,
+      permiteVarios: true,
+      extensionesPermitidas: extensionesHojaActa,
+      mensaje: 'Soltá aquí las hojas del acta',
+      alSoltar: _agregarHojasSoltadas,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
                 children: [
-                  for (final h in hojas)
-                    _FilaHoja(
-                      hoja: h,
-                      alVer: () => _verHoja(h),
-                      alQuitar: () => _quitarHoja(h),
+                  Icon(
+                    Icons.description_outlined,
+                    color: tema.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Acta', style: tema.textTheme.titleLarge),
+                  ),
+                  if (hojas.isNotEmpty)
+                    Text(
+                      hojas.length == 1 ? '1 hoja' : '${hojas.length} hojas',
+                      style: tema.textTheme.bodySmall?.copyWith(
+                        color: tema.colorScheme.outline,
+                      ),
                     ),
                 ],
               ),
-            ],
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _subiendo
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: SizedBox(
+              const SizedBox(height: 4),
+              Text(
+                'Toda reunión tiene acta. Se sube hoja por hoja, en el orden en '
+                'que están en el cuaderno, con el número que lleva en el libro.',
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.outline,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (hojas.isEmpty)
+                _SinActa(tema: tema)
+              else ...[
+                _numero(context),
+                const SizedBox(height: 8),
+                Column(
+                  children: [
+                    for (final h in hojas)
+                      _FilaHoja(
+                        hoja: h,
+                        alVer: () => _verHoja(h),
+                        alQuitar: () => _quitarHoja(h),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _subiendo
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
-                    )
-                  : FilledButton.tonalIcon(
-                      onPressed: _agregarHoja,
-                      icon: const Icon(Icons.add_photo_alternate_outlined),
-                      label: Text(hojas.isEmpty
-                          ? 'Subir la primera hoja'
-                          : 'Agregar otra hoja'),
-                    ),
-            ),
-          ],
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : FilledButton.tonalIcon(
+                        onPressed: _agregarHoja,
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                        label: Text(
+                          hojas.isEmpty
+                              ? 'Subir la primera hoja'
+                              : 'Agregar otra hoja',
+                        ),
+                      ),
+              ),
+              const AyudaArrastrarArchivo(
+                texto: 'También podés arrastrar imágenes o PDF aquí.',
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -122,24 +146,28 @@ class _TarjetaActaState extends State<TarjetaActa> {
       ),
       child: Row(
         children: [
-          Icon(Icons.tag,
-              size: 18,
-              color: falta
-                  ? tema.colorScheme.onErrorContainer
-                  : tema.colorScheme.onSurfaceVariant),
+          Icon(
+            Icons.tag,
+            size: 18,
+            color: falta
+                ? tema.colorScheme.onErrorContainer
+                : tema.colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               falta ? 'Sin número de acta' : 'Acta N° $codigo',
               style: tema.textTheme.titleSmall?.copyWith(
-                  color: falta ? tema.colorScheme.onErrorContainer : null),
+                color: falta ? tema.colorScheme.onErrorContainer : null,
+              ),
             ),
           ),
           if (falta)
             Text(
               'Se cargó antes de que se pidiera',
-              style: tema.textTheme.bodySmall
-                  ?.copyWith(color: tema.colorScheme.onErrorContainer),
+              style: tema.textTheme.bodySmall?.copyWith(
+                color: tema.colorScheme.onErrorContainer,
+              ),
             ),
           TextButton(
             onPressed: _cambiarNumero,
@@ -155,15 +183,18 @@ class _TarjetaActaState extends State<TarjetaActa> {
   /// Que se haya tipeado mal no es motivo para volver a cargar el acta: el
   /// número es un dato del acta, no de cada foto.
   Future<void> _cambiarNumero() async {
-    final codigo = await pedirNumeroDeActa(context,
-        actual: widget.reunion.codigoActa, textoAceptar: 'Guardar');
+    final codigo = await pedirNumeroDeActa(
+      context,
+      actual: widget.reunion.codigoActa,
+      textoAceptar: 'Guardar',
+    );
     if (codigo == null || !mounted) return;
 
     try {
       setState(() => _subiendo = true);
-      await PadronScope.of(context)
-          .reuniones
-          .ponerCodigoActa(widget.reunion.id, codigo);
+      await PadronScope.of(
+        context,
+      ).reuniones.ponerCodigoActa(widget.reunion.id, codigo);
       if (!mounted) return;
       setState(() => _subiendo = false);
       mostrarExito(context, 'Acta N° $codigo');
@@ -176,8 +207,9 @@ class _TarjetaActaState extends State<TarjetaActa> {
   }
 
   Future<void> _verHoja(HojaActa hoja) async {
-    final url =
-        PadronScope.of(context).reuniones.urlHoja(widget.reunion.id, hoja.id);
+    final url = PadronScope.of(
+      context,
+    ).reuniones.urlHoja(widget.reunion.id, hoja.id);
     try {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } catch (e) {
@@ -194,7 +226,10 @@ class _TarjetaActaState extends State<TarjetaActa> {
   Future<void> _agregarHoja() async {
     var codigo = widget.reunion.codigoActa;
     if (codigo == null || codigo.isEmpty) {
-      codigo = await pedirNumeroDeActa(context, textoAceptar: 'Elegir el archivo');
+      codigo = await pedirNumeroDeActa(
+        context,
+        textoAceptar: 'Elegir el archivo',
+      );
       if (codigo == null || !mounted) return;
     } else {
       // Las que siguen son del mismo acta: no se vuelve a preguntar.
@@ -212,10 +247,42 @@ class _TarjetaActaState extends State<TarjetaActa> {
       );
       final elegidos = resultado?.files ?? const [];
       if (elegidos.isEmpty || !mounted) return;
+      await _subirHojas(elegidos, codigo);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _subiendo = false);
+      mostrarError(context, e);
+      // Puede haber subido algunas antes de fallar.
+      widget.alCambiar();
+    }
+  }
 
-      setState(() => _subiendo = true);
-      final repo = PadronScope.of(context).reuniones;
-      var subidas = 0;
+  Future<void> _agregarHojasSoltadas(List<DropItem> archivos) async {
+    var codigo = widget.reunion.codigoActa;
+    if (codigo == null || codigo.isEmpty) {
+      codigo = await pedirNumeroDeActa(context, textoAceptar: 'Subir hojas');
+      if (codigo == null || !mounted) return;
+    } else {
+      codigo = null;
+    }
+
+    try {
+      final elegidos = <PlatformFile>[];
+      for (final archivo in archivos) {
+        elegidos.add(await archivoSoltadoAPlatformFile(archivo));
+      }
+      if (!mounted) return;
+      await _subirHojas(elegidos, codigo);
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    }
+  }
+
+  Future<void> _subirHojas(List<PlatformFile> elegidos, String? codigo) async {
+    setState(() => _subiendo = true);
+    final repo = PadronScope.of(context).reuniones;
+    var subidas = 0;
+    try {
       // De a una y en orden: el backend numera por orden de llegada, y en
       // paralelo dos hojas podrían pelearse el mismo número.
       for (final archivo in elegidos) {
@@ -232,7 +299,10 @@ class _TarjetaActaState extends State<TarjetaActa> {
       }
       if (!mounted) return;
       setState(() => _subiendo = false);
-      mostrarExito(context, subidas == 1 ? 'Hoja agregada' : '$subidas hojas agregadas');
+      mostrarExito(
+        context,
+        subidas == 1 ? 'Hoja agregada' : '$subidas hojas agregadas',
+      );
       widget.alCambiar();
     } catch (e) {
       if (!mounted) return;
@@ -252,7 +322,7 @@ class _TarjetaActaState extends State<TarjetaActa> {
         content: Text(
           ultima
               ? 'Es la única hoja: la reunión se queda sin acta, y hasta que '
-                  'se suba otra no se van a poder decidir vetos en ella.'
+                    'se suba otra no se van a poder decidir vetos en ella.'
               : 'Las hojas que siguen se renumeran para no dejar un hueco.',
         ),
         actions: [
@@ -270,9 +340,9 @@ class _TarjetaActaState extends State<TarjetaActa> {
     if (confirmado != true || !mounted) return;
 
     try {
-      await PadronScope.of(context)
-          .reuniones
-          .quitarHoja(widget.reunion.id, hoja.id);
+      await PadronScope.of(
+        context,
+      ).reuniones.quitarHoja(widget.reunion.id, hoja.id);
       if (!mounted) return;
       mostrarExito(context, 'Hoja quitada');
       widget.alCambiar();
@@ -291,11 +361,10 @@ Future<String?> pedirNumeroDeActa(
   BuildContext context, {
   String? actual,
   required String textoAceptar,
-}) =>
-    showDialog<String>(
-      context: context,
-      builder: (_) => _DialogoNumero(actual: actual, textoAceptar: textoAceptar),
-    );
+}) => showDialog<String>(
+  context: context,
+  builder: (_) => _DialogoNumero(actual: actual, textoAceptar: textoAceptar),
+);
 
 class _DialogoNumero extends StatefulWidget {
   const _DialogoNumero({required this.actual, required this.textoAceptar});
@@ -309,8 +378,9 @@ class _DialogoNumero extends StatefulWidget {
 
 class _DialogoNumeroState extends State<_DialogoNumero> {
   final _formulario = GlobalKey<FormState>();
-  late final TextEditingController _codigo =
-      TextEditingController(text: widget.actual ?? '');
+  late final TextEditingController _codigo = TextEditingController(
+    text: widget.actual ?? '',
+  );
 
   @override
   void dispose() {
@@ -359,10 +429,7 @@ class _DialogoNumeroState extends State<_DialogoNumero> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
-        FilledButton(
-          onPressed: _aceptar,
-          child: Text(widget.textoAceptar),
-        ),
+        FilledButton(onPressed: _aceptar, child: Text(widget.textoAceptar)),
       ],
     );
   }
@@ -388,15 +455,18 @@ class _SinActa extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.upload_file_outlined,
-              color: tema.colorScheme.onErrorContainer),
+          Icon(
+            Icons.upload_file_outlined,
+            color: tema.colorScheme.onErrorContainer,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               'Todavía sin acta. Subí el PDF o las fotos del cuaderno, con el '
               'número que lleva en el libro.',
-              style: tema.textTheme.bodyMedium
-                  ?.copyWith(color: tema.colorScheme.onErrorContainer),
+              style: tema.textTheme.bodyMedium?.copyWith(
+                color: tema.colorScheme.onErrorContainer,
+              ),
             ),
           ),
         ],
@@ -425,9 +495,12 @@ class _FilaHoja extends StatelessWidget {
       leading: CircleAvatar(
         radius: 14,
         backgroundColor: tema.colorScheme.secondaryContainer,
-        child: Text('${hoja.orden}',
-            style: tema.textTheme.labelMedium
-                ?.copyWith(color: tema.colorScheme.onSecondaryContainer)),
+        child: Text(
+          '${hoja.orden}',
+          style: tema.textTheme.labelMedium?.copyWith(
+            color: tema.colorScheme.onSecondaryContainer,
+          ),
+        ),
       ),
       title: Text(hoja.nombre, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text('${hoja.esPdf ? 'PDF' : 'Imagen'} · ${hoja.pesoLegible}'),
@@ -442,8 +515,11 @@ class _FilaHoja extends StatelessWidget {
           IconButton(
             tooltip: 'Quitar la hoja',
             onPressed: alQuitar,
-            icon: Icon(Icons.delete_outline,
-                size: 20, color: tema.colorScheme.error),
+            icon: Icon(
+              Icons.delete_outline,
+              size: 20,
+              color: tema.colorScheme.error,
+            ),
           ),
         ],
       ),

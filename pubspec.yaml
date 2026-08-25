@@ -43,6 +43,10 @@ dependencies:
   google_mlkit_selfie_segmentation: ^0.12.1
   image: ^4.9.2
   image_picker: ^1.2.3
+  pdf: ^3.13.0
+  printing: ^5.15.0
+  flutter_litert: ^3.8.0
+  desktop_drop: 0.7.1
 
 dev_dependencies:
   flutter_test:
@@ -69,6 +73,7 @@ flutter:
   assets:
     - assets/credencial/cara.jpg
     - assets/credencial/reverso.jpg
+    - assets/models/selfie_segmenter.tflite
 
   # To add assets to your application, add an assets section, like this:
   # assets:

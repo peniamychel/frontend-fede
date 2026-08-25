@@ -190,6 +190,38 @@ void main() {
     expect(find.text('CARLA MAMANI'), findsOneWidget);
   });
 
+  testWidgets('la imagen de pie de firma reemplaza el texto automático', (
+    tester,
+  ) async {
+    const url = '/api/v1/archivos/pies-firma/ejecutivo.png';
+    await tester.pumpWidget(
+      banco(
+        reverso: true,
+        datos: previa(
+          ejecutivoFederacion: const FirmantePrevio(
+            nombre: 'ANA QUISPE',
+            cargo: 'EJECUTIVO',
+            organizacion: 'FEDERACIÓN CARRASCO',
+            firmaUrl: '/api/v1/archivos/firmas/ejecutivo.png',
+            pieFirmaUrl: url,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('ANA QUISPE'), findsNothing);
+    expect(find.text('EJECUTIVO'), findsNothing);
+    final imagenesDeRed = tester
+        .widgetList<Image>(find.byType(Image))
+        .where((imagen) => imagen.image is NetworkImage);
+    expect(
+      imagenesDeRed
+          .map((imagen) => (imagen.image as NetworkImage).url)
+          .where((direccion) => direccion.endsWith(url)),
+      hasLength(1),
+    );
+  });
+
   testWidgets('sin secretario general del sindicato se dice en su lugar', (
     tester,
   ) async {

@@ -15,6 +15,13 @@ enum ClaseImagenDirectorio {
     ladoMaximo: 600,
     pesoMaximo: 200 * 1024,
   ),
+  pieFirma(
+    etiqueta: 'pie de firma',
+    titulo: 'Preparar pie de firma',
+    instruccion: 'Recortá alrededor del nombre, cargo y organización.',
+    ladoMaximo: 600,
+    pesoMaximo: 200 * 1024,
+  ),
   sello(
     etiqueta: 'sello',
     titulo: 'Preparar sello',
@@ -58,7 +65,7 @@ Future<ImagenDirectorioPreparada?> prepararImagenDirectorio(
       PrepararImagenDirectorioDialogo(archivo: archivo, clase: clase),
 );
 
-/// Recorta una firma o sello y elimina el color uniforme del papel.
+/// Recorta una firma, pie de firma o sello y elimina el fondo del papel.
 ///
 /// La vista previa se genera en el navegador. El archivo solo se sube después
 /// de que la persona confirma el resultado, siempre como PNG con canal alfa.

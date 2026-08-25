@@ -123,6 +123,7 @@ class TarjetaPrevia extends StatelessWidget {
     final url = _url(e.campo);
     final esta = _imagenPresente(e.campo);
     final esFoto = e.campo == 'FOTO';
+    final opcional = _imagenOpcional(e.campo);
     return Positioned(
       left: _p(e.x),
       bottom: _p(e.y),
@@ -131,7 +132,9 @@ class TarjetaPrevia extends StatelessWidget {
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          border: !esta ? Border.all(color: Colors.red.shade400) : null,
+          border: !esta && !opcional
+              ? Border.all(color: Colors.red.shade400)
+              : null,
         ),
         child: url != null
             ? Image.network(
@@ -148,12 +151,18 @@ class TarjetaPrevia extends StatelessWidget {
                   child: Text(
                     esFoto
                         ? 'SIN FOTO'
+                        : opcional
+                        ? 'FIRMA OPCIONAL'
                         : esta
                         ? e.etiqueta
                         : 'SIN ${e.etiqueta.toUpperCase()}',
                     style: TextStyle(
                       fontSize: _p(rotuloPt),
-                      color: esta ? Colors.green.shade700 : Colors.red.shade700,
+                      color: opcional
+                          ? Colors.grey.shade600
+                          : esta
+                          ? Colors.green.shade700
+                          : Colors.red.shade700,
                     ),
                   ),
                 ),
@@ -164,6 +173,7 @@ class TarjetaPrevia extends StatelessWidget {
 
   List<Widget> _pie(ElementoDisenoCredencial e) {
     final quien = _firmantePie(e.campo);
+    final pieImagenUrl = quien?.pieFirmaUrl;
     final factor = e.alto / 21;
     Widget linea(String texto, double y, double fuente, FontWeight peso) {
       final px = _p(fuente);
@@ -184,21 +194,25 @@ class TarjetaPrevia extends StatelessWidget {
     }
 
     return [
-      Positioned(
-        left: _p(e.x),
-        bottom: _p(e.y),
-        width: _p(e.ancho),
-        height: _p(e.alto),
-        child: Container(
-          color: Colors.white,
-          foregroundDecoration: const BoxDecoration(
-            border: Border(top: BorderSide(color: Colors.black, width: .8)),
+      if (pieImagenUrl != null)
+        Positioned(
+          left: _p(e.x),
+          bottom: _p(e.y),
+          width: _p(e.ancho),
+          height: _p(e.alto),
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Image.network(
+              ApiConfig.urlAbsoluta(pieImagenUrl),
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) =>
+                  const Icon(Icons.broken_image_outlined),
+            ),
           ),
-        ),
-      ),
-      if (quien == null)
+        )
+      else if (quien == null && !_pieOpcional(e.campo))
         linea('SIN FIRMANTE', 10, e.tamanoFuente, FontWeight.bold)
-      else ...[
+      else if (quien != null) ...[
         linea(quien.nombre, 15, e.tamanoFuente, FontWeight.bold),
         linea(
           quien.cargo,
@@ -257,6 +271,12 @@ class TarjetaPrevia extends StatelessWidget {
     'FIRMA_SINDICATO' => previa.secretarioGeneralSindicato?.tieneFirma ?? false,
     _ => false,
   };
+
+  bool _imagenOpcional(String campo) =>
+      campo == 'FIRMA_SINDICATO' && !previa.firmaSindicatoObligatoria;
+
+  bool _pieOpcional(String campo) =>
+      campo == 'PIE_SINDICATO' && !previa.firmaSindicatoObligatoria;
 
   FirmantePrevio? _firmantePie(String campo) => switch (campo) {
     'PIE_FEDERACION' => previa.ejecutivoFederacion,

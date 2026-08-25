@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
-import '../widgets/descargas.dart';
 import '../widgets/estados.dart';
+import 'impresion_credencial.dart';
 import 'tarjeta_previa.dart';
 
 /// Vista previa de la credencial antes de imprimirla.
@@ -84,11 +84,9 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
         constructor: (context, datos) => _Contenido(
           previa: datos.$1,
           diseno: datos.$2,
-          alImprimir: () => descargarCredencialProductor(
+          cargar: (lado) => PadronScope.of(
             context,
-            datos.$1.productorId,
-            datos.$1.nombreCompleto,
-          ),
+          ).productores.descargarLadoCredencial(datos.$1.productorId, lado),
         ),
       ),
     );
@@ -99,12 +97,12 @@ class _Contenido extends StatelessWidget {
   const _Contenido({
     required this.previa,
     required this.diseno,
-    required this.alImprimir,
+    required this.cargar,
   });
 
   final CredencialPrevia previa;
   final DisenoCredencial diseno;
-  final VoidCallback alImprimir;
+  final CargarLadoCredencial cargar;
 
   @override
   Widget build(BuildContext context) {
@@ -128,7 +126,7 @@ class _Contenido extends StatelessWidget {
           ],
         );
 
-        final informe = _Informe(previa: previa, alImprimir: alImprimir);
+        final informe = _Informe(previa: previa, cargar: cargar);
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -171,10 +169,10 @@ class _Rotulo extends StatelessWidget {
 
 /// El veredicto y, si hace falta, qué completar.
 class _Informe extends StatelessWidget {
-  const _Informe({required this.previa, required this.alImprimir});
+  const _Informe({required this.previa, required this.cargar});
 
   final CredencialPrevia previa;
-  final VoidCallback alImprimir;
+  final CargarLadoCredencial cargar;
 
   @override
   Widget build(BuildContext context) {
@@ -280,10 +278,10 @@ class _Informe extends StatelessWidget {
           for (final falta in lista) _FilaFaltante(falta: falta),
         ],
         const SizedBox(height: 24),
-        FilledButton.icon(
-          onPressed: previa.completa ? alImprimir : null,
-          icon: const Icon(Icons.picture_as_pdf_outlined),
-          label: const Text('Generar el PDF'),
+        PanelImpresionCredencial(
+          habilitada: previa.completa,
+          nombre: previa.nombreCompleto,
+          cargar: cargar,
         ),
         if (!previa.completa) ...[
           const SizedBox(height: 8),
