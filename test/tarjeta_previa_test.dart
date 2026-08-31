@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fede/models/credencial_previa.dart';
+import 'package:fede/models/diseno_credencial.dart';
 import 'package:fede/ui/credenciales/tarjeta_previa.dart';
 
 /// La tarjeta de la vista previa tiene que verse como el PDF.
@@ -60,13 +61,18 @@ void main() {
     completa: true,
   );
 
-  Widget banco({required bool reverso, CredencialPrevia? datos}) => MaterialApp(
+  Widget banco({
+    required bool reverso,
+    CredencialPrevia? datos,
+    DisenoCredencial? diseno,
+  }) => MaterialApp(
     home: Scaffold(
       body: Center(
         child: TarjetaPrevia(
           previa: datos ?? previa(),
           reverso: reverso,
           ancho: anchoDelDoble,
+          diseno: diseno,
         ),
       ),
     ),
@@ -169,6 +175,29 @@ void main() {
     }
   });
 
+  testWidgets('la vista previa aplica la fuente elegida al texto', (
+    tester,
+  ) async {
+    final base = DisenoCredencial.predeterminado();
+    final editado = DisenoCredencial(
+      ancho: base.ancho,
+      alto: base.alto,
+      elementos: [
+        for (final elemento in base.elementos)
+          elemento.campo == 'NOMBRE_COMPLETO'
+              ? elemento.copiar(fuente: FuenteCredencial.merriweather)
+              : elemento,
+      ],
+    );
+
+    await tester.pumpWidget(banco(reverso: false, diseno: editado));
+
+    final nombre = tester.widget<Text>(
+      find.text('CANDIDO COLQUECHAMBI MAMANI'),
+    );
+    expect(nombre.style?.fontFamily, 'CredencialMerriweather');
+  });
+
   testWidgets('sin código del padrón el hueco se marca, no se deja en blanco', (
     tester,
   ) async {
@@ -222,14 +251,14 @@ void main() {
     );
   });
 
-  testWidgets('sin secretario general del sindicato se dice en su lugar', (
+  testWidgets('la firma opcional del sindicato no se marca como faltante', (
     tester,
   ) async {
     await tester.pumpWidget(
       banco(reverso: true, datos: previa(secretarioGeneralSindicato: null)),
     );
 
-    expect(find.text('SIN FIRMANTE'), findsOneWidget);
+    expect(find.text('SIN FIRMANTE'), findsNothing);
   });
 
   testWidgets('todo se dibuja dentro de la tarjeta, nada se sale', (

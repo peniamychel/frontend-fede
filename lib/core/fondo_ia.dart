@@ -27,6 +27,7 @@ Future<ImagenPngPreparada> prepararDocumentoSinFondo({
   required bool quitarFondo,
   required String tipoMime,
   required double intensidad,
+  required int realce,
   required int ladoMaximo,
   required int pesoMaximo,
 }) => plataforma.prepararDocumentoSinFondo(
@@ -35,6 +36,7 @@ Future<ImagenPngPreparada> prepararDocumentoSinFondo({
   quitarFondo: quitarFondo,
   tipoMime: tipoMime,
   intensidad: intensidad,
+  realce: realce,
   ladoMaximo: ladoMaximo,
   pesoMaximo: pesoMaximo,
 );

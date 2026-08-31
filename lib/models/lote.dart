@@ -28,11 +28,12 @@ enum ExtensionLote {
 /// origen no se pudo interpretar, y el texto crudo queda en
 /// [Lote.estadoOriginal].
 enum EstadoLote {
-  conSistema('CON_SISTEMA', 'Con sistema'),
+  conSistema('CON_SISTEMA', 'Sistema'),
   sinSistema('SIN_SISTEMA', 'Sin sistema'),
   blanco('BLANCO', 'Blanco'),
   fraccionado('FRACCIONADO', 'Fraccionado'),
   detallista('DETALLISTA', 'Detallista'),
+  comunitario('COMUNITARIO', 'Comunitario'),
   nuevo('NUEVO', 'Nuevo'),
   desconocido('DESCONOCIDO', 'Desconocido');
 
@@ -53,6 +54,17 @@ enum EstadoLote {
     return EstadoLote.desconocido;
   }
 }
+
+/// Clasificaciones que se pueden elegir al asignar una parcela.
+/// `nuevo` y `desconocido` son estados de importación/revisión, no opciones.
+const clasificacionesParcela = <EstadoLote>[
+  EstadoLote.sinSistema,
+  EstadoLote.conSistema,
+  EstadoLote.blanco,
+  EstadoLote.fraccionado,
+  EstadoLote.detallista,
+  EstadoLote.comunitario,
+];
 
 /// Por ahora el backend solo declara un mercado, pero es un enum: puede crecer.
 enum Mercado {
@@ -132,7 +144,7 @@ class Lote {
   final String? numero;
   final ExtensionLote? extension;
 
-  /// Número y extensión ya juntos, tal como los arma el backend: `74-A`.
+  /// Número y letra compartida ya juntos, tal como los arma el backend: `74 A`.
   final String codigo;
 
   final EstadoLote estado;
@@ -166,31 +178,31 @@ class Lote {
       estado == EstadoLote.conSistema && sistema == null;
 
   factory Lote.desdeJson(Map<String, dynamic> json) => Lote(
-        id: (json['id'] as num?)?.toInt() ?? 0,
-        numero: json['numero'] as String?,
-        extension: ExtensionLote.desde(json['extension']),
-        codigo: json['codigo'] as String? ?? '',
-        estado: EstadoLote.desde(json['estado']),
-        estadoOriginal: json['estadoOriginal'] as String?,
-        mercado: Mercado.desde(json['mercado']),
-        sindicatoId: (json['sindicatoId'] as num?)?.toInt() ?? 0,
-        sindicatoNombre: json['sindicatoNombre'] as String? ?? '',
-        superficie: (json['superficie'] as num?)?.toDouble(),
-        latitud: (json['latitud'] as num?)?.toDouble(),
-        longitud: (json['longitud'] as num?)?.toDouble(),
-        ubicacionActualizadaEn: switch (json['ubicacionActualizadaEn']) {
-          final String s => DateTime.tryParse(s),
-          _ => null,
-        },
-        tenedor: switch (json['tenedor']) {
-          final Map<String, dynamic> m => Tenedor.desdeJson(m),
-          _ => null,
-        },
-        sistema: switch (json['sistema']) {
-          final Map<String, dynamic> m => SistemaEnLote.desdeJson(m),
-          _ => null,
-        },
-      );
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    numero: json['numero'] as String?,
+    extension: ExtensionLote.desde(json['extension']),
+    codigo: json['codigo'] as String? ?? '',
+    estado: EstadoLote.desde(json['estado']),
+    estadoOriginal: json['estadoOriginal'] as String?,
+    mercado: Mercado.desde(json['mercado']),
+    sindicatoId: (json['sindicatoId'] as num?)?.toInt() ?? 0,
+    sindicatoNombre: json['sindicatoNombre'] as String? ?? '',
+    superficie: (json['superficie'] as num?)?.toDouble(),
+    latitud: (json['latitud'] as num?)?.toDouble(),
+    longitud: (json['longitud'] as num?)?.toDouble(),
+    ubicacionActualizadaEn: switch (json['ubicacionActualizadaEn']) {
+      final String s => DateTime.tryParse(s),
+      _ => null,
+    },
+    tenedor: switch (json['tenedor']) {
+      final Map<String, dynamic> m => Tenedor.desdeJson(m),
+      _ => null,
+    },
+    sistema: switch (json['sistema']) {
+      final Map<String, dynamic> m => SistemaEnLote.desdeJson(m),
+      _ => null,
+    },
+  );
 
   @override
   bool operator ==(Object other) => other is Lote && other.id == id;
@@ -230,12 +242,12 @@ class LoteRequest {
   final String? mercado;
 
   Map<String, dynamic> aJson() => {
-        'sindicatoId': sindicatoId,
-        if (productorId != null) 'productorId': productorId,
-        if (numero != null) 'numero': numero,
-        if (extension != null) 'extension': extension!.valor,
-        if (estado != null) 'estado': estado,
-        if (mercado != null) 'mercado': mercado,
-        if (superficie != null) 'superficie': superficie,
-      };
+    'sindicatoId': sindicatoId,
+    if (productorId != null) 'productorId': productorId,
+    if (numero != null) 'numero': numero,
+    if (extension != null) 'extension': extension!.valor,
+    if (estado != null) 'estado': estado,
+    if (mercado != null) 'mercado': mercado,
+    if (superficie != null) 'superficie': superficie,
+  };
 }

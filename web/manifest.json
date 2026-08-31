@@ -1,11 +1,11 @@
 {
-    "name": "fede",
-    "short_name": "fede",
+    "name": "PADRÓN FEDERACIÓN CARRASCO TROPICAL",
+    "short_name": "PADRÓN CARRASCO",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Padrón de la Federación Carrasco Tropical.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

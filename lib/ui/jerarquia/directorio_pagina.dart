@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/texto_busqueda.dart';
 import '../../repositories/padron.dart';
 import '../credenciales/impresion_credencial.dart';
 import '../padron_scope.dart';
@@ -556,11 +557,13 @@ class _SelectorProductorState extends State<_SelectorProductor> {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    final filtro = _busqueda.trim().toUpperCase();
+    final filtro = textoParaBusqueda(_busqueda);
     final visibles = filtro.isEmpty
         ? widget.candidatos
         : widget.candidatos
-              .where((p) => p.nombreCompleto.toUpperCase().contains(filtro))
+              .where(
+                (p) => textoParaBusqueda(p.nombreCompleto).contains(filtro),
+              )
               .toList();
 
     final origen = switch (widget.ambito) {

@@ -1,11 +1,13 @@
 import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/credencial_previa.dart';
 import '../../models/diseno_credencial.dart';
 import '../padron_scope.dart';
 import '../widgets/estados.dart';
+import '../widgets/zona_soltar_archivos.dart';
 import 'tarjeta_previa.dart';
 
 class EditorCredencialPagina extends StatefulWidget {
@@ -23,6 +25,8 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
   String? _campoNuevo;
   Object? _error;
   bool _guardando = false;
+  bool _guardandoPlantilla = false;
+  bool _guardandoImagen = false;
 
   @override
   void initState() {
@@ -162,6 +166,7 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
             seleccion: _seleccion,
             alSeleccionar: (id) => setState(() => _seleccion = id),
             alCambiar: _reemplazar,
+            plantillaUrl: _editor!.plantillaUrl(_cara),
           );
           final panel = SizedBox(
             width: limites.maxWidth >= 1050 ? 350 : null,
@@ -177,6 +182,8 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
               alSeleccionar: (id) => setState(() => _seleccion = id),
               alCambiar: _reemplazar,
               alEliminar: _eliminar,
+              alSubirCapa: () => _moverCapa(1),
+              alBajarCapa: () => _moverCapa(-1),
             ),
           );
 
@@ -205,9 +212,53 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
                   }),
                 ),
                 const SizedBox(height: 16),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: _guardandoPlantilla ? null : _elegirPlantilla,
+                      icon: const Icon(Icons.wallpaper_outlined),
+                      label: Text(
+                        'Cambiar plantilla de ${_cara == CaraCredencial.cara ? 'la cara' : 'el reverso'}',
+                      ),
+                    ),
+                    if (_editor!.plantillaUrl(_cara) != null)
+                      OutlinedButton.icon(
+                        onPressed: _guardandoPlantilla
+                            ? null
+                            : _restablecerPlantilla,
+                        icon: const Icon(Icons.restore_page_outlined),
+                        label: const Text('Usar plantilla original'),
+                      ),
+                    ZonaSoltarArchivos(
+                      habilitada: !_guardandoImagen,
+                      extensionesPermitidas: extensionesImagen,
+                      mensaje: 'Soltá aquí la imagen que querés insertar',
+                      alSoltar: (archivos) async {
+                        final archivo = await archivoSoltadoAPlatformFile(
+                          archivos.single,
+                        );
+                        await _subirImagen(archivo);
+                      },
+                      child: OutlinedButton.icon(
+                        onPressed: _guardandoImagen ? null : _elegirImagen,
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                        label: const Text('Agregar imagen'),
+                      ),
+                    ),
+                  ],
+                ),
+                const AyudaArrastrarArchivo(
+                  texto: 'También podés arrastrar aquí la nueva plantilla.',
+                ),
+                const SizedBox(height: 12),
                 Text(
                   'Arrastrá una caja para moverla. Usá el punto de la esquina '
-                  'superior derecha para cambiar su ancho y alto.',
+                  'superior derecha para cambiar su ancho y alto. Si la '
+                  'plantilla PNG tiene un hueco para la foto, dejá el objeto '
+                  'Fotografía debajo de Plantilla.',
                   style: Theme.of(context).textTheme.bodySmall,
                   textAlign: TextAlign.center,
                 ),
@@ -216,13 +267,13 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: Center(child: lienzo)),
+                      Expanded(child: Center(child: _zonaPlantilla(lienzo))),
                       const SizedBox(width: 24),
                       panel,
                     ],
                   )
                 else ...[
-                  Center(child: lienzo),
+                  Center(child: _zonaPlantilla(lienzo)),
                   const SizedBox(height: 24),
                   panel,
                 ],
@@ -279,6 +330,10 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
   void _eliminar() {
     final id = _seleccion;
     if (id == null) return;
+    final seleccionado = _diseno!.elementos
+        .where((e) => e.id == id)
+        .firstOrNull;
+    if (seleccionado?.tipo == TipoElementoCredencial.plantilla) return;
     setState(() {
       _diseno = _diseno!.conElementos(
         _diseno!.elementos.where((e) => e.id != id).toList(),
@@ -286,6 +341,145 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
       _seleccion = null;
     });
   }
+
+  void _moverCapa(int direccion) {
+    final id = _seleccion;
+    final diseno = _diseno;
+    if (id == null || diseno == null) return;
+    final elementos = [...diseno.elementos];
+    final indice = elementos.indexWhere((e) => e.id == id);
+    if (indice < 0) return;
+    final cara = elementos[indice].cara;
+    final candidatos = <int>[
+      for (var i = 0; i < elementos.length; i++)
+        if (elementos[i].cara == cara) i,
+    ];
+    final posicion = candidatos.indexOf(indice);
+    final nuevaPosicion = posicion + direccion;
+    if (nuevaPosicion < 0 || nuevaPosicion >= candidatos.length) return;
+    final otroIndice = candidatos[nuevaPosicion];
+    final temporal = elementos[indice];
+    elementos[indice] = elementos[otroIndice];
+    elementos[otroIndice] = temporal;
+    setState(() => _diseno = diseno.conElementos(elementos));
+  }
+
+  Future<void> _elegirPlantilla() async {
+    try {
+      final resultado = await FilePicker.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+      final archivo = resultado?.files.firstOrNull;
+      if (archivo != null) await _subirPlantilla(archivo);
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    }
+  }
+
+  Future<void> _subirPlantilla(PlatformFile archivo) async {
+    final bytes = archivo.bytes;
+    if (bytes == null || bytes.isEmpty || _guardandoPlantilla) return;
+    setState(() => _guardandoPlantilla = true);
+    try {
+      final editor = await PadronScope.of(
+        context,
+      ).disenoCredencial.subirPlantilla(_cara, bytes, archivo.name);
+      if (!mounted) return;
+      setState(() => _editor = editor);
+      mostrarAviso(
+        context,
+        'Plantilla actualizada. También se usará en los próximos PDF.',
+      );
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    } finally {
+      if (mounted) setState(() => _guardandoPlantilla = false);
+    }
+  }
+
+  Future<void> _restablecerPlantilla() async {
+    if (_guardandoPlantilla) return;
+    setState(() => _guardandoPlantilla = true);
+    try {
+      final editor = await PadronScope.of(
+        context,
+      ).disenoCredencial.restablecerPlantilla(_cara);
+      if (!mounted) return;
+      setState(() => _editor = editor);
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    } finally {
+      if (mounted) setState(() => _guardandoPlantilla = false);
+    }
+  }
+
+  Future<void> _elegirImagen() async {
+    try {
+      final resultado = await FilePicker.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+      final archivo = resultado?.files.firstOrNull;
+      if (archivo != null) await _subirImagen(archivo);
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    }
+  }
+
+  Future<void> _subirImagen(PlatformFile archivo) async {
+    final bytes = archivo.bytes;
+    if (bytes == null || bytes.isEmpty || _guardandoImagen) return;
+    setState(() => _guardandoImagen = true);
+    try {
+      final subida = await PadronScope.of(
+        context,
+      ).disenoCredencial.subirImagen(bytes, archivo.name);
+      if (!mounted) return;
+      final id = 'imagen-${DateTime.now().microsecondsSinceEpoch}';
+      final etiqueta = archivo.name.replaceFirst(RegExp(r'\.[^.]+$'), '');
+      final nueva = ElementoDisenoCredencial(
+        id: id,
+        cara: _cara,
+        tipo: TipoElementoCredencial.imagen,
+        campo: 'IMAGEN_PERSONALIZADA',
+        etiqueta: etiqueta.isEmpty ? 'Imagen' : etiqueta,
+        x: 20,
+        y: 20,
+        ancho: 60,
+        alto: 40,
+        tamanoFuente: 5.5,
+        negrita: false,
+        alineacion: AlineacionCredencial.centro,
+        color: '#000000',
+        texto: '',
+        recurso: subida.clave,
+      );
+      setState(() {
+        _diseno = _diseno!.conElementos([..._diseno!.elementos, nueva]);
+        _seleccion = id;
+      });
+      mostrarAviso(
+        context,
+        'Imagen agregada. Ajustá su posición y guardá el diseño.',
+      );
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    } finally {
+      if (mounted) setState(() => _guardandoImagen = false);
+    }
+  }
+
+  Widget _zonaPlantilla(Widget lienzo) => ZonaSoltarArchivos(
+    habilitada: !_guardandoPlantilla,
+    extensionesPermitidas: extensionesImagen,
+    mensaje: 'Soltá aquí la nueva plantilla',
+    alSoltar: (archivos) async {
+      final archivo = await archivoSoltadoAPlatformFile(archivos.single);
+      await _subirPlantilla(archivo);
+    },
+    child: lienzo,
+  );
 }
 
 class _LienzoEditable extends StatelessWidget {
@@ -296,6 +490,7 @@ class _LienzoEditable extends StatelessWidget {
     required this.seleccion,
     required this.alSeleccionar,
     required this.alCambiar,
+    required this.plantillaUrl,
   });
 
   final DisenoCredencial diseno;
@@ -304,12 +499,15 @@ class _LienzoEditable extends StatelessWidget {
   final String? seleccion;
   final ValueChanged<String> alSeleccionar;
   final ValueChanged<ElementoDisenoCredencial> alCambiar;
+  final String? plantillaUrl;
 
   double get escala => ancho / TarjetaPrevia.anchoPt;
 
   @override
   Widget build(BuildContext context) {
-    final elementos = diseno.elementos.where((e) => e.cara == cara);
+    final elementos = diseno.elementos.where(
+      (e) => e.cara == cara && e.tipo != TipoElementoCredencial.plantilla,
+    );
     return SizedBox(
       width: ancho,
       height: TarjetaPrevia.altoPt * escala,
@@ -321,6 +519,7 @@ class _LienzoEditable extends StatelessWidget {
             reverso: cara == CaraCredencial.reverso,
             ancho: ancho,
             diseno: diseno,
+            plantillaUrl: plantillaUrl,
           ),
           for (final e in elementos) _caja(context, e),
         ],
@@ -407,6 +606,8 @@ class _PanelPropiedades extends StatelessWidget {
     required this.alSeleccionar,
     required this.alCambiar,
     required this.alEliminar,
+    required this.alSubirCapa,
+    required this.alBajarCapa,
   });
 
   final EditorDisenoCredencial editor;
@@ -419,6 +620,8 @@ class _PanelPropiedades extends StatelessWidget {
   final ValueChanged<String> alSeleccionar;
   final ValueChanged<ElementoDisenoCredencial> alCambiar;
   final VoidCallback alEliminar;
+  final VoidCallback alSubirCapa;
+  final VoidCallback alBajarCapa;
 
   @override
   Widget build(BuildContext context) {
@@ -482,115 +685,185 @@ class _PanelPropiedades extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _numero(
-                      'X',
-                      actual.x,
-                      (v) => alCambiar(
-                        actual.copiar(
-                          x: v.clamp(0, diseno.ancho - actual.ancho),
+              if (actual.tipo != TipoElementoCredencial.plantilla) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: _numero(
+                        'X',
+                        actual.x,
+                        (v) => alCambiar(
+                          actual.copiar(
+                            x: v.clamp(0, diseno.ancho - actual.ancho),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _numero(
-                      'Y',
-                      actual.y,
-                      (v) => alCambiar(
-                        actual.copiar(y: v.clamp(0, diseno.alto - actual.alto)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _numero(
-                      'Ancho',
-                      actual.ancho,
-                      (v) => alCambiar(
-                        actual.copiar(
-                          ancho: v.clamp(2, diseno.ancho - actual.x),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _numero(
+                        'Y',
+                        actual.y,
+                        (v) => alCambiar(
+                          actual.copiar(
+                            y: v.clamp(0, diseno.alto - actual.alto),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _numero(
-                      'Alto',
-                      actual.alto,
-                      (v) => alCambiar(
-                        actual.copiar(alto: v.clamp(2, diseno.alto - actual.y)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (actual.tipo != TipoElementoCredencial.imagen) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Tamaño de letra: ${actual.tamanoFuente.toStringAsFixed(1)} pt',
-                ),
-                Slider(
-                  min: 3,
-                  max: 20,
-                  divisions: 68,
-                  value: actual.tamanoFuente.clamp(3, 20),
-                  onChanged: (v) => alCambiar(actual.copiar(tamanoFuente: v)),
-                ),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Negrita'),
-                  value: actual.negrita,
-                  onChanged: (v) =>
-                      alCambiar(actual.copiar(negrita: v ?? false)),
-                ),
-                SegmentedButton<AlineacionCredencial>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(
-                      value: AlineacionCredencial.izquierda,
-                      icon: Icon(Icons.format_align_left),
-                    ),
-                    ButtonSegment(
-                      value: AlineacionCredencial.centro,
-                      icon: Icon(Icons.format_align_center),
-                    ),
-                    ButtonSegment(
-                      value: AlineacionCredencial.derecha,
-                      icon: Icon(Icons.format_align_right),
                     ),
                   ],
-                  selected: {actual.alineacion},
-                  onSelectionChanged: (v) =>
-                      alCambiar(actual.copiar(alineacion: v.first)),
                 ),
-              ],
-              if (actual.campo == 'TEXTO_FIJO') ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  key: ValueKey('texto-${actual.id}'),
-                  initialValue: actual.texto,
-                  decoration: const InputDecoration(
-                    labelText: 'Texto',
-                    border: OutlineInputBorder(),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _numero(
+                        'Ancho',
+                        actual.ancho,
+                        (v) => alCambiar(
+                          actual.copiar(
+                            ancho: v.clamp(2, diseno.ancho - actual.x),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _numero(
+                        'Alto',
+                        actual.alto,
+                        (v) => alCambiar(
+                          actual.copiar(
+                            alto: v.clamp(2, diseno.alto - actual.y),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (actual.tipo != TipoElementoCredencial.imagen) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<FuenteCredencial>(
+                    key: ValueKey('fuente-${actual.id}'),
+                    initialValue: actual.fuente,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Tipo de letra',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final fuente in FuenteCredencial.values)
+                        DropdownMenuItem(
+                          value: fuente,
+                          child: Text(
+                            '${fuente.etiqueta} — ${fuente.descripcion}',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: fuente.familiaFlutter,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                    ],
+                    onChanged: (fuente) {
+                      if (fuente != null) {
+                        alCambiar(actual.copiar(fuente: fuente));
+                      }
+                    },
                   ),
-                  onChanged: (v) => alCambiar(actual.copiar(texto: v)),
-                ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Tamaño de letra: ${actual.tamanoFuente.toStringAsFixed(1)} pt',
+                  ),
+                  Slider(
+                    min: 3,
+                    max: 20,
+                    divisions: 68,
+                    value: actual.tamanoFuente.clamp(3, 20),
+                    onChanged: (v) => alCambiar(actual.copiar(tamanoFuente: v)),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Negrita'),
+                    value: actual.negrita,
+                    onChanged: (v) =>
+                        alCambiar(actual.copiar(negrita: v ?? false)),
+                  ),
+                  SegmentedButton<AlineacionCredencial>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(
+                        value: AlineacionCredencial.izquierda,
+                        icon: Icon(Icons.format_align_left),
+                      ),
+                      ButtonSegment(
+                        value: AlineacionCredencial.centro,
+                        icon: Icon(Icons.format_align_center),
+                      ),
+                      ButtonSegment(
+                        value: AlineacionCredencial.derecha,
+                        icon: Icon(Icons.format_align_right),
+                      ),
+                    ],
+                    selected: {actual.alineacion},
+                    onSelectionChanged: (v) =>
+                        alCambiar(actual.copiar(alineacion: v.first)),
+                  ),
+                ],
+                if (actual.campo == 'TEXTO_FIJO') ...[
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    key: ValueKey('texto-${actual.id}'),
+                    initialValue: actual.texto,
+                    decoration: const InputDecoration(
+                      labelText: 'Texto',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) => alCambiar(actual.copiar(texto: v)),
+                  ),
+                ],
               ],
               const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: alEliminar,
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Quitar este campo'),
+              Text(
+                'Nivel del objeto',
+                style: Theme.of(context).textTheme.labelLarge,
               ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: visibles.first.id == actual.id
+                          ? null
+                          : alBajarCapa,
+                      icon: const Icon(Icons.vertical_align_bottom),
+                      label: const Text('Bajar'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: visibles.last.id == actual.id
+                          ? null
+                          : alSubirCapa,
+                      icon: const Icon(Icons.vertical_align_top),
+                      label: const Text('Subir'),
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                'Los objetos de arriba se imprimen por encima de los de abajo.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (actual.tipo != TipoElementoCredencial.plantilla) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: alEliminar,
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Quitar este objeto'),
+                ),
+              ],
             ],
           ],
         ),

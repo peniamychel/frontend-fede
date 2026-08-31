@@ -2,19 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
-import '../widgets/descargas.dart';
 import '../widgets/estados.dart';
-import 'credencial_previa_pagina.dart';
+import 'impresion_credencial.dart';
+import 'tarjeta_previa.dart';
 
-/// Vista previa del pliego: las credenciales de todo un sindicato.
-///
-/// El pliego es todo o nada. Se imprime a doble cara y se recorta, así que una
-/// tarjeta incompleta en el medio obliga a rehacer la hoja entera. Por eso acá
-/// se revisa a todos antes y no se genera hasta que no falte nada.
-///
-/// Lo del sindicato va separado de lo de cada persona a propósito: si falta la
-/// firma de un dirigente no le falta a un productor, le falta a los cien, y
-/// arreglarlo una vez arregla el pliego entero.
+/// Estado de credenciales e impresión masiva por sindicato.
+/// Android y web consultan el mismo estado; el envío físico se habilita solo
+/// en la aplicación nativa de Windows.
 class PliegoPreviaPagina extends StatefulWidget {
   const PliegoPreviaPagina({super.key, required this.sindicato});
 
@@ -25,259 +19,783 @@ class PliegoPreviaPagina extends StatefulWidget {
 }
 
 class _PliegoPreviaPaginaState extends State<PliegoPreviaPagina> {
-  late Future<PliegoPrevio> _futuro;
+  late Future<(PanelImpresionSindicato, EditorDisenoCredencial)> _futuro;
 
   @override
   void initState() {
     super.initState();
-    _recargar();
+    _futuro = _cargar();
   }
 
-  void _recargar() {
-    final repo = PadronScope.of(context).sindicatos;
-    // Con llaves y no con flecha: la flecha devolvería el Future de la
-    // asignación, y setState rechaza un callback que devuelva un Future.
-    setState(() {
-      _futuro = repo.previaCredenciales(widget.sindicato.id);
-    });
+  Future<(PanelImpresionSindicato, EditorDisenoCredencial)> _cargar() async {
+    final padron = PadronScope.of(context);
+    final panel = await padron.sindicatos.panelImpresion(widget.sindicato.id);
+    if (!impresionDeCredencialesDisponible) {
+      return (
+        panel,
+        EditorDisenoCredencial(
+          diseno: DisenoCredencial.predeterminado(),
+          campos: const [],
+        ),
+      );
+    }
+    try {
+      final editor = await padron.disenoCredencial.obtener();
+      return (
+        panel,
+        EditorDisenoCredencial(
+          diseno: editor.diseno.elementos.isEmpty
+              ? DisenoCredencial.predeterminado()
+              : editor.diseno,
+          campos: editor.campos,
+          plantillaCaraUrl: editor.plantillaCaraUrl,
+          plantillaReversoUrl: editor.plantillaReversoUrl,
+        ),
+      );
+    } catch (_) {
+      return (
+        panel,
+        EditorDisenoCredencial(
+          diseno: DisenoCredencial.predeterminado(),
+          campos: const [],
+        ),
+      );
+    }
   }
+
+  void _recargar() => setState(() => _futuro = _cargar());
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Credenciales de ${widget.sindicato.nombre}'),
+        title: Text('Impresión · ${widget.sindicato.nombre}'),
         actions: [
           IconButton(
-            tooltip: 'Volver a revisar',
+            tooltip: 'Actualizar cantidades',
             onPressed: _recargar,
             icon: const Icon(Icons.refresh),
           ),
         ],
       ),
-      body: CargaAsync<PliegoPrevio>(
+      body: CargaAsync<(PanelImpresionSindicato, EditorDisenoCredencial)>(
         futuro: _futuro,
         alReintentar: _recargar,
-        constructor: (context, previo) => _Contenido(
-          previo: previo,
+        constructor: (context, datos) => _Panel(
+          panel: datos.$1,
+          editor: datos.$2,
           sindicato: widget.sindicato,
-          alRevisar: _recargar,
+          permiteImprimir: impresionDeCredencialesDisponible,
+          alCambiar: _recargar,
         ),
       ),
     );
   }
 }
 
-class _Contenido extends StatelessWidget {
-  const _Contenido({
-    required this.previo,
+class _Panel extends StatelessWidget {
+  const _Panel({
+    required this.panel,
+    required this.editor,
     required this.sindicato,
-    required this.alRevisar,
+    required this.permiteImprimir,
+    required this.alCambiar,
   });
 
-  final PliegoPrevio previo;
+  final PanelImpresionSindicato panel;
+  final EditorDisenoCredencial editor;
   final Sindicato sindicato;
-  final VoidCallback alRevisar;
+  final bool permiteImprimir;
+  final VoidCallback alCambiar;
 
   @override
   Widget build(BuildContext context) {
-    final tema = Theme.of(context);
-
-    if (previo.productores == 0) {
-      return const SinResultados(
-        icono: Icons.badge_outlined,
-        mensaje: 'Este sindicato no tiene productores.',
-        detalle: 'No hay credenciales que emitir.',
-      );
-    }
-
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Card(
-          margin: EdgeInsets.zero,
-          color: previo.completa
-              ? tema.colorScheme.primaryContainer
-              : tema.colorScheme.errorContainer,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(
-                  previo.completa
-                      ? Icons.check_circle_outline
-                      : Icons.error_outline,
-                  color: previo.completa
-                      ? tema.colorScheme.onPrimaryContainer
-                      : tema.colorScheme.onErrorContainer,
+        Text(
+          'Resumen del sindicato',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _Cifra('Total', panel.total, Icons.groups_outlined),
+            _Cifra(
+              'Ya impresos',
+              panel.impresos,
+              Icons.print,
+              color: Colors.green,
+            ),
+            _Cifra(
+              'Faltan con foto',
+              panel.faltantesConFoto,
+              Icons.pending_actions_outlined,
+              color: Colors.amber,
+            ),
+            _Cifra(
+              'Sin fotografía',
+              panel.sinFoto,
+              Icons.no_photography_outlined,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ],
+        ),
+        if (panel.faltantesDelSindicato.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _FaltantesComunes(faltantes: panel.faltantesDelSindicato),
+        ],
+        if (permiteImprimir) ...[
+          const SizedBox(height: 24),
+          const _SelectorImpresoraMasiva(),
+          const SizedBox(height: 28),
+          Text('Acciones', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              FilledButton.icon(
+                onPressed: panel.listosParaImprimir == 0
+                    ? null
+                    : () => _abrirFaltantes(context),
+                icon: const Icon(Icons.print_outlined),
+                label: Text(
+                  'Impresiones faltantes (${panel.listosParaImprimir})',
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    previo.completa
-                        ? '${previo.productores} credenciales listas para '
-                              'imprimir.'
-                        : _resumenDeLoQueFalta(),
-                    style: tema.textTheme.titleSmall?.copyWith(
-                      color: previo.completa
-                          ? tema.colorScheme.onPrimaryContainer
-                          : tema.colorScheme.onErrorContainer,
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _imprimirReversos(context),
+                icon: const Icon(Icons.flip_outlined),
+                label: const Text('Imprimir reversos'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Solo las caras impresas se contabilizan. Los reversos son iguales '
+            'para todo el sindicato y no modifican el historial.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ),
+        ] else ...[
+          const SizedBox(height: 24),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.visibility_outlined),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Vista informativa. Desde Android y web podés consultar '
+                      'el avance; la impresión física y la selección de la Zebra '
+                      'se realizan en la aplicación para Windows.',
+                      style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 20),
-        if (previo.faltantesDelSindicato.isNotEmpty) ...[
-          Text(
-            'Le falta al sindicato',
-            style: tema.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          Text(
-            'Esto le falta a todas las credenciales por igual. Arreglarlo una '
-            'vez destraba el pliego entero.',
-            style: tema.textTheme.bodySmall?.copyWith(
-              color: tema.colorScheme.outline,
-            ),
-          ),
-          const SizedBox(height: 12),
-          for (final falta in previo.faltantesDelSindicato)
-            _FilaFalta(falta: falta),
-          const SizedBox(height: 20),
         ],
-        if (previo.incompletos.isNotEmpty) ...[
-          Text(
-            previo.incompletos.length == 1
-                ? 'Un productor con datos incompletos'
-                : '${previo.incompletos.length} productores con datos '
-                      'incompletos',
-            style: tema.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          for (final quien in previo.incompletos)
-            _FilaProductor(quien: quien, alRevisar: alRevisar),
-          const SizedBox(height: 20),
-        ],
-        FilledButton.icon(
-          onPressed: previo.completa
-              ? () => descargarCredencialesSindicato(context, sindicato)
-              : null,
-          icon: const Icon(Icons.picture_as_pdf_outlined),
-          label: Text(
-            previo.completa
-                ? 'Generar el pliego (${previo.productores})'
-                : 'Generar el pliego',
-          ),
-        ),
       ],
     );
   }
 
-  String _resumenDeLoQueFalta() {
-    final partes = <String>[];
-    if (previo.faltantesDelSindicato.isNotEmpty) {
-      partes.add(
-        previo.faltantesDelSindicato.length == 1
-            ? 'un dato del sindicato'
-            : '${previo.faltantesDelSindicato.length} datos del sindicato',
-      );
+  Future<void> _abrirFaltantes(BuildContext context) async {
+    final cantidad = await _pedirCantidad(
+      context,
+      maximo: panel.listosParaImprimir,
+      titulo: 'Credenciales faltantes',
+      descripcion:
+          'Elegí cuántas caras querés preparar. También podés imprimir todas.',
+    );
+    if (cantidad == null || !context.mounted) return;
+
+    final candidatos = panel.candidatos
+        .where((c) => c.seleccionable)
+        .take(cantidad)
+        .toList(growable: false);
+    final impresos = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => _SeleccionAnversosPagina(
+          sindicato: sindicato,
+          candidatos: candidatos,
+          editor: editor,
+        ),
+      ),
+    );
+    if (impresos == null || impresos == 0 || !context.mounted) return;
+    alCambiar();
+    final imprimirReverso = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.flip_outlined),
+        title: const Text('¿Imprimir ahora los reversos?'),
+        content: Text(
+          'Se imprimieron $impresos caras. Podés generar ahora exactamente '
+          '$impresos reversos después de dar vuelta las tarjetas.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Más tarde'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Preparar reversos'),
+          ),
+        ],
+      ),
+    );
+    if (imprimirReverso == true && context.mounted) {
+      await _enviarReversos(context, impresos);
     }
-    if (previo.incompletos.isNotEmpty) {
-      partes.add(
-        previo.incompletos.length == 1
-            ? 'un productor'
-            : '${previo.incompletos.length} productores',
-      );
+  }
+
+  Future<void> _imprimirReversos(BuildContext context) async {
+    final cantidad = await _pedirCantidad(
+      context,
+      maximo: 500,
+      titulo: 'Cantidad de reversos',
+      descripcion:
+          'Indicá cuántas tarjetas necesitan el reverso del sindicato.',
+      mostrarTodos: false,
+    );
+    if (cantidad != null && context.mounted) {
+      await _enviarReversos(context, cantidad);
     }
-    return 'Falta completar ${partes.join(' y ')}.';
+  }
+
+  Future<void> _enviarReversos(BuildContext context, int cantidad) async {
+    final continuar = await _advertirImpresion(
+      context,
+      titulo: 'Antes de imprimir $cantidad reversos',
+      mensaje:
+          'Da vuelta las tarjetas para imprimir el reverso. Verificá también '
+          'en el panel digital de la Zebra que la cinta alcance para $cantidad impresiones.',
+    );
+    if (!continuar || !context.mounted) return;
+    try {
+      final descarga = await PadronScope.of(
+        context,
+      ).sindicatos.descargarReversos(sindicato.id, cantidad);
+      if (!context.mounted) return;
+      await imprimirTrabajoCredencialesWindows(context, descarga);
+    } catch (error) {
+      if (context.mounted) mostrarError(context, error);
+    }
   }
 }
 
-class _FilaFalta extends StatelessWidget {
-  const _FilaFalta({required this.falta});
+class _Cifra extends StatelessWidget {
+  const _Cifra(this.titulo, this.valor, this.icono, {this.color});
 
-  final Faltante falta;
+  final String titulo;
+  final int valor;
+  final IconData icono;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 210,
+    child: Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Icon(icono, color: color),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$valor',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  Text(titulo, maxLines: 2, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _FaltantesComunes extends StatelessWidget {
+  const _FaltantesComunes({required this.faltantes});
+
+  final List<Faltante> faltantes;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    color: Theme.of(context).colorScheme.errorContainer,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Faltan datos comunes del sindicato'),
+          const SizedBox(height: 8),
+          for (final falta in faltantes)
+            Text('• ${falta.detalle} · ${falta.donde}'),
+        ],
+      ),
+    ),
+  );
+}
+
+class _SeleccionAnversosPagina extends StatefulWidget {
+  const _SeleccionAnversosPagina({
+    required this.sindicato,
+    required this.candidatos,
+    required this.editor,
+  });
+
+  final Sindicato sindicato;
+  final List<CandidatoImpresionCredencial> candidatos;
+  final EditorDisenoCredencial editor;
+
+  @override
+  State<_SeleccionAnversosPagina> createState() =>
+      _SeleccionAnversosPaginaState();
+}
+
+class _SeleccionAnversosPaginaState extends State<_SeleccionAnversosPagina> {
+  late final Set<int> _seleccionados;
+  bool _procesando = false;
+  List<int>? _pendientesDeRegistrar;
+
+  @override
+  void initState() {
+    super.initState();
+    _seleccionados = widget.candidatos.map((c) => c.productorId).toSet();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final tema = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(
-              Icons.remove_circle_outline,
-              size: 18,
-              color: tema.colorScheme.error,
+    final cantidad = _seleccionados.length;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Revisar caras antes de imprimir'),
+        actions: [
+          TextButton(
+            onPressed: _procesando
+                ? null
+                : () => setState(() {
+                    if (_seleccionados.length == widget.candidatos.length) {
+                      _seleccionados.clear();
+                    } else {
+                      _seleccionados.addAll(
+                        widget.candidatos.map((c) => c.productorId),
+                      );
+                    }
+                  }),
+            child: Text(
+              _seleccionados.length == widget.candidatos.length
+                  ? 'Desmarcar todas'
+                  : 'Marcar todas',
             ),
           ),
-          const SizedBox(width: 10),
+        ],
+      ),
+      body: Column(
+        children: [
+          Material(
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              child: Row(
+                children: [
+                  const Icon(Icons.fact_check_outlined),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Revisá la posición de la foto y los datos. Desmarcar una '
+                      'credencial solo la excluye de este trabajo; no la marca como incorrecta.',
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text('$cantidad seleccionadas'),
+                ],
+              ),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(24, 12, 24, 0),
+            child: _SelectorImpresoraMasiva(),
+          ),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  falta.campo,
-                  style: tema.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
+            child: GridView.builder(
+              padding: const EdgeInsets.all(24),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 390,
+                mainAxisExtent: 285,
+                crossAxisSpacing: 18,
+                mainAxisSpacing: 18,
+              ),
+              itemCount: widget.candidatos.length,
+              itemBuilder: (context, indice) {
+                final candidato = widget.candidatos[indice];
+                final marcado = _seleccionados.contains(candidato.productorId);
+                return _CredencialSeleccionable(
+                  candidato: candidato,
+                  marcado: marcado,
+                  editor: widget.editor,
+                  alCambiar: _procesando
+                      ? null
+                      : (valor) => setState(() {
+                          if (valor) {
+                            _seleccionados.add(candidato.productorId);
+                          } else {
+                            _seleccionados.remove(candidato.productorId);
+                          }
+                        }),
+                );
+              },
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 18),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: _procesando
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: const Text('Cancelar'),
                   ),
-                ),
-                Text(falta.detalle, style: tema.textTheme.bodySmall),
-                Text(
-                  falta.donde,
-                  style: tema.textTheme.bodySmall?.copyWith(
-                    color: tema.colorScheme.outline,
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed:
+                        _procesando ||
+                            (_pendientesDeRegistrar == null && cantidad == 0)
+                        ? null
+                        : _imprimir,
+                    icon: _procesando
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.print_outlined),
+                    label: Text(
+                      _pendientesDeRegistrar == null
+                          ? 'Imprimir $cantidad caras'
+                          : 'Registrar impresión enviada',
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
+
+  Future<void> _imprimir() async {
+    final ids = _pendientesDeRegistrar ?? _seleccionados.toList();
+    if (_pendientesDeRegistrar == null) {
+      final continuar = await _advertirImpresion(
+        context,
+        titulo: 'Antes de imprimir ${ids.length} caras',
+        mensaje:
+            'Verificá que haya ${ids.length} tarjetas insertadas y que el panel '
+            'digital de la Zebra indique cinta suficiente. Podés cancelar para desmarcar tarjetas.',
+      );
+      if (!continuar || !mounted) return;
+    }
+
+    setState(() => _procesando = true);
+    try {
+      final repositorio = PadronScope.of(context).sindicatos;
+      if (_pendientesDeRegistrar == null) {
+        final descarga = await repositorio.descargarAnversosSeleccionados(
+          widget.sindicato.id,
+          ids,
+        );
+        if (!mounted) return;
+        final enviado = await imprimirTrabajoCredencialesWindows(
+          context,
+          descarga,
+        );
+        if (!enviado || !mounted) return;
+        _pendientesDeRegistrar = ids;
+      }
+
+      await repositorio.confirmarAnversosImpresos(widget.sindicato.id, ids);
+      if (!mounted) return;
+      Navigator.of(context).pop(ids.length);
+    } catch (error) {
+      if (mounted) mostrarError(context, error);
+    } finally {
+      if (mounted) setState(() => _procesando = false);
+    }
+  }
 }
 
-class _FilaProductor extends StatelessWidget {
-  const _FilaProductor({required this.quien, required this.alRevisar});
+class _SelectorImpresoraMasiva extends StatefulWidget {
+  const _SelectorImpresoraMasiva();
 
-  final ProductorIncompleto quien;
-  final VoidCallback alRevisar;
+  @override
+  State<_SelectorImpresoraMasiva> createState() =>
+      _SelectorImpresoraMasivaState();
+}
+
+class _SelectorImpresoraMasivaState extends State<_SelectorImpresoraMasiva> {
+  bool _cambiando = false;
+
+  Future<void> _cambiar() async {
+    setState(() => _cambiando = true);
+    try {
+      await cambiarImpresoraCredencialesWindows(context);
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (mounted) mostrarError(context, error);
+    } finally {
+      if (mounted) setState(() => _cambiando = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final tema = Theme.of(context);
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(Icons.person_outline, color: tema.colorScheme.error),
-      title: Text(quien.nombreCompleto),
-      subtitle: Text(
-        quien.faltantes.map((f) => f.campo).join(' · '),
-        style: tema.textTheme.bodySmall,
-      ),
-      trailing: const Icon(Icons.chevron_right),
-      // Se entra a su vista previa: ahí se ve la tarjeta y el detalle de lo
-      // que le falta, con dónde cargarlo.
-      onTap: () async {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => CredencialPreviaPagina(
-              productorId: quien.productorId,
-              nombre: quien.nombreCompleto,
+    final nombre = nombreImpresoraCredencialesSeleccionada;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.print_outlined),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                nombre == null
+                    ? 'Impresora: se seleccionará antes de enviar'
+                    : 'Impresora: $nombre',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
-        );
-        alRevisar();
-      },
+            const SizedBox(width: 12),
+            TextButton.icon(
+              onPressed: _cambiando ? null : _cambiar,
+              icon: _cambiando
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.swap_horiz),
+              label: Text(nombre == null ? 'Seleccionar' : 'Cambiar'),
+            ),
+          ],
+        ),
+      ),
     );
   }
+}
+
+class _CredencialSeleccionable extends StatelessWidget {
+  const _CredencialSeleccionable({
+    required this.candidato,
+    required this.marcado,
+    required this.editor,
+    required this.alCambiar,
+  });
+
+  final CandidatoImpresionCredencial candidato;
+  final bool marcado;
+  final EditorDisenoCredencial editor;
+  final ValueChanged<bool>? alCambiar;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    clipBehavior: Clip.antiAlias,
+    color: marcado
+        ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: .35)
+        : null,
+    child: InkWell(
+      onTap: alCambiar == null ? null : () => alCambiar!(!marcado),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Checkbox(
+                  value: marcado,
+                  onChanged: alCambiar == null
+                      ? null
+                      : (valor) => alCambiar!(valor ?? false),
+                ),
+                Expanded(
+                  child: Text(
+                    candidato.credencial.nombreCompleto,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: TarjetaPrevia(
+                    previa: candidato.credencial,
+                    reverso: false,
+                    ancho: 330,
+                    diseno: editor.diseno,
+                    plantillaUrl: editor.plantillaCaraUrl,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Future<int?> _pedirCantidad(
+  BuildContext context, {
+  required int maximo,
+  required String titulo,
+  required String descripcion,
+  bool mostrarTodos = true,
+}) {
+  return showDialog<int>(
+    context: context,
+    builder: (context) => _DialogoCantidad(
+      maximo: maximo,
+      titulo: titulo,
+      descripcion: descripcion,
+      mostrarTodos: mostrarTodos,
+    ),
+  );
+}
+
+class _DialogoCantidad extends StatefulWidget {
+  const _DialogoCantidad({
+    required this.maximo,
+    required this.titulo,
+    required this.descripcion,
+    required this.mostrarTodos,
+  });
+
+  final int maximo;
+  final String titulo;
+  final String descripcion;
+  final bool mostrarTodos;
+
+  @override
+  State<_DialogoCantidad> createState() => _DialogoCantidadState();
+}
+
+class _DialogoCantidadState extends State<_DialogoCantidad> {
+  late final TextEditingController _controlador;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controlador = TextEditingController(text: '1');
+  }
+
+  @override
+  void dispose() {
+    _controlador.dispose();
+    super.dispose();
+  }
+
+  void _aceptar() {
+    final cantidad = int.tryParse(_controlador.text.trim());
+    if (cantidad == null || cantidad < 1 || cantidad > widget.maximo) {
+      setState(() => _error = 'Ingresá un número entre 1 y ${widget.maximo}.');
+      return;
+    }
+    Navigator.pop(context, cantidad);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.titulo),
+    content: SizedBox(
+      width: 380,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(widget.descripcion),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controlador,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Cantidad',
+              helperText: 'Máximo: ${widget.maximo}',
+              errorText: _error,
+            ),
+            onSubmitted: (_) => _aceptar(),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      if (widget.mostrarTodos)
+        TextButton(
+          onPressed: () => Navigator.pop(context, widget.maximo),
+          child: Text('Todos (${widget.maximo})'),
+        ),
+      FilledButton(onPressed: _aceptar, child: const Text('Continuar')),
+    ],
+  );
+}
+
+Future<bool> _advertirImpresion(
+  BuildContext context, {
+  required String titulo,
+  required String mensaje,
+}) async {
+  return await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.warning_amber_rounded),
+          title: Text(titulo),
+          content: Text(mensaje),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(context, true),
+              icon: const Icon(Icons.print_outlined),
+              label: const Text('Abrir impresión'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
 }

@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.fede" "\0"
-            VALUE "FileDescription", "fede" "\0"
+            VALUE "FileDescription", "Padrón Federación Carrasco Tropical" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "fede" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.fede. All rights reserved." "\0"
             VALUE "OriginalFilename", "fede.exe" "\0"
-            VALUE "ProductName", "fede" "\0"
+            VALUE "ProductName", "Padrón Federación Carrasco Tropical" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

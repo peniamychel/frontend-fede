@@ -135,6 +135,31 @@ void main() {
     expect(espia.enviado!.containsKey('apellidosCorregidos'), isFalse);
     expect(espia.enviado!.containsKey('fotoDescripcion'), isFalse);
   });
+
+  testWidgets('envía nombres con ñ y tildes sin modificarlos', (tester) async {
+    ventanaAlta(tester);
+    await tester.pumpWidget(banco(productor: conCorrecciones));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.ancestor(
+        of: find.text('Nombres *'),
+        matching: find.byType(TextFormField),
+      ),
+      'JOSÉ ÁNGEL',
+    );
+    await tester.enterText(
+      find.ancestor(
+        of: find.text('Apellidos'),
+        matching: find.byType(TextFormField),
+      ),
+      'PEÑA MUÑOZ',
+    );
+    await guardar(tester, 'Guardar cambios');
+
+    expect(espia.enviado!['nombres'], 'JOSÉ ÁNGEL');
+    expect(espia.enviado!['apellidos'], 'PEÑA MUÑOZ');
+  });
 }
 
 /// Un ApiClient que anota el cuerpo enviado y devuelve un productor válido.

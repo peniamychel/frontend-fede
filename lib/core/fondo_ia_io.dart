@@ -221,6 +221,7 @@ Future<ImagenPngPreparada> prepararDocumentoSinFondo({
   required bool quitarFondo,
   required String tipoMime,
   required double intensidad,
+  required int realce,
   required int ladoMaximo,
   required int pesoMaximo,
 }) async {
@@ -253,6 +254,9 @@ Future<ImagenPngPreparada> prepararDocumentoSinFondo({
   preparada = preparada.convert(numChannels: 4);
   if (quitarFondo) {
     _quitarFondoUniforme(preparada, intensidad.clamp(0.0, 1.0));
+  }
+  if (realce > 0) {
+    _reforzarTrazos(preparada, realce.clamp(0, 3));
   }
 
   while (true) {
@@ -332,6 +336,41 @@ void _quitarFondoUniforme(img.Image imagen, double intensidad) {
         ? 1.0
         : (distancia - inicio) / (tolerancia - inicio);
     pixel.a = (pixel.a * opacidad).round();
+  }
+}
+
+void _reforzarTrazos(img.Image imagen, int radio) {
+  final origen = img.Image.from(imagen);
+  double tinta(img.Pixel pixel) {
+    final oscuridad = 765 - pixel.r - pixel.g - pixel.b;
+    return pixel.a * oscuridad / 765;
+  }
+
+  for (var y = 0; y < imagen.height; y++) {
+    for (var x = 0; x < imagen.width; x++) {
+      final actual = origen.getPixel(x, y);
+      var mejor = actual;
+      var mejorTinta = tinta(actual);
+      for (var dy = -radio; dy <= radio; dy++) {
+        for (var dx = -radio; dx <= radio; dx++) {
+          if (dx * dx + dy * dy > radio * radio) continue;
+          final nx = x + dx;
+          final ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= origen.width || ny >= origen.height) {
+            continue;
+          }
+          final candidato = origen.getPixel(nx, ny);
+          final tintaCandidata = tinta(candidato);
+          if (tintaCandidata > mejorTinta) {
+            mejor = candidato;
+            mejorTinta = tintaCandidata;
+          }
+        }
+      }
+      if (mejorTinta > tinta(actual) + 4) {
+        imagen.setPixelRgba(x, y, mejor.r, mejor.g, mejor.b, mejor.a);
+      }
+    }
   }
 }
 

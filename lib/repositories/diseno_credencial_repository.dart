@@ -21,4 +21,43 @@ class DisenoCredencialRepository {
     final datos = await _api.reemplazar('$_ruta/restablecer', const {});
     return EditorDisenoCredencial.desdeJson(datos.comoObjeto);
   }
+
+  Future<EditorDisenoCredencial> subirPlantilla(
+    CaraCredencial cara,
+    List<int> bytes,
+    String nombreArchivo,
+  ) async {
+    final datos = await _api.subirArchivo(
+      '$_ruta/plantilla/${_cara(cara)}',
+      campo: 'archivo',
+      bytes: bytes,
+      nombreArchivo: nombreArchivo,
+    );
+    return EditorDisenoCredencial.desdeJson(datos.comoObjeto);
+  }
+
+  Future<ImagenDisenoSubida> subirImagen(
+    List<int> bytes,
+    String nombreArchivo,
+  ) async {
+    final datos = await _api.subirArchivo(
+      '$_ruta/imagen',
+      campo: 'archivo',
+      bytes: bytes,
+      nombreArchivo: nombreArchivo,
+    );
+    return ImagenDisenoSubida.desdeJson(datos.comoObjeto);
+  }
+
+  Future<EditorDisenoCredencial> restablecerPlantilla(
+    CaraCredencial cara,
+  ) async {
+    final datos = await _api.eliminarConRespuesta(
+      '$_ruta/plantilla/${_cara(cara)}',
+    );
+    return EditorDisenoCredencial.desdeJson(datos.comoObjeto);
+  }
+
+  String _cara(CaraCredencial cara) =>
+      cara == CaraCredencial.cara ? 'CARA' : 'REVERSO';
 }

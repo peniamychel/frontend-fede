@@ -31,6 +31,10 @@ class Productor {
     this.fotoUrl,
     this.codigo,
     this.codigoPadron,
+    this.revisionSiePendiente = false,
+    this.credencialImpresiones = 0,
+    this.credencialUltimaImpresion,
+    this.credencialLista = false,
     this.auditoria = Auditoria.habilitado,
   });
 
@@ -45,6 +49,19 @@ class Productor {
   /// El backend prefiere no devolver nada antes que un código a medias, porque
   /// esto se imprime en la credencial.
   final String? codigoPadron;
+
+  /// Solo los productores creados por importación masiva nacen pendientes.
+  /// Al abrir su ficha se consulta SIE una vez y el backend apaga la marca.
+  final bool revisionSiePendiente;
+
+  /// Veces que Windows confirmó el envío del anverso a la impresora.
+  final int credencialImpresiones;
+  final DateTime? credencialUltimaImpresion;
+
+  /// Tiene fotografía y los datos personales mínimos para imprimir.
+  final bool credencialLista;
+
+  bool get credencialImpresa => credencialImpresiones > 0;
 
   final Auditoria auditoria;
 
@@ -123,6 +140,13 @@ class Productor {
     fotoUrl: json['fotoUrl'] as String?,
     codigo: json['codigo'] as String?,
     codigoPadron: json['codigoPadron'] as String?,
+    revisionSiePendiente: json['revisionSiePendiente'] as bool? ?? false,
+    credencialImpresiones:
+        (json['credencialImpresiones'] as num?)?.toInt() ?? 0,
+    credencialUltimaImpresion: DateTime.tryParse(
+      json['credencialUltimaImpresion'] as String? ?? '',
+    ),
+    credencialLista: json['credencialLista'] as bool? ?? false,
     auditoria: Auditoria.desdeJson(json['auditoria'] as Map<String, dynamic>?),
   );
 
@@ -254,5 +278,44 @@ class ConsultaPersona {
         nombres: json['nombres'] as String?,
         apellidos: json['apellidos'] as String?,
         mensaje: json['mensaje'] as String?,
+      );
+}
+
+enum EstadoRevisionSie {
+  corregida,
+  verificada,
+  aceptadaSinCoincidencia,
+  aceptadaSinCedula,
+  noDisponible,
+  yaRealizada,
+}
+
+class RevisionSieProductor {
+  const RevisionSieProductor({
+    required this.estado,
+    required this.completada,
+    required this.datosModificados,
+    required this.mensaje,
+  });
+
+  final EstadoRevisionSie estado;
+  final bool completada;
+  final bool datosModificados;
+  final String mensaje;
+
+  factory RevisionSieProductor.desdeJson(Map<String, dynamic> json) =>
+      RevisionSieProductor(
+        estado: switch (json['estado']) {
+          'CORREGIDA' => EstadoRevisionSie.corregida,
+          'VERIFICADA' => EstadoRevisionSie.verificada,
+          'ACEPTADA_SIN_COINCIDENCIA' =>
+            EstadoRevisionSie.aceptadaSinCoincidencia,
+          'ACEPTADA_SIN_CEDULA' => EstadoRevisionSie.aceptadaSinCedula,
+          'YA_REALIZADA' => EstadoRevisionSie.yaRealizada,
+          _ => EstadoRevisionSie.noDisponible,
+        },
+        completada: json['completada'] as bool? ?? false,
+        datosModificados: json['datosModificados'] as bool? ?? false,
+        mensaje: json['mensaje'] as String? ?? 'Revisión SIE procesada.',
       );
 }

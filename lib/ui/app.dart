@@ -44,7 +44,7 @@ class _PadronAppState extends State<PadronApp> {
           valueListenable: _tema,
           builder: (context, modo, _) => MaterialApp(
             navigatorKey: _navegador,
-            title: 'Padrón FEDERA',
+            title: 'PADRÓN FEDERACIÓN CARRASCO TROPICAL',
             debugShowCheckedModeBanner: false,
             theme: _construirTema(Brightness.light),
             darkTheme: _construirTema(Brightness.dark),

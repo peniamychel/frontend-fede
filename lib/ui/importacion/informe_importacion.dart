@@ -56,7 +56,8 @@ class InformeImportacion extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    esAnalisis ? 'Vista previa · no se escribió nada'
+                    esAnalisis
+                        ? 'Vista previa · no se escribió nada'
                         : 'Importación realizada',
                     style: tema.textTheme.titleSmall?.copyWith(
                       color: esAnalisis
@@ -131,56 +132,111 @@ class InformeImportacion extends StatelessWidget {
   Widget _jerarquiaNueva(BuildContext context) {
     final tema = Theme.of(context);
 
-    return Card(
-      color: tema.colorScheme.tertiaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.account_tree_outlined,
-                    size: 20, color: tema.colorScheme.onTertiaryContainer),
-                const SizedBox(width: 8),
-                Text(
-                  'Jerarquía que no existe todavía',
-                  style: tema.textTheme.titleSmall?.copyWith(
-                    color: tema.colorScheme.onTertiaryContainer,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (informe.centralesFaltantes.isNotEmpty)
+          Card(
+            color: tema.colorScheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.block_outlined,
+                        size: 20,
+                        color: tema.colorScheme.onErrorContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Centrales no registradas',
+                        style: tema.textTheme.titleSmall?.copyWith(
+                          color: tema.colorScheme.onErrorContainer,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Revisá que no sean erratas de la planilla: un nombre mal escrito '
-              'crea una central o un sindicato de más.',
-              style: tema.textTheme.bodySmall?.copyWith(
-                color: tema.colorScheme.onTertiaryContainer,
+                  const SizedBox(height: 6),
+                  Text(
+                    'Estas centrales no se crearán automáticamente. Crealas '
+                    'manualmente con su abreviatura y volvé a analizar la planilla.',
+                    style: tema.textTheme.bodySmall?.copyWith(
+                      color: tema.colorScheme.onErrorContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final central in informe.centralesFaltantes)
+                        Chip(
+                          avatar: const Icon(Icons.hub_outlined, size: 16),
+                          label: Text(central),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final central in informe.centralesNuevas)
-                  Chip(
-                    avatar: const Icon(Icons.hub_outlined, size: 16),
-                    label: Text('Central $central'),
-                    visualDensity: VisualDensity.compact,
+          ),
+        if (informe.centralesFaltantes.isNotEmpty &&
+            informe.sindicatosNuevos.isNotEmpty)
+          const SizedBox(height: 12),
+        if (informe.sindicatosNuevos.isNotEmpty)
+          Card(
+            color: tema.colorScheme.tertiaryContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.account_tree_outlined,
+                        size: 20,
+                        color: tema.colorScheme.onTertiaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Sindicatos nuevos para aprobar',
+                        style: tema.textTheme.titleSmall?.copyWith(
+                          color: tema.colorScheme.onTertiaryContainer,
+                        ),
+                      ),
+                    ],
                   ),
-                for (final s in informe.sindicatosNuevos)
-                  Chip(
-                    avatar: const Icon(Icons.groups_outlined, size: 16),
-                    label: Text('${s.central} › ${s.sindicato}'),
-                    visualDensity: VisualDensity.compact,
+                  const SizedBox(height: 4),
+                  Text(
+                    'Revisá que no sean errores de escritura. Solo se crearán después '
+                    'de que apruebes esta lista en el siguiente paso.',
+                    style: tema.textTheme.bodySmall?.copyWith(
+                      color: tema.colorScheme.onTertiaryContainer,
+                    ),
                   ),
-              ],
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final s in informe.sindicatosNuevos)
+                        Chip(
+                          avatar: const Icon(Icons.groups_outlined, size: 16),
+                          label: Text('${s.central} › ${s.sindicato}'),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 
@@ -193,8 +249,10 @@ class InformeImportacion extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(Icons.content_copy_outlined,
-                color: tema.colorScheme.onErrorContainer),
+            Icon(
+              Icons.content_copy_outlined,
+              color: tema.colorScheme.onErrorContainer,
+            ),
             const SizedBox(width: 14),
             Expanded(
               child: Text(
@@ -223,18 +281,16 @@ class InformeImportacion extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Text(
-                'Filas rechazadas',
-                style: tema.textTheme.titleSmall,
-              ),
+              child: Text('Filas rechazadas', style: tema.textTheme.titleSmall),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: Text(
                 'El número es el de la fila en Excel: abrí la planilla y andá '
                 'directo ahí.',
-                style: tema.textTheme.bodySmall
-                    ?.copyWith(color: tema.colorScheme.outline),
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.outline,
+                ),
               ),
             ),
             ConstrainedBox(
@@ -275,8 +331,9 @@ class InformeImportacion extends StatelessWidget {
                 child: Text(
                   'Y ${informe.erroresOmitidos} error(es) más que no se '
                   'listaron.',
-                  style: tema.textTheme.bodySmall
-                      ?.copyWith(color: tema.colorScheme.outline),
+                  style: tema.textTheme.bodySmall?.copyWith(
+                    color: tema.colorScheme.outline,
+                  ),
                 ),
               ),
           ],
@@ -315,15 +372,19 @@ class _Contador extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icono,
-                    size: 16,
-                    color: valor > 0 ? color : tema.colorScheme.outline),
+                Icon(
+                  icono,
+                  size: 16,
+                  color: valor > 0 ? color : tema.colorScheme.outline,
+                ),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(etiqueta,
-                      style: tema.textTheme.labelMedium,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    etiqueta,
+                    style: tema.textTheme.labelMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -335,11 +396,14 @@ class _Contador extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Text(detalle,
-                style: tema.textTheme.bodySmall
-                    ?.copyWith(color: tema.colorScheme.outline),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
+            Text(
+              detalle,
+              style: tema.textTheme.bodySmall?.copyWith(
+                color: tema.colorScheme.outline,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
         ),
       ),

@@ -12,12 +12,14 @@ class TarjetaPrevia extends StatelessWidget {
     required this.reverso,
     this.ancho = 420,
     this.diseno,
+    this.plantillaUrl,
   });
 
   final CredencialPrevia previa;
   final bool reverso;
   final double ancho;
   final DisenoCredencial? diseno;
+  final String? plantillaUrl;
 
   static const double anchoPt = 242.65;
   static const double altoPt = 153.01;
@@ -67,14 +69,8 @@ class TarjetaPrevia extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          Positioned.fill(
-            child: Image.asset(
-              reverso
-                  ? 'assets/credencial/reverso.jpg'
-                  : 'assets/credencial/cara.jpg',
-              fit: BoxFit.fill,
-            ),
-          ),
+          if (!elementos.any((e) => e.tipo == TipoElementoCredencial.plantilla))
+            _plantilla(),
           for (final elemento in elementos) ..._dibujar(elemento),
         ],
       ),
@@ -85,7 +81,28 @@ class TarjetaPrevia extends StatelessWidget {
     TipoElementoCredencial.texto => [_texto(e)],
     TipoElementoCredencial.imagen => [_imagen(e)],
     TipoElementoCredencial.pieFirma => _pie(e),
+    TipoElementoCredencial.plantilla => [_plantilla()],
   };
+
+  Widget _plantilla() => Positioned.fill(
+    child: plantillaUrl == null
+        ? Image.asset(
+            reverso
+                ? 'assets/credencial/reverso.jpg'
+                : 'assets/credencial/cara.jpg',
+            fit: BoxFit.fill,
+          )
+        : Image.network(
+            ApiConfig.urlAbsoluta(plantillaUrl!),
+            fit: BoxFit.fill,
+            errorBuilder: (_, _, _) => Image.asset(
+              reverso
+                  ? 'assets/credencial/reverso.jpg'
+                  : 'assets/credencial/cara.jpg',
+              fit: BoxFit.fill,
+            ),
+          ),
+  );
 
   Widget _texto(ElementoDisenoCredencial e) {
     final valor = _valor(e);
@@ -109,6 +126,7 @@ class TarjetaPrevia extends StatelessWidget {
           maxLines: 1,
           softWrap: false,
           style: TextStyle(
+            fontFamily: e.fuente.familiaFlutter,
             fontSize: px,
             height: 1,
             fontWeight: e.negrita ? FontWeight.bold : FontWeight.normal,
@@ -120,8 +138,8 @@ class TarjetaPrevia extends StatelessWidget {
   }
 
   Widget _imagen(ElementoDisenoCredencial e) {
-    final url = _url(e.campo);
-    final esta = _imagenPresente(e.campo);
+    final url = _url(e);
+    final esta = _imagenPresente(e);
     final esFoto = e.campo == 'FOTO';
     final opcional = _imagenOpcional(e.campo);
     return Positioned(
@@ -187,7 +205,12 @@ class TarjetaPrevia extends StatelessWidget {
           child: Text(
             texto,
             maxLines: 1,
-            style: TextStyle(fontSize: px, height: 1, fontWeight: peso),
+            style: TextStyle(
+              fontFamily: e.fuente.familiaFlutter,
+              fontSize: px,
+              height: 1,
+              fontWeight: peso,
+            ),
           ),
         ),
       );
@@ -249,18 +272,24 @@ class TarjetaPrevia extends StatelessWidget {
     _ => '',
   };
 
-  String? _url(String campo) => switch (campo) {
-    'FOTO' => previa.fotoUrl,
-    'SELLO_FEDERACION' => previa.selloFederacionUrl,
-    'SELLO_CENTRAL' => previa.selloCentralUrl,
-    'SELLO_SINDICATO' => previa.selloSindicatoUrl,
-    'FIRMA_FEDERACION' => previa.ejecutivoFederacion?.firmaUrl,
-    'FIRMA_CENTRAL' => previa.secretarioGeneralCentral?.firmaUrl,
-    'FIRMA_SINDICATO' => previa.secretarioGeneralSindicato?.firmaUrl,
-    _ => null,
-  };
+  String? _url(ElementoDisenoCredencial e) {
+    if (e.campo == 'IMAGEN_PERSONALIZADA' && e.recurso != null) {
+      return '/api/v1/archivos/${e.recurso}';
+    }
+    return switch (e.campo) {
+      'FOTO' => previa.fotoUrl,
+      'SELLO_FEDERACION' => previa.selloFederacionUrl,
+      'SELLO_CENTRAL' => previa.selloCentralUrl,
+      'SELLO_SINDICATO' => previa.selloSindicatoUrl,
+      'FIRMA_FEDERACION' => previa.ejecutivoFederacion?.firmaUrl,
+      'FIRMA_CENTRAL' => previa.secretarioGeneralCentral?.firmaUrl,
+      'FIRMA_SINDICATO' => previa.secretarioGeneralSindicato?.firmaUrl,
+      _ => null,
+    };
+  }
 
-  bool _imagenPresente(String campo) => switch (campo) {
+  bool _imagenPresente(ElementoDisenoCredencial e) => switch (e.campo) {
+    'IMAGEN_PERSONALIZADA' => e.recurso?.isNotEmpty ?? false,
     'FOTO' => previa.fotoUrl != null,
     'QR' => true,
     'SELLO_FEDERACION' => previa.selloFederacionUrl != null,

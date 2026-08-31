@@ -58,7 +58,10 @@ class SegundoCampo {
     etiqueta: 'Abreviatura',
     ayuda: 'Opcional. Tres letras o números, y no puede repetirse.',
     formateadores: [
-      FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]')),
+      // Las siglas también pueden contener letras españolas. El backend y la
+      // base trabajan en UTF-8, así que no corresponde convertir Ñ en N ni
+      // descartar vocales acentuadas al escribir o pegar.
+      FilteringTextInputFormatter.allow(RegExp('[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9]')),
       LengthLimitingTextInputFormatter(3),
       _AMayusculas(),
     ],
@@ -74,8 +77,9 @@ class SegundoCampo {
 class _AMayusculas extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-          TextEditingValue anterior, TextEditingValue nuevo) =>
-      nuevo.copyWith(text: nuevo.text.toUpperCase());
+    TextEditingValue anterior,
+    TextEditingValue nuevo,
+  ) => nuevo.copyWith(text: nuevo.text.toUpperCase());
 }
 
 /// Diálogo de alta y edición para centrales, sindicatos y sistemas.
@@ -135,10 +139,12 @@ class DialogoNombreNumero extends StatefulWidget {
 class _DialogoNombreNumeroState extends State<DialogoNombreNumero> {
   final _formulario = GlobalKey<FormState>();
 
-  late final TextEditingController _nombre =
-      TextEditingController(text: widget.nombreInicial);
-  late final TextEditingController _numero =
-      TextEditingController(text: widget.numeroInicial ?? '');
+  late final TextEditingController _nombre = TextEditingController(
+    text: widget.nombreInicial,
+  );
+  late final TextEditingController _numero = TextEditingController(
+    text: widget.numeroInicial ?? '',
+  );
 
   @override
   void dispose() {
@@ -203,10 +209,7 @@ class _DialogoNombreNumeroState extends State<DialogoNombreNumero> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
-        FilledButton(
-          onPressed: _aceptar,
-          child: Text(widget.textoAceptar),
-        ),
+        FilledButton(onPressed: _aceptar, child: Text(widget.textoAceptar)),
       ],
     );
   }

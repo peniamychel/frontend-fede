@@ -30,6 +30,11 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   /// Si se tocó algo, la lista de la que venimos tiene que recargarse.
   bool _huboCambios = false;
 
+  /// Resultado de la revisión automática realizada durante esta apertura.
+  RevisionSieProductor? _revisionSie;
+
+  bool _verificandoSie = false;
+
   /// Nombre ya cargado, solo para nombrarlo en el aviso de la descarga. Se
   /// anota al dibujar la ficha y no dispara redibujado: no se muestra en
   /// ningún lado, lo lee el botón de la credencial.
@@ -55,7 +60,12 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
       ),
     );
     // Al volver puede haber cargado la foto o la cédula que faltaba.
-    if (mounted) _recargar();
+    if (mounted) {
+      // La vista previa también puede registrar una impresión manual. La
+      // lista de origen debe releer el icono verde al cerrar esta ficha.
+      _huboCambios = true;
+      _recargar();
+    }
   }
 
   Future<void> _abrirLote(Lote lote) async {
@@ -170,10 +180,100 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   void _recargar() {
     final padron = PadronScope.of(context);
     setState(() {
-      _futuro = padron.productores.obtener(widget.productorId);
+      _revisionSie = null;
+      _futuro = _cargarDetalleConRevision(padron);
       _cargos = padron.productores.cargos(widget.productorId);
       _vetos = padron.vetos.historialDe(widget.productorId);
     });
+  }
+
+  Future<ProductorDetalle> _cargarDetalleConRevision(Padron padron) async {
+    var detalle = await padron.productores.obtener(widget.productorId);
+    if (!detalle.productor.revisionSiePendiente) return detalle;
+
+    final resultado = await padron.productores.revisarImportadoConSie(
+      widget.productorId,
+    );
+    _revisionSie = resultado;
+    if (resultado.datosModificados) _huboCambios = true;
+
+    // Al completar se relee la ficha para mostrar de inmediato la corrección.
+    // Una caída temporal no apaga la marca: se intentará en otra apertura.
+    if (resultado.completada) {
+      detalle = await padron.productores.obtener(widget.productorId);
+    }
+    return detalle;
+  }
+
+  Future<void> _verificarConSie(Productor productor) async {
+    if (_verificandoSie) return;
+
+    final ci = productor.ci?.trim();
+    if (ci == null || ci.isEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.badge_outlined),
+          title: const Text('Falta la cédula'),
+          content: const Text(
+            'Este productor no tiene una cédula registrada. Agrégala desde '
+            'Editar antes de verificar sus datos con SIE.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.fact_check_outlined),
+        title: const Text('¿Verificar con SIE?'),
+        content: Text(
+          'Se consultará la cédula $ci. Si SIE devuelve nombres o apellidos '
+          'diferentes, se corregirán automáticamente en la ficha.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.fact_check_outlined),
+            label: const Text('Verificar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+
+    setState(() => _verificandoSie = true);
+    try {
+      final padron = PadronScope.of(context);
+      final resultado = await padron.productores.verificarManualmenteConSie(
+        productor.id,
+      );
+      if (!mounted) return;
+      if (resultado.datosModificados) _huboCambios = true;
+      setState(() {
+        _revisionSie = resultado;
+        _verificandoSie = false;
+        if (resultado.completada) {
+          _futuro = padron.productores.obtener(widget.productorId);
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _verificandoSie = false);
+      mostrarError(context, e);
+    }
   }
 
   /// El aviso de que está observado, arriba de todo.
@@ -323,6 +423,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
 
   Widget _contenido(BuildContext context, ProductorDetalle detalle) {
     final p = detalle.productor;
+    final tieneFotografia = detalle.imagen(TipoImagen.original) != null;
     _nombre = p.nombreCompleto;
 
     return ListView(
@@ -330,10 +431,17 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
       children: [
         _Encabezado(
           productor: p,
+          tieneFotografia: tieneFotografia,
+          verificandoSie: _verificandoSie,
+          alVerificarConSie: () => _verificarConSie(p),
           alEditar: () => _editar(p),
           alCambiarEstado: () => _cambiarEstado(p, detalle.lotes.isNotEmpty),
           alEliminar: () => _eliminar(detalle),
         ),
+        if (_revisionSie case final revision?) ...[
+          const SizedBox(height: 16),
+          _AvisoRevisionSie(revision: revision),
+        ],
         _avisoDeVeto(context),
         if (p.tieneCorreccionPendiente) ...[
           const SizedBox(height: 16),
@@ -398,8 +506,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
                     lote: lote,
                     alAbrir: () => _abrirLote(lote),
                     alQuitar: () => _quitarParcela(lote, p),
-                    alAsignarSistema: () => _asignarSistema(lote),
-                    alQuitarSistema: () => _quitarSistema(lote),
+                    alCambiarNumero: () => _cambiarNumero(lote),
+                    alCambiarClasificacion: () => _cambiarClasificacion(lote),
                   ),
               ],
             ),
@@ -420,15 +528,15 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     }
   }
 
-  Future<void> _asignarSistema(Lote lote) async {
-    if (await asignarSistema(context, lote) && mounted) {
+  Future<void> _cambiarClasificacion(Lote lote) async {
+    if (await cambiarClasificacionParcela(context, lote) && mounted) {
       _huboCambios = true;
       _recargar();
     }
   }
 
-  Future<void> _quitarSistema(Lote lote) async {
-    if (await quitarSistema(context, lote) && mounted) {
+  Future<void> _cambiarNumero(Lote lote) async {
+    if (await cambiarNumeroParcela(context, lote) && mounted) {
       _huboCambios = true;
       _recargar();
     }
@@ -518,12 +626,18 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
 class _Encabezado extends StatelessWidget {
   const _Encabezado({
     required this.productor,
+    required this.tieneFotografia,
+    required this.verificandoSie,
+    required this.alVerificarConSie,
     required this.alEditar,
     required this.alCambiarEstado,
     required this.alEliminar,
   });
 
   final Productor productor;
+  final bool tieneFotografia;
+  final bool verificandoSie;
+  final VoidCallback alVerificarConSie;
   final VoidCallback alEditar;
   final VoidCallback alCambiarEstado;
   final VoidCallback alEliminar;
@@ -587,6 +701,16 @@ class _Encabezado extends StatelessWidget {
                   ),
                 ),
                 IconButton(
+                  tooltip: 'Verificar con SIE',
+                  onPressed: verificandoSie ? null : alVerificarConSie,
+                  icon: verificandoSie
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.fact_check_outlined),
+                ),
+                IconButton(
                   tooltip: 'Editar',
                   onPressed: alEditar,
                   icon: const Icon(Icons.edit_outlined),
@@ -615,22 +739,65 @@ class _Encabezado extends StatelessWidget {
                       'central',
                 ),
                 _Dato(etiqueta: 'Cédula', valor: productor.ci),
+                if (!tieneFotografia)
+                  const _Dato(etiqueta: 'Fotografía', vacio: 'Sin foto'),
                 _Dato(
-                  etiqueta: 'Fotografía',
-                  valor: productor.tieneFoto
-                      ? (productor.fotoDescripcion ?? 'Cargada')
-                      : null,
-                  vacio: 'Sin foto',
+                  etiqueta: 'Fecha de creación',
+                  valor: Auditoria.formatear(productor.auditoria.creadoEn),
                 ),
-                _Dato(
-                  etiqueta: 'Marcado',
-                  valor: productor.marcado ? 'Sí' : 'No',
-                ),
+                _EstadoImpresionCredencial(productor: productor),
               ],
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _EstadoImpresionCredencial extends StatelessWidget {
+  const _EstadoImpresionCredencial({required this.productor});
+
+  final Productor productor;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final (estado, color) = !productor.credencialLista
+        ? ('Incompleta o sin fotografía', tema.colorScheme.outline)
+        : productor.credencialImpresa
+        ? ('Impresa', Colors.green)
+        : ('Lista, pendiente de impresión', Colors.amber.shade700);
+    final ultima = Auditoria.formatear(productor.credencialUltimaImpresion);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Impresión de credencial',
+          style: tema.textTheme.labelSmall?.copyWith(
+            color: tema.colorScheme.outline,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.print, size: 18, color: color),
+            const SizedBox(width: 6),
+            Text(estado, style: tema.textTheme.bodyLarge),
+          ],
+        ),
+        if (productor.credencialImpresiones > 0)
+          Text(
+            '${productor.credencialImpresiones} impresión(es) de la cara'
+            '${ultima == null ? '' : ' · Última: $ultima'}',
+            style: tema.textTheme.bodySmall?.copyWith(
+              color: tema.colorScheme.outline,
+            ),
+          ),
+      ],
     );
   }
 }
@@ -666,6 +833,61 @@ class _Dato extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _AvisoRevisionSie extends StatelessWidget {
+  const _AvisoRevisionSie({required this.revision});
+
+  final RevisionSieProductor revision;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final noDisponible = revision.estado == EstadoRevisionSie.noDisponible;
+    final corregida = revision.estado == EstadoRevisionSie.corregida;
+    final color = noDisponible
+        ? tema.colorScheme.errorContainer
+        : corregida
+        ? tema.colorScheme.primaryContainer
+        : tema.colorScheme.secondaryContainer;
+    final icono = noDisponible
+        ? Icons.cloud_off_outlined
+        : corregida
+        ? Icons.fact_check_outlined
+        : Icons.verified_outlined;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      color: color,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icono),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    corregida
+                        ? 'Datos corregidos con SIE'
+                        : noDisponible
+                        ? 'Revisión SIE pendiente'
+                        : 'Revisión SIE completada',
+                    style: tema.textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(revision.mensaje),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -800,15 +1022,15 @@ class _FilaLote extends StatelessWidget {
     required this.lote,
     required this.alAbrir,
     required this.alQuitar,
-    required this.alAsignarSistema,
-    required this.alQuitarSistema,
+    required this.alCambiarNumero,
+    required this.alCambiarClasificacion,
   });
 
   final Lote lote;
   final VoidCallback alAbrir;
   final VoidCallback alQuitar;
-  final VoidCallback alAsignarSistema;
-  final VoidCallback alQuitarSistema;
+  final VoidCallback alCambiarNumero;
+  final VoidCallback alCambiarClasificacion;
 
   @override
   Widget build(BuildContext context) {
@@ -851,47 +1073,42 @@ class _FilaLote extends StatelessWidget {
                       )
                     : null),
         ),
-        // El sistema es un agregado de la parcela y se maneja acá mismo: es lo
-        // que se pregunta junto con la tierra, y mandar a otra pantalla para
-        // ponerlo o sacarlo era ir y volver por nada.
+        // La clasificación pertenece a esta participación: otra persona con
+        // el mismo número puede tener una opción distinta.
         Padding(
           padding: const EdgeInsets.only(left: 56, right: 16, bottom: 8),
           child: Row(
             children: [
               Icon(
-                lote.tieneSistema ? Icons.settings : Icons.settings_outlined,
+                Icons.category_outlined,
                 size: 18,
-                color: lote.tieneSistema
-                    ? tema.colorScheme.primary
-                    : tema.colorScheme.outline,
+                color: tema.colorScheme.primary,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  lote.tieneSistema
-                      ? 'Sistema ${lote.sistema!.codigo}'
-                      : 'Sin sistema',
+                  'Clasificación: ${lote.estado.etiqueta}',
                   style: tema.textTheme.bodySmall,
                 ),
               ),
-              if (lote.tieneSistema)
-                TextButton(
-                  onPressed: alQuitarSistema,
-                  child: const Text('Retirar'),
-                )
-              else
-                TextButton(
-                  onPressed: alAsignarSistema,
-                  child: const Text('Asignar'),
-                ),
+              TextButton(
+                onPressed: alCambiarClasificacion,
+                child: const Text('Cambiar'),
+              ),
             ],
           ),
         ),
         Padding(
           padding: const EdgeInsets.only(left: 56, right: 16, bottom: 8),
-          child: Row(
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
             children: [
-              const Spacer(),
+              TextButton.icon(
+                onPressed: alCambiarNumero,
+                icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+                label: const Text('Cambiar número'),
+              ),
               TextButton.icon(
                 onPressed: alQuitar,
                 icon: const Icon(Icons.link_off, size: 18),

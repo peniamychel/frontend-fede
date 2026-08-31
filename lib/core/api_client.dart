@@ -43,12 +43,39 @@ class ApiClient {
     String ruta, {
     Map<String, dynamic>? query,
     Duration tiempoLimite = const Duration(minutes: 5),
+  }) => _enviarBytes('GET', ruta, query: query, tiempoLimite: tiempoLimite);
+
+  /// POST cuyo resultado es un archivo. Se usa cuando la selección que arma
+  /// el PDF no cabe de forma segura en parámetros de la URL.
+  Future<DescargaBinaria> crearBytes(
+    String ruta,
+    Object cuerpo, {
+    Map<String, dynamic>? query,
+    Duration tiempoLimite = const Duration(minutes: 5),
+  }) => _enviarBytes(
+    'POST',
+    ruta,
+    query: query,
+    cuerpo: cuerpo,
+    tiempoLimite: tiempoLimite,
+  );
+
+  Future<DescargaBinaria> _enviarBytes(
+    String metodo,
+    String ruta, {
+    Map<String, dynamic>? query,
+    Object? cuerpo,
+    required Duration tiempoLimite,
   }) async {
-    final peticion = http.Request('GET', ApiConfig.uri(ruta, query));
+    final peticion = http.Request(metodo, ApiConfig.uri(ruta, query));
     // Una descarga puede ser PDF, XLSX, GZIP u otro binario. Pedir solamente
     // application/octet-stream hace que Spring responda 406 cuando el endpoint
     // declara un tipo más específico, como application/gzip.
     peticion.headers['Accept'] = '*/*';
+    if (cuerpo != null) {
+      peticion.headers['Content-Type'] = 'application/json; charset=utf-8';
+      peticion.body = jsonEncode(cuerpo);
+    }
     _autorizar(peticion.headers);
 
     final http.Response respuesta;
@@ -64,10 +91,15 @@ class ApiClient {
     if (respuesta.statusCode < 200 || respuesta.statusCode >= 300) {
       _interpretar(respuesta);
     }
+    final tipoMime =
+        respuesta.headers['content-type'] ?? 'application/octet-stream';
     return DescargaBinaria(
       bytes: respuesta.bodyBytes,
-      nombreArchivo: _nombreDescarga(respuesta.headers['content-disposition']),
-      tipoMime: respuesta.headers['content-type'] ?? 'application/octet-stream',
+      nombreArchivo: _nombreDescarga(
+        respuesta.headers['content-disposition'],
+        tipoMime,
+      ),
+      tipoMime: tipoMime,
     );
   }
 
@@ -118,6 +150,7 @@ class ApiClient {
     required List<int> bytes,
     required String nombreArchivo,
     Map<String, String?>? campos,
+    Map<String, ArchivoAdjunto>? archivosAdicionales,
     Map<String, dynamic>? query,
     Duration tiempoLimite = const Duration(minutes: 5),
   }) async {
@@ -127,6 +160,15 @@ class ApiClient {
       ..files.add(
         http.MultipartFile.fromBytes(campo, bytes, filename: nombreArchivo),
       );
+    archivosAdicionales?.forEach((campoAdicional, archivo) {
+      peticion.files.add(
+        http.MultipartFile.fromBytes(
+          campoAdicional,
+          archivo.bytes,
+          filename: archivo.nombreArchivo,
+        ),
+      );
+    });
     _autorizar(peticion.headers);
     campos?.forEach((clave, valor) {
       if (valor != null) peticion.fields[clave] = valor;
@@ -142,6 +184,68 @@ class ApiClient {
       throw SinConexionException(ApiConfig.descripcion, e);
     }
 
+    return _interpretar(respuesta);
+  }
+
+  /// Sube varios archivos usando el mismo nombre de parte multipart.
+  /// Es el formato que usa la lista física de un sindicato para conservar el
+  /// orden en que se eligieron sus páginas.
+  Future<Object?> subirArchivos(
+    String ruta, {
+    required String campo,
+    required List<ArchivoAdjunto> archivos,
+    Duration tiempoLimite = const Duration(minutes: 5),
+  }) => _enviarArchivos(
+    'POST',
+    ruta,
+    campo: campo,
+    archivos: archivos,
+    tiempoLimite: tiempoLimite,
+  );
+
+  /// Reemplaza un recurso con un único archivo multipart.
+  Future<Object?> reemplazarArchivo(
+    String ruta, {
+    required String campo,
+    required ArchivoAdjunto archivo,
+    Duration tiempoLimite = const Duration(minutes: 5),
+  }) => _enviarArchivos(
+    'PUT',
+    ruta,
+    campo: campo,
+    archivos: [archivo],
+    tiempoLimite: tiempoLimite,
+  );
+
+  Future<Object?> _enviarArchivos(
+    String metodo,
+    String ruta, {
+    required String campo,
+    required List<ArchivoAdjunto> archivos,
+    required Duration tiempoLimite,
+  }) async {
+    final peticion = http.MultipartRequest(metodo, ApiConfig.uri(ruta))
+      ..headers['Accept'] = 'application/json';
+    for (final archivo in archivos) {
+      peticion.files.add(
+        http.MultipartFile.fromBytes(
+          campo,
+          archivo.bytes,
+          filename: archivo.nombreArchivo,
+        ),
+      );
+    }
+    _autorizar(peticion.headers);
+
+    final http.Response respuesta;
+    try {
+      final flujo = await _cliente.send(peticion).timeout(tiempoLimite);
+      respuesta = await http.Response.fromStream(flujo);
+    } on TimeoutException catch (e) {
+      throw SinConexionException(ApiConfig.descripcion, e);
+    } on http.ClientException catch (e) {
+      throw SinConexionException(ApiConfig.descripcion, e);
+    }
     return _interpretar(respuesta);
   }
 
@@ -210,16 +314,45 @@ class ApiClient {
     if (token != null) cabeceras['Authorization'] = 'Bearer $token';
   }
 
-  String _nombreDescarga(String? disposicion) {
-    if (disposicion == null) return 'descarga.bin';
-    final coincidencia = RegExp(
-      r'''filename\*?=(?:UTF-8''|["']?)([^"';]+)''',
-      caseSensitive: false,
-    ).firstMatch(disposicion);
-    return Uri.decodeComponent(
-      coincidencia?.group(1)?.trim() ?? 'descarga.bin',
-    );
+  String _nombreDescarga(String? disposicion, String tipoMime) {
+    String? valor;
+    if (disposicion != null) {
+      // Spring puede enviar filename y filename*. Se prefiere filename*, que
+      // trae el nombre real en UTF-8; el primero puede ser un texto MIME como
+      // "=?UTF-8?Q?...?=" que Windows termina guardando sin extensión útil.
+      valor = RegExp(
+        r'''filename\*\s*=\s*(?:UTF-8'')?["']?([^"';]+)''',
+        caseSensitive: false,
+      ).firstMatch(disposicion)?.group(1);
+      valor ??= RegExp(
+        r'''filename\s*=\s*["']?([^"';]+)''',
+        caseSensitive: false,
+      ).firstMatch(disposicion)?.group(1);
+    }
+
+    var nombre = valor?.trim();
+    if (nombre != null && nombre.isNotEmpty) {
+      try {
+        nombre = Uri.decodeComponent(nombre);
+      } on FormatException {
+        // Si el servidor entregó un porcentaje incompleto se conserva el texto
+        // en vez de perder el nombre entero.
+      }
+    }
+    if (nombre == null || nombre.isEmpty) {
+      nombre = tipoMime.toLowerCase().startsWith('application/pdf')
+          ? 'descarga.pdf'
+          : 'descarga.bin';
+    }
+    return nombre.replaceAll(RegExp(r'''[/\\]'''), '_');
   }
+}
+
+class ArchivoAdjunto {
+  const ArchivoAdjunto({required this.bytes, required this.nombreArchivo});
+
+  final List<int> bytes;
+  final String nombreArchivo;
 }
 
 class DescargaBinaria {

@@ -66,17 +66,25 @@ class FilaProductor extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          _EstadoImpresion(productor: productor),
+          const SizedBox(width: 6),
           if (productor.marcado)
             Tooltip(
               message: 'Marcado en la revisión',
-              child: Icon(Icons.bookmark,
-                  size: 18, color: tema.colorScheme.tertiary),
+              child: Icon(
+                Icons.bookmark,
+                size: 18,
+                color: tema.colorScheme.tertiary,
+              ),
             ),
           if (productor.tieneCorreccionPendiente)
             Tooltip(
               message: 'Corrección de nombre sin confirmar',
-              child:
-                  Icon(Icons.edit_note, size: 20, color: tema.colorScheme.error),
+              child: Icon(
+                Icons.edit_note,
+                size: 20,
+                color: tema.colorScheme.error,
+              ),
             ),
           const SizedBox(width: 4),
           const Icon(Icons.chevron_right, size: 20),
@@ -114,6 +122,26 @@ class FilaProductor extends StatelessWidget {
             ? tema.colorScheme.onPrimaryContainer
             : tema.colorScheme.outline,
       ),
+    );
+  }
+}
+
+class _EstadoImpresion extends StatelessWidget {
+  const _EstadoImpresion({required this.productor});
+
+  final Productor productor;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final (mensaje, color) = !productor.credencialLista
+        ? ('Credencial incompleta o sin fotografía', tema.colorScheme.outline)
+        : productor.credencialImpresa
+        ? ('Credencial impresa', Colors.green)
+        : ('Lista, pendiente de impresión', Colors.amber.shade700);
+    return Tooltip(
+      message: mensaje,
+      child: Icon(Icons.print, size: 19, color: color),
     );
   }
 }

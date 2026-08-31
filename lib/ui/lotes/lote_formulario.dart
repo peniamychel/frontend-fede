@@ -27,14 +27,16 @@ class LoteFormulario extends StatefulWidget {
 class _LoteFormularioState extends State<LoteFormulario> {
   final _formulario = GlobalKey<FormState>();
 
-  late final TextEditingController _numero =
-      TextEditingController(text: widget.lote?.numero ?? '');
+  late final TextEditingController _numero = TextEditingController(
+    text: widget.lote?.numero ?? '',
+  );
   late final TextEditingController _superficie = TextEditingController(
-      text: widget.lote?.superficie == null ? '' : '${widget.lote!.superficie}');
-  late final TextEditingController _estado =
-      TextEditingController(text: widget.lote?.estadoOriginal ?? '');
+    text: widget.lote?.superficie == null ? '' : '${widget.lote!.superficie}',
+  );
+  late final TextEditingController _estado = TextEditingController(
+    text: widget.lote?.estadoOriginal ?? '',
+  );
 
-  late ExtensionLote? _extension = widget.lote?.extension;
   late Mercado? _mercado = widget.lote?.mercado;
   int? _tenedorId;
   bool _guardando = false;
@@ -47,12 +49,12 @@ class _LoteFormularioState extends State<LoteFormulario> {
     super.initState();
     _productores = widget.esEdicion
         ? Future.value(const <Productor>[])
-        : PadronScope.of(context)
-            .productores
-            .listar(
+        : PadronScope.of(context).productores
+              .listar(
                 sindicatoId: widget.sindicato.id,
-                paginacion: const Paginacion(tamano: 300))
-            .then((p) => p.contenido);
+                paginacion: const Paginacion(tamano: 300),
+              )
+              .then((p) => p.contenido);
   }
 
   @override
@@ -88,49 +90,23 @@ class _LoteFormularioState extends State<LoteFormulario> {
                       nota: 'La tierra no se muda de sindicato.',
                     ),
                     const SizedBox(height: 20),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: TextFormField(
-                            controller: _numero,
-                            textCapitalization: TextCapitalization.characters,
-                            decoration: const InputDecoration(
-                              labelText: 'Número de lote',
-                              hintText: '74',
-                              helperText: 'Puede repetirse: se anota, no se bloquea',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: DropdownButtonFormField<ExtensionLote?>(
-                            initialValue: _extension,
-                            decoration: const InputDecoration(
-                              labelText: 'Ext.',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: [
-                              const DropdownMenuItem(
-                                  value: null, child: Text('—')),
-                              for (final e in ExtensionLote.values)
-                                DropdownMenuItem(
-                                    value: e, child: Text(e.valor)),
-                            ],
-                            onChanged: _guardando
-                                ? null
-                                : (v) => setState(() => _extension = v),
-                          ),
-                        ),
-                      ],
+                    TextFormField(
+                      controller: _numero,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: const InputDecoration(
+                        labelText: 'Número de lote',
+                        hintText: '74',
+                        helperText:
+                            'Si se repite, las letras A-H se asignan automáticamente',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _superficie,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
                         labelText: 'Superficie (hectáreas)',
                         hintText: '12.5',
@@ -154,7 +130,8 @@ class _LoteFormularioState extends State<LoteFormulario> {
                       decoration: const InputDecoration(
                         labelText: 'Estado del lote',
                         hintText: 'C-S',
-                        helperText: 'Como lo escribe la planilla; el servidor '
+                        helperText:
+                            'Como lo escribe la planilla; el servidor '
                             'lo normaliza',
                         border: OutlineInputBorder(),
                       ),
@@ -171,8 +148,9 @@ class _LoteFormularioState extends State<LoteFormulario> {
                         for (final m in Mercado.values)
                           DropdownMenuItem(value: m, child: Text(m.etiqueta)),
                       ],
-                      onChanged:
-                          _guardando ? null : (v) => setState(() => _mercado = v),
+                      onChanged: _guardando
+                          ? null
+                          : (v) => setState(() => _mercado = v),
                     ),
                     if (!widget.esEdicion) ...[
                       const SizedBox(height: 24),
@@ -181,8 +159,9 @@ class _LoteFormularioState extends State<LoteFormulario> {
                       Text(
                         'Se puede dejar sin tenedor: una parcela registrada sin '
                         'dueño conocido es mejor que una parcela sin registrar.',
-                        style: tema.textTheme.bodySmall
-                            ?.copyWith(color: tema.colorScheme.outline),
+                        style: tema.textTheme.bodySmall?.copyWith(
+                          color: tema.colorScheme.outline,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       CargaAsync<List<Productor>>(
@@ -190,26 +169,30 @@ class _LoteFormularioState extends State<LoteFormulario> {
                         alReintentar: () {},
                         constructor: (context, productores) =>
                             DropdownButtonFormField<int?>(
-                          initialValue: _tenedorId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Tenedor',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: [
-                            const DropdownMenuItem(
-                                value: null, child: Text('Sin tenedor')),
-                            for (final p in productores)
-                              DropdownMenuItem(
-                                value: p.id,
-                                child: Text(p.nombreCompleto,
-                                    overflow: TextOverflow.ellipsis),
+                              initialValue: _tenedorId,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Tenedor',
+                                border: OutlineInputBorder(),
                               ),
-                          ],
-                          onChanged: _guardando
-                              ? null
-                              : (v) => setState(() => _tenedorId = v),
-                        ),
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('Sin tenedor'),
+                                ),
+                                for (final p in productores)
+                                  DropdownMenuItem(
+                                    value: p.id,
+                                    child: Text(
+                                      p.nombreCompleto,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                              onChanged: _guardando
+                                  ? null
+                                  : (v) => setState(() => _tenedorId = v),
+                            ),
                       ),
                     ],
                     const SizedBox(height: 28),
@@ -219,9 +202,12 @@ class _LoteFormularioState extends State<LoteFormulario> {
                           ? const SizedBox(
                               width: 16,
                               height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2))
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Icon(Icons.check),
-                      label: Text(widget.esEdicion ? 'Guardar' : 'Crear parcela'),
+                      label: Text(
+                        widget.esEdicion ? 'Guardar' : 'Crear parcela',
+                      ),
                     ),
                     const SizedBox(height: 40),
                   ],
@@ -237,14 +223,19 @@ class _LoteFormularioState extends State<LoteFormulario> {
   Future<void> _guardar() async {
     if (!_formulario.currentState!.validate()) return;
 
-    final superficie =
-        double.tryParse(_superficie.text.trim().replaceAll(',', '.'));
+    final superficie = double.tryParse(
+      _superficie.text.trim().replaceAll(',', '.'),
+    );
+    final numero = _texto(_numero);
 
     final peticion = LoteRequest(
       sindicatoId: widget.sindicato.id,
       productorId: widget.esEdicion ? null : _tenedorId,
-      numero: _texto(_numero),
-      extension: _extension,
+      numero: numero,
+      // Conserva la subdivisión de datos históricos, pero ya no permite
+      // crearla ni modificarla manualmente. Al cambiar el número se elimina:
+      // desde ahora las letras del código se calculan por repetición.
+      extension: numero == widget.lote?.numero ? widget.lote?.extension : null,
       estado: _texto(_estado),
       mercado: _mercado?.valor,
       superficie: superficie,
@@ -296,14 +287,20 @@ class _Fijo extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(etiqueta.toUpperCase(),
-                    style: tema.textTheme.labelSmall
-                        ?.copyWith(color: tema.colorScheme.outline)),
+                Text(
+                  etiqueta.toUpperCase(),
+                  style: tema.textTheme.labelSmall?.copyWith(
+                    color: tema.colorScheme.outline,
+                  ),
+                ),
                 Text(valor, style: tema.textTheme.titleSmall),
                 if (nota != null)
-                  Text(nota!,
-                      style: tema.textTheme.bodySmall
-                          ?.copyWith(color: tema.colorScheme.outline)),
+                  Text(
+                    nota!,
+                    style: tema.textTheme.bodySmall?.copyWith(
+                      color: tema.colorScheme.outline,
+                    ),
+                  ),
               ],
             ),
           ),

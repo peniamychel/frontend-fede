@@ -24,6 +24,7 @@ Future<ImagenPngPreparada> prepararDocumentoSinFondo({
   required bool quitarFondo,
   required String tipoMime,
   required double intensidad,
+  required int realce,
   required int ladoMaximo,
   required int pesoMaximo,
 }) {

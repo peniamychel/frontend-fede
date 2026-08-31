@@ -1,7 +1,7 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
@@ -68,8 +68,13 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
   /// torpe lo reduzca a nada.
   static const double _minimo = 48;
 
-  /// Zona sensible de las esquinas.
-  static const double _asa = 56;
+  /// Zona sensible de las esquinas. En una pantalla táctil el centro puede
+  /// quedar debajo del dedo y, cuando está en el borde, parte del área queda
+  /// fuera del lienzo; por eso es bastante mayor que el indicador visible.
+  double _tamanoAsa() => switch (defaultTargetPlatform) {
+    TargetPlatform.android || TargetPlatform.iOS => 88,
+    _ => 56,
+  };
 
   ui.Image? _imagen;
   Object? _error;
@@ -210,6 +215,8 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
   }
 
   Widget _asaDe(_Esquina esquina, Rect recorte, ThemeData tema) {
+    final asa = _tamanoAsa();
+    final indicador = asa > 56 ? 20.0 : 12.0;
     final punto = switch (esquina) {
       _Esquina.superiorIzquierda => recorte.topLeft,
       _Esquina.superiorDerecha => recorte.topRight,
@@ -218,10 +225,10 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
     };
 
     return Positioned(
-      left: punto.dx - _asa / 2,
-      top: punto.dy - _asa / 2,
-      width: _asa,
-      height: _asa,
+      left: punto.dx - asa / 2,
+      top: punto.dy - asa / 2,
+      width: asa,
+      height: asa,
       child: GestureDetector(
         key: ValueKey('recorte-${esquina.name}'),
         behavior: HitTestBehavior.opaque,
@@ -237,10 +244,10 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
               : SystemMouseCursors.resizeUpRightDownLeft,
           child: Center(
             child: Container(
-              // El área táctil sigue siendo de 56 px, pero el indicador
-              // visible es más discreto para no cubrir la fotografía.
-              width: 12,
-              height: 12,
+              // El círculo muestra dónde apoyar el dedo, mientras toda el
+              // área transparente que lo rodea también acepta el arrastre.
+              width: indicador,
+              height: indicador,
               decoration: BoxDecoration(
                 color: tema.colorScheme.primary,
                 shape: BoxShape.circle,

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../core/texto_busqueda.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../productores/asignar_parcela.dart';
 import '../widgets/estados.dart';
 import '../widgets/ubicacion_pagina.dart';
 
@@ -69,25 +71,19 @@ class _LotePaginaState extends State<LotePagina> {
                         alUbicar: () => _ubicar(datos.lote),
                         alMedir: () => _medir(datos.lote),
                         alTraspasar: () => _traspasar(datos.lote),
-                        alCambiarSistema: () => _cambiarSistema(datos.lote),
+                        alCambiarNumero: () => _cambiarNumero(datos.lote),
+                        alCambiarClasificacion: () =>
+                            _cambiarClasificacion(datos.lote),
                       ),
                       const SizedBox(height: 20),
                       _Historial(
                         titulo: 'Quiénes la tuvieron',
-                        detalle: 'La parcela no se mueve. Lo que cambia es '
+                        detalle:
+                            'La parcela no se mueve. Lo que cambia es '
                             'quién la tiene, y cada cambio queda registrado.',
                         icono: Icons.history,
                         periodos: datos.tenencias,
                         vacio: 'Todavía no se registró ninguna tenencia.',
-                      ),
-                      const SizedBox(height: 20),
-                      _Historial(
-                        titulo: 'Sistemas que pasaron',
-                        detalle: 'Un sistema se puede vender y trasladar a otra '
-                            'parcela; acá queda por dónde pasó.',
-                        icono: Icons.settings_outlined,
-                        periodos: datos.sistemas,
-                        vacio: 'Nunca tuvo un sistema instalado.',
                       ),
                       const SizedBox(height: 32),
                     ],
@@ -148,7 +144,8 @@ class _LotePaginaState extends State<LotePagina> {
 
     final decision = await showDialog<_Traspaso>(
       context: context,
-      builder: (context) => _DialogoTraspaso(lote: lote, candidatos: candidatos),
+      builder: (context) =>
+          _DialogoTraspaso(lote: lote, candidatos: candidatos),
     );
     if (decision == null || !mounted) return;
 
@@ -179,89 +176,17 @@ class _LotePaginaState extends State<LotePagina> {
     }
   }
 
-  /// Instala un sistema disponible, o retira el que tiene.
-  Future<void> _cambiarSistema(Lote lote) async {
-    final padron = PadronScope.of(context);
-
-    if (lote.tieneSistema) {
-      final confirmado = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('¿Retirar el sistema?'),
-          content: Text('${lote.sistema!.codigo} sale de esta parcela y queda '
-              'disponible. El período queda cerrado en el historial.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Retirar'),
-            ),
-          ],
-        ),
-      );
-      if (confirmado != true || !mounted) return;
-
-      try {
-        await padron.sistemas.trasladar(lote.sistema!.sistemaId, null,
-            const TraspasoRequest(motivo: MotivoTraspaso.otro));
-        if (!mounted) return;
-        _huboCambios = true;
-        _recargar();
-      } catch (e) {
-        if (mounted) mostrarError(context, e);
-      }
-      return;
-    }
-
-    final List<Sistema> disponibles;
-    try {
-      disponibles = await padron.sistemas.listar(disponibles: true);
-    } catch (e) {
-      if (mounted) mostrarError(context, e);
-      return;
-    }
-    if (!mounted) return;
-
-    if (disponibles.isEmpty) {
-      mostrarAviso(context, 'No hay sistemas sin instalar',
-          detalle: 'Dalos de alta desde la pantalla de sistemas, o retirá uno '
-              'de otra parcela.');
-      return;
-    }
-
-    final elegido = await showDialog<Sistema>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Instalar un sistema'),
-        children: [
-          for (final s in disponibles)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop(s),
-              child: ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.inventory_2_outlined),
-                title: Text(s.codigo),
-                subtitle: s.descripcion == null ? null : Text(s.descripcion!),
-              ),
-            ),
-        ],
-      ),
-    );
-    if (elegido == null || !mounted) return;
-
-    try {
-      await padron.sistemas.trasladar(elegido.id, lote.id,
-          const TraspasoRequest(motivo: MotivoTraspaso.otro));
-      if (!mounted) return;
+  Future<void> _cambiarClasificacion(Lote lote) async {
+    if (await cambiarClasificacionParcela(context, lote) && mounted) {
       _huboCambios = true;
-      mostrarExito(context, '${elegido.codigo} instalado');
       _recargar();
-    } catch (e) {
-      if (mounted) mostrarError(context, e);
+    }
+  }
+
+  Future<void> _cambiarNumero(Lote lote) async {
+    if (await cambiarNumeroParcela(context, lote) && mounted) {
+      _huboCambios = true;
+      _recargar();
     }
   }
 
@@ -275,16 +200,16 @@ class _LotePaginaState extends State<LotePagina> {
 
     try {
       await PadronScope.of(context).lotes.actualizar(
-            lote.id,
-            LoteRequest(
-              sindicatoId: lote.sindicatoId,
-              numero: lote.numero,
-              extension: lote.extension,
-              estado: lote.estadoOriginal,
-              mercado: lote.mercado?.valor,
-              superficie: hectareas < 0 ? null : hectareas,
-            ),
-          );
+        lote.id,
+        LoteRequest(
+          sindicatoId: lote.sindicatoId,
+          numero: lote.numero,
+          extension: lote.extension,
+          estado: lote.estadoOriginal,
+          mercado: lote.mercado?.valor,
+          superficie: hectareas < 0 ? null : hectareas,
+        ),
+      );
       if (!mounted) return;
       _huboCambios = true;
       mostrarExito(context, 'Superficie guardada');
@@ -295,25 +220,19 @@ class _LotePaginaState extends State<LotePagina> {
   }
 }
 
-/// Las tres consultas de la pantalla, pedidas juntas.
+/// Las consultas de la pantalla, pedidas juntas.
 class _Datos {
-  const _Datos(this.lote, this.tenencias, this.sistemas);
+  const _Datos(this.lote, this.tenencias);
 
   final Lote lote;
   final List<Tenencia> tenencias;
-  final List<Tenencia> sistemas;
 
   static Future<_Datos> cargar(LoteRepository repo, int id) async {
     final resultados = await Future.wait([
       repo.obtener(id),
       repo.historial(id),
-      repo.historialDeSistemas(id),
     ]);
-    return _Datos(
-      resultados[0] as Lote,
-      resultados[1] as List<Tenencia>,
-      resultados[2] as List<Tenencia>,
-    );
+    return _Datos(resultados[0] as Lote, resultados[1] as List<Tenencia>);
   }
 }
 
@@ -323,14 +242,16 @@ class _Encabezado extends StatelessWidget {
     required this.alUbicar,
     required this.alMedir,
     required this.alTraspasar,
-    required this.alCambiarSistema,
+    required this.alCambiarNumero,
+    required this.alCambiarClasificacion,
   });
 
   final Lote lote;
   final VoidCallback alUbicar;
   final VoidCallback alMedir;
   final VoidCallback alTraspasar;
-  final VoidCallback alCambiarSistema;
+  final VoidCallback alCambiarNumero;
+  final VoidCallback alCambiarClasificacion;
 
   @override
   Widget build(BuildContext context) {
@@ -346,12 +267,17 @@ class _Encabezado extends StatelessWidget {
               children: [
                 Icon(Icons.crop_landscape, color: tema.colorScheme.primary),
                 const SizedBox(width: 8),
-                Text('Lote ${lote.codigo}', style: tema.textTheme.headlineSmall),
+                Text(
+                  'Lote ${lote.codigo}',
+                  style: tema.textTheme.headlineSmall,
+                ),
               ],
             ),
             const SizedBox(height: 4),
-            Text('Sindicato ${lote.sindicatoNombre}',
-                style: tema.textTheme.bodyMedium),
+            Text(
+              'Sindicato ${lote.sindicatoNombre}',
+              style: tema.textTheme.bodyMedium,
+            ),
             const SizedBox(height: 16),
             Wrap(
               spacing: 28,
@@ -372,34 +298,8 @@ class _Encabezado extends StatelessWidget {
                   valor: lote.tenedor?.nombre ?? 'Sin tenedor',
                   atenuado: !lote.tieneTenedor,
                 ),
-                _Dato(
-                  etiqueta: 'Sistema',
-                  valor: lote.sistema?.codigo ?? 'Sin sistema',
-                  atenuado: !lote.tieneSistema,
-                ),
               ],
             ),
-            if (lote.sistemaSinIdentificar) ...[
-              const SizedBox(height: 12),
-              // La planilla dice que hay sistema pero no cuál. No es un error:
-              // es un pendiente de saneamiento, y decirlo evita que parezca
-              // una contradicción.
-              Row(
-                children: [
-                  Icon(Icons.help_outline,
-                      size: 16, color: tema.colorScheme.outline),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'La planilla dice que tiene sistema, pero todavía no se '
-                      'registró cuál.',
-                      style: tema.textTheme.bodySmall
-                          ?.copyWith(color: tema.colorScheme.outline),
-                    ),
-                  ),
-                ],
-              ),
-            ],
             const SizedBox(height: 16),
             Row(
               children: [
@@ -414,8 +314,10 @@ class _Encabezado extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(lote.coordenadas,
-                      style: tema.textTheme.bodySmall),
+                  child: Text(
+                    lote.coordenadas,
+                    style: tema.textTheme.bodySmall,
+                  ),
                 ),
               ],
             ),
@@ -429,33 +331,37 @@ class _Encabezado extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: alTraspasar,
                   icon: const Icon(Icons.swap_horiz, size: 18),
-                  label: Text(lote.tieneTenedor
-                      ? 'Vender o traspasar'
-                      : 'Asignar tenedor'),
+                  label: Text(
+                    lote.tieneTenedor
+                        ? 'Vender o traspasar'
+                        : 'Asignar tenedor',
+                  ),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: alUbicar,
                   icon: const Icon(Icons.map_outlined, size: 18),
-                  label: Text(lote.tieneUbicacion
-                      ? 'Mover en el mapa'
-                      : 'Ubicar en el mapa'),
+                  label: Text(
+                    lote.tieneUbicacion
+                        ? 'Mover en el mapa'
+                        : 'Ubicar en el mapa',
+                  ),
                 ),
                 OutlinedButton.icon(
                   onPressed: alMedir,
                   icon: const Icon(Icons.straighten, size: 18),
                   label: Text(
-                      lote.superficie == null ? 'Poner medida' : 'Cambiar medida'),
+                    lote.superficie == null ? 'Poner medida' : 'Cambiar medida',
+                  ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: alCambiarSistema,
-                  icon: Icon(
-                      lote.tieneSistema
-                          ? Icons.eject_outlined
-                          : Icons.settings_outlined,
-                      size: 18),
-                  label: Text(lote.tieneSistema
-                      ? 'Retirar sistema'
-                      : 'Instalar sistema'),
+                  onPressed: alCambiarNumero,
+                  icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+                  label: const Text('Cambiar número'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: alCambiarClasificacion,
+                  icon: const Icon(Icons.category_outlined, size: 18),
+                  label: const Text('Cambiar clasificación'),
                 ),
               ],
             ),
@@ -484,15 +390,20 @@ class _Dato extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(etiqueta.toUpperCase(),
-            style: tema.textTheme.labelSmall
-                ?.copyWith(color: tema.colorScheme.outline)),
+        Text(
+          etiqueta.toUpperCase(),
+          style: tema.textTheme.labelSmall?.copyWith(
+            color: tema.colorScheme.outline,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(valor,
-            style: tema.textTheme.titleSmall?.copyWith(
-              color: atenuado ? tema.colorScheme.outline : null,
-              fontStyle: atenuado ? FontStyle.italic : null,
-            )),
+        Text(
+          valor,
+          style: tema.textTheme.titleSmall?.copyWith(
+            color: atenuado ? tema.colorScheme.outline : null,
+            fontStyle: atenuado ? FontStyle.italic : null,
+          ),
+        ),
       ],
     );
   }
@@ -530,17 +441,23 @@ class _Historial extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 4),
-        Text(detalle,
-            style: tema.textTheme.bodySmall
-                ?.copyWith(color: tema.colorScheme.outline)),
+        Text(
+          detalle,
+          style: tema.textTheme.bodySmall?.copyWith(
+            color: tema.colorScheme.outline,
+          ),
+        ),
         const SizedBox(height: 12),
         if (periodos.isEmpty)
           Card(
             child: Padding(
               padding: const EdgeInsets.all(20),
-              child: Text(vacio,
-                  style: tema.textTheme.bodyMedium
-                      ?.copyWith(color: tema.colorScheme.outline)),
+              child: Text(
+                vacio,
+                style: tema.textTheme.bodyMedium?.copyWith(
+                  color: tema.colorScheme.outline,
+                ),
+              ),
             ),
           )
         else
@@ -562,11 +479,13 @@ class _Historial extends StatelessWidget {
                         color: p.vigente ? null : tema.colorScheme.outline,
                       ),
                     ),
-                    subtitle: Text([
-                      p.periodo,
-                      if (p.motivoEtiqueta != null) p.motivoEtiqueta!,
-                      if (p.observaciones != null) p.observaciones!,
-                    ].join(' · ')),
+                    subtitle: Text(
+                      [
+                        p.periodo,
+                        if (p.motivoEtiqueta != null) p.motivoEtiqueta!,
+                        if (p.observaciones != null) p.observaciones!,
+                      ].join(' · '),
+                    ),
                     trailing: p.vigente
                         ? Chip(
                             label: const Text('Actual'),
@@ -632,10 +551,10 @@ class _DialogoTraspasoState extends State<_DialogoTraspaso> {
   }
 
   List<Productor> get _visibles {
-    final filtro = _busqueda.text.trim().toUpperCase();
+    final filtro = textoParaBusqueda(_busqueda.text);
     if (filtro.isEmpty) return widget.candidatos;
     return widget.candidatos
-        .where((p) => p.nombreCompleto.toUpperCase().contains(filtro))
+        .where((p) => textoParaBusqueda(p.nombreCompleto).contains(filtro))
         .toList();
   }
 
@@ -661,8 +580,9 @@ class _DialogoTraspasoState extends State<_DialogoTraspaso> {
                 child: Text(
                   'Hoy la tiene ${widget.lote.tenedor!.nombre}. Su período se '
                   'cierra y queda en el historial.',
-                  style: tema.textTheme.bodySmall
-                      ?.copyWith(color: tema.colorScheme.outline),
+                  style: tema.textTheme.bodySmall?.copyWith(
+                    color: tema.colorScheme.outline,
+                  ),
                 ),
               ),
             const SizedBox(height: 12),
@@ -720,8 +640,9 @@ class _DialogoTraspasoState extends State<_DialogoTraspaso> {
                           'El sindicato no tiene otros productores. Cargá al '
                           'comprador primero, o dejá la parcela sin tenedor.',
                           textAlign: TextAlign.center,
-                          style: tema.textTheme.bodySmall
-                              ?.copyWith(color: tema.colorScheme.outline),
+                          style: tema.textTheme.bodySmall?.copyWith(
+                            color: tema.colorScheme.outline,
+                          ),
                         ),
                       )
                     : ListView.builder(
@@ -735,8 +656,10 @@ class _DialogoTraspasoState extends State<_DialogoTraspaso> {
                             groupValue: _productorId,
                             // ignore: deprecated_member_use
                             onChanged: (v) => setState(() => _productorId = v),
-                            title: Text(p.nombreCompleto,
-                                overflow: TextOverflow.ellipsis),
+                            title: Text(
+                              p.nombreCompleto,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             subtitle: p.ci == null ? null : Text('CI ${p.ci}'),
                           );
                         },
@@ -782,12 +705,14 @@ class _DialogoTraspasoState extends State<_DialogoTraspaso> {
 
   void _aceptar() {
     final obs = _observaciones.text.trim();
-    Navigator.of(context).pop(_Traspaso(
-      motivo: _motivo,
-      productorId: _sinTenedor ? null : _productorId,
-      desde: _desde,
-      observaciones: obs.isEmpty ? null : obs,
-    ));
+    Navigator.of(context).pop(
+      _Traspaso(
+        motivo: _motivo,
+        productorId: _sinTenedor ? null : _productorId,
+        desde: _desde,
+        observaciones: obs.isEmpty ? null : obs,
+      ),
+    );
   }
 }
 

@@ -103,15 +103,28 @@ class DirectorioRepository {
     required TipoImagenCargo tipo,
     required List<int> bytes,
     required String nombreArchivo,
+    List<int>? originalBytes,
+    String? nombreOriginal,
   }) async {
     final datos = await _api.subirArchivo(
       '/cargos/$cargoId/imagenes/${tipo.ruta}',
       campo: 'archivo',
       bytes: bytes,
       nombreArchivo: nombreArchivo,
+      archivosAdicionales: {
+        'original': ArchivoAdjunto(
+          bytes: originalBytes ?? bytes,
+          nombreArchivo: nombreOriginal ?? nombreArchivo,
+        ),
+      },
     );
     return Cargo.desdeJson(datos.comoObjeto);
   }
+
+  Future<DescargaBinaria> descargarOriginalImagen(
+    int cargoId,
+    TipoImagenCargo tipo,
+  ) => _api.obtenerBytes('/cargos/$cargoId/imagenes/${tipo.ruta}/original');
 
   Future<Cargo> eliminarImagen(int cargoId, TipoImagenCargo tipo) async {
     final datos = await _api.eliminarConRespuesta(
@@ -133,15 +146,26 @@ class DirectorioRepository {
     required int id,
     required List<int> bytes,
     required String nombreArchivo,
+    List<int>? originalBytes,
+    String? nombreOriginal,
   }) async {
     final datos = await _api.subirArchivo(
       '${_base(ambito, id)}/sello',
       campo: 'archivo',
       bytes: bytes,
       nombreArchivo: nombreArchivo,
+      archivosAdicionales: {
+        'original': ArchivoAdjunto(
+          bytes: originalBytes ?? bytes,
+          nombreArchivo: nombreOriginal ?? nombreArchivo,
+        ),
+      },
     );
     return Directorio.desdeJson(datos.comoObjeto);
   }
+
+  Future<DescargaBinaria> descargarOriginalSello(Ambito ambito, int id) =>
+      _api.obtenerBytes('${_base(ambito, id)}/sello/original');
 
   Future<Directorio> eliminarSello(Ambito ambito, int id) async {
     final datos = await _api.eliminarConRespuesta('${_base(ambito, id)}/sello');

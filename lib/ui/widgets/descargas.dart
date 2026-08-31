@@ -24,6 +24,32 @@ Future<void> descargarInformeSindicato(
   );
 }
 
+/// Informe consolidado del avance de impresión de una central.
+Future<void> descargarInformeImpresionCentral(
+  BuildContext context,
+  Central central,
+) {
+  return _abrir(
+    context,
+    PadronScope.of(context).centrales.urlInformeImpresion(central.id),
+    'Generando el informe de impresión de «${central.nombre}»…',
+  );
+}
+
+/// Planilla para estampar y luego digitalizar sellos, firma y pie de firma.
+Future<void> descargarPlanillaRecoleccionDirectorio(
+  BuildContext context,
+  Central central,
+) {
+  return _abrir(
+    context,
+    PadronScope.of(
+      context,
+    ).centrales.urlPlanillaRecoleccionDirectorio(central.id),
+    'Generando la planilla de recolección de «${central.nombre}»…',
+  );
+}
+
 /// Credencial de un productor: anverso y reverso, tamaño cédula.
 Future<void> descargarCredencialProductor(
   BuildContext context,
@@ -38,10 +64,7 @@ Future<void> descargarCredencialProductor(
 }
 
 /// Credencial de quien ocupa un cargo: vertical, y con su propia firma atrás.
-Future<void> descargarCredencialDirigente(
-  BuildContext context,
-  Cargo cargo,
-) {
+Future<void> descargarCredencialDirigente(BuildContext context, Cargo cargo) {
   return _abrir(
     context,
     PadronScope.of(context).directorios.urlCredencial(cargo.id),

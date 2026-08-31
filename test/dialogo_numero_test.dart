@@ -48,12 +48,13 @@ void main() {
   }
 
   Finder campo(String etiqueta) => find.ancestor(
-        of: find.text(etiqueta),
-        matching: find.byType(TextFormField),
-      );
+    of: find.text(etiqueta),
+    matching: find.byType(TextFormField),
+  );
 
-  testWidgets('guardar con los dos campos no deja el árbol roto',
-      (tester) async {
+  testWidgets('guardar con los dos campos no deja el árbol roto', (
+    tester,
+  ) async {
     NombreYNumero? resultado;
     await tester.pumpWidget(banco(alCerrar: (d) => resultado = d));
     await abrir(tester);
@@ -98,8 +99,9 @@ void main() {
     expect(resultado, isNull);
   });
 
-  testWidgets('el número es opcional y vacío significa sin número',
-      (tester) async {
+  testWidgets('el número es opcional y vacío significa sin número', (
+    tester,
+  ) async {
     NombreYNumero? resultado;
     await tester.pumpWidget(banco(alCerrar: (d) => resultado = d));
     await abrir(tester);
@@ -116,11 +118,13 @@ void main() {
 
   testWidgets('al editar llegan cargados los dos valores', (tester) async {
     NombreYNumero? resultado;
-    await tester.pumpWidget(banco(
-      nombreInicial: 'TUNARI',
-      numeroInicial: '12',
-      alCerrar: (d) => resultado = d,
-    ));
+    await tester.pumpWidget(
+      banco(
+        nombreInicial: 'TUNARI',
+        numeroInicial: '12',
+        alCerrar: (d) => resultado = d,
+      ),
+    );
     await abrir(tester);
 
     expect(find.text('TUNARI'), findsOneWidget);
@@ -135,14 +139,17 @@ void main() {
     expect(resultado?.numero, '13');
   });
 
-  testWidgets('se le puede quitar el número a algo que lo tenía',
-      (tester) async {
+  testWidgets('se le puede quitar el número a algo que lo tenía', (
+    tester,
+  ) async {
     NombreYNumero? resultado;
-    await tester.pumpWidget(banco(
-      nombreInicial: 'TUNARI',
-      numeroInicial: '12',
-      alCerrar: (d) => resultado = d,
-    ));
+    await tester.pumpWidget(
+      banco(
+        nombreInicial: 'TUNARI',
+        numeroInicial: '12',
+        alCerrar: (d) => resultado = d,
+      ),
+    );
     await abrir(tester);
 
     await tester.enterText(campo('Número'), '');
@@ -170,15 +177,15 @@ void main() {
     Widget bancoSigla({
       String? numeroInicial,
       ValueChanged<NombreYNumero?>? alCerrar,
-    }) =>
-        banco(
-          numeroInicial: numeroInicial,
-          segundo: SegundoCampo.abreviatura,
-          alCerrar: alCerrar,
-        );
+    }) => banco(
+      numeroInicial: numeroInicial,
+      segundo: SegundoCampo.abreviatura,
+      alCerrar: alCerrar,
+    );
 
-    testWidgets('se escribe en mayúsculas aunque se tipee en minúsculas',
-        (tester) async {
+    testWidgets('se escribe en mayúsculas aunque se tipee en minúsculas', (
+      tester,
+    ) async {
       NombreYNumero? resultado;
       await tester.pumpWidget(bancoSigla(alCerrar: (d) => resultado = d));
       await abrir(tester);
@@ -218,6 +225,22 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(resultado?.numero, '1MO');
+    });
+
+    testWidgets('acepta ñ y vocales acentuadas sin reemplazarlas', (
+      tester,
+    ) async {
+      NombreYNumero? resultado;
+      await tester.pumpWidget(bancoSigla(alCerrar: (d) => resultado = d));
+      await abrir(tester);
+
+      await tester.enterText(campo('Nombre *'), 'PEÑA ÑANDÚ');
+      await tester.enterText(campo('Abreviatura'), 'ñá1');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(resultado?.nombre, 'PEÑA ÑANDÚ');
+      expect(resultado?.numero, 'ÑÁ1');
     });
 
     testWidgets('descarta lo que no sea letra ni número', (tester) async {

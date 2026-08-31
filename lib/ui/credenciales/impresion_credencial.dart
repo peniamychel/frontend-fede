@@ -9,6 +9,7 @@ import '../widgets/estados.dart';
 
 typedef CargarLadoCredencial =
     Future<DescargaBinaria> Function(LadoCredencial lado);
+typedef RegistrarAnversoImpreso = Future<void> Function();
 
 /// La impresión física se ofrece solo en el ejecutable de Windows.
 @visibleForTesting
@@ -17,6 +18,29 @@ bool? debugImpresionDeCredencialesDisponible;
 bool get impresionDeCredencialesDisponible =>
     debugImpresionDeCredencialesDisponible ??
     (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows);
+
+String? get nombreImpresoraCredencialesSeleccionada =>
+    _ImpresionWindows.impresoraSeleccionada?.name;
+
+/// Abre el mismo selector usado por la impresión individual.
+Future<void> cambiarImpresoraCredencialesWindows(BuildContext context) async {
+  if (!impresionDeCredencialesDisponible) {
+    throw StateError('La impresión física solo está disponible en Windows.');
+  }
+  await _ImpresionWindows.seleccionar(context, forzar: true);
+}
+
+/// Envía un PDF CR80 de una o varias páginas al controlador de Windows.
+/// Cada página representa una tarjeta física en la Zebra.
+Future<bool> imprimirTrabajoCredencialesWindows(
+  BuildContext context,
+  DescargaBinaria descarga,
+) {
+  if (!impresionDeCredencialesDisponible) {
+    throw StateError('La impresión física solo está disponible en Windows.');
+  }
+  return _ImpresionWindows.imprimir(context, descarga, vertical: false);
+}
 
 /// Abre el flujo de impresión desde pantallas que no tienen una vista previa
 /// propia, como el directorio de dirigentes.
@@ -68,12 +92,14 @@ class PanelImpresionCredencial extends StatefulWidget {
     required this.habilitada,
     required this.nombre,
     required this.cargar,
+    this.alAnversoImpreso,
     this.vertical = false,
   });
 
   final bool habilitada;
   final String nombre;
   final CargarLadoCredencial cargar;
+  final RegistrarAnversoImpreso? alAnversoImpreso;
   final bool vertical;
 
   @override
@@ -84,6 +110,7 @@ class PanelImpresionCredencial extends StatefulWidget {
 class _PanelImpresionCredencialState extends State<PanelImpresionCredencial> {
   bool _imprimiendo = false;
   bool _anversoEnviado = false;
+  bool _anversoPendienteDeRegistro = false;
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +192,11 @@ class _PanelImpresionCredencialState extends State<PanelImpresionCredencial> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.looks_one_outlined),
-              label: const Text('1. Imprimir anverso'),
+              label: Text(
+                _anversoPendienteDeRegistro
+                    ? 'Registrar anverso ya enviado'
+                    : '1. Imprimir anverso',
+              ),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
@@ -203,6 +234,15 @@ class _PanelImpresionCredencialState extends State<PanelImpresionCredencial> {
 
     setState(() => _imprimiendo = true);
     try {
+      if (lado == LadoCredencial.anverso &&
+          _anversoPendienteDeRegistro &&
+          widget.alAnversoImpreso != null) {
+        await widget.alAnversoImpreso!();
+        _anversoPendienteDeRegistro = false;
+        if (!mounted) return;
+        mostrarExito(context, 'La impresión anterior quedó registrada.');
+        return;
+      }
       final descarga = await widget.cargar(lado);
       if (!mounted) return;
       final enviada = await _ImpresionWindows.imprimir(
@@ -212,7 +252,18 @@ class _PanelImpresionCredencialState extends State<PanelImpresionCredencial> {
       );
       if (!mounted) return;
       if (enviada) {
-        if (lado == LadoCredencial.anverso) _anversoEnviado = true;
+        if (lado == LadoCredencial.anverso) {
+          _anversoEnviado = true;
+          if (widget.alAnversoImpreso != null) {
+            // Desde acá el trabajo ya fue aceptado por Windows. Si falla el
+            // registro, el próximo clic reintenta solo el registro y no vuelve
+            // a imprimir físicamente la tarjeta.
+            _anversoPendienteDeRegistro = true;
+            await widget.alAnversoImpreso!();
+            _anversoPendienteDeRegistro = false;
+            if (!mounted) return;
+          }
+        }
         mostrarExito(
           context,
           '${lado.etiqueta[0].toUpperCase()}${lado.etiqueta.substring(1)} '

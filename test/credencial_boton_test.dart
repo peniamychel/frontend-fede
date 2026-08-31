@@ -61,7 +61,8 @@ void main() {
         LadoCredencial.anverso,
       );
       expect(api.ruta, '/productores/812/credencial.pdf');
-      expect(api.query, {'cara': 'ANVERSO'});
+      expect(api.query?['cara'], 'ANVERSO');
+      expect(int.tryParse('${api.query?['v']}'), isNotNull);
 
       await padron.directorios.descargarLadoCredencial(
         91,
@@ -69,6 +70,18 @@ void main() {
       );
       expect(api.ruta, '/cargos/91/credencial.pdf');
       expect(api.query, {'cara': 'REVERSO'});
+    });
+
+    test('la impresión manual registra el anverso en el productor', () async {
+      final api = _ApiDescarga();
+
+      final actualizado = await Padron(
+        api: api,
+      ).productores.confirmarImpresionCredencial(812);
+
+      expect(api.ruta, '/productores/812/credencial/impresion');
+      expect(actualizado.id, 812);
+      expect(actualizado.credencialImpresiones, 1);
     });
   });
 
@@ -106,6 +119,18 @@ void main() {
 class _ApiDescarga extends ApiClient {
   String? ruta;
   Map<String, dynamic>? query;
+
+  @override
+  Future<Object?> crear(String ruta, Object cuerpo) async {
+    this.ruta = ruta;
+    query = null;
+    return const {
+      'id': 812,
+      'nombres': 'MARÍA',
+      'credencialImpresiones': 1,
+      'credencialLista': true,
+    };
+  }
 
   @override
   Future<DescargaBinaria> obtenerBytes(

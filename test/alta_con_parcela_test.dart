@@ -6,12 +6,11 @@ import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/padron_scope.dart';
 import 'package:fede/ui/productores/productor_formulario.dart';
 
-/// Alta de un productor con su parcela y el sistema de esa parcela.
+/// Alta de un productor con su parcela y su clasificación.
 ///
 /// Lo que se comprueba es el encadenado, que es donde está el riesgo: crear al
-/// productor, darle la parcela con **su** id, y recién entonces instalarle el
-/// sistema con el id de **esa** parcela. Si alguno de los tres eslabones se
-/// arma con el id equivocado, la tierra termina a nombre de otro y nadie se
+/// productor y darle la parcela con **su** id. Si alguno de los dos eslabones
+/// se arma con el id equivocado, la tierra termina a nombre de otro y nadie se
 /// entera hasta que alguien reclama.
 void main() {
   const sindicato = Sindicato(
@@ -62,6 +61,8 @@ void main() {
   }
 
   Future<void> registrar(WidgetTester tester) async {
+    await tester.ensureVisible(find.text('Registrar'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Registrar'));
     await tester.pumpAndSettle();
   }
@@ -83,9 +84,11 @@ void main() {
 
     await tester.tap(find.text('Nueva'));
     await tester.pumpAndSettle();
+
+    expect(find.text('Extensión'), findsNothing);
     await tester.enterText(
       find.ancestor(
-        of: find.text('N° de parcela'),
+        of: find.text('N° de parcela *'),
         matching: find.byType(TextFormField),
       ),
       '77',
@@ -131,7 +134,24 @@ void main() {
     );
   });
 
-  testWidgets('el sistema nuevo se instala en la parcela recién creada', (
+  testWidgets('la parcela nueva lleva su clasificación', (tester) async {
+    await abrir(tester);
+
+    await tester.tap(find.text('Nueva'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.ancestor(
+        of: find.text('N° de parcela *'),
+        matching: find.byType(TextFormField),
+      ),
+      '77',
+    );
+    await registrar(tester);
+
+    expect(espia.creados['/lotes']!['estado'], 'SIN_SISTEMA');
+  });
+
+  testWidgets('avisa ocupantes y próxima letra del número repetido', (
     tester,
   ) async {
     await abrir(tester);
@@ -140,39 +160,40 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(
       find.ancestor(
-        of: find.text('N° de parcela'),
+        of: find.text('N° de parcela *'),
         matching: find.byType(TextFormField),
       ),
       '77',
     );
-    // El segundo «Nuevo» de la pantalla es el del sistema.
-    await tester.tap(find.text('Nuevo'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Se asignará la letra B'), findsOneWidget);
+    expect(find.textContaining('OTRO'), findsOneWidget);
+  });
+
+  testWidgets('elegir Sistema clasifica sin pedir un equipo', (tester) async {
+    await abrir(tester);
+    await tester.tap(find.text('Nueva'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.ancestor(
-        of: find.text('Código del sistema *'),
+        of: find.text('N° de parcela *'),
         matching: find.byType(TextFormField),
       ),
-      'BOMBA-1',
+      '77',
     );
+    await tester.tap(find.byType(DropdownButtonFormField<EstadoLote>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sistema').last);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('se asignará la letra A'), findsOneWidget);
+    expect(find.text('Sistema que se instalará *'), findsNothing);
+    expect(find.textContaining('Crealo primero'), findsNothing);
     await registrar(tester);
 
-    expect(espia.creados['/sistemas']!['codigo'], 'BOMBA-1');
-    expect(
-      espia.consultasDeTraslado.single,
-      {'loteId': _ApiEspia.idLote},
-      reason: 'el sistema va a la parcela que se acaba de crear',
-    );
-  });
-
-  testWidgets('sin parcela no se ofrece sistema', (tester) async {
-    await abrir(tester);
-
-    expect(find.text('Sistema de la parcela'), findsNothing);
-
-    await tester.tap(find.text('Nueva'));
-    await tester.pumpAndSettle();
-    expect(find.text('Sistema de la parcela'), findsOneWidget);
+    expect(espia.creados['/lotes']!['estado'], 'CON_SISTEMA');
+    expect(espia.consultasSistemas, 0);
   });
 }
 
@@ -181,24 +202,31 @@ class _ApiEspia extends ApiClient {
   static const int idProductor = 42;
   static const int idLote = 99;
   static const int idLoteLibre = 55;
-  static const int idSistema = 88;
 
   /// Ruta → cuerpo enviado.
   final Map<String, Map<String, dynamic>> creados = {};
   final Map<String, Map<String, dynamic>> reemplazados = {};
-
-  /// Los `query` de cada traslado de sistema: ahí viaja a qué parcela va.
-  final List<Map<String, dynamic>> consultasDeTraslado = [];
+  int consultasSistemas = 0;
 
   /// El backend manda `codigo` ya armado; el modelo lo lee tal cual y no lo
   /// deriva de numero + extension.
   Map<String, dynamic> _lote(int id, {Map<String, dynamic>? tenedor}) => {
     'id': id,
     'numero': id == idLoteLibre ? '50' : '77',
-    'extension': id == idLoteLibre ? 'A' : null,
-    'codigo': id == idLoteLibre ? '50-A' : '77',
+    // Estas subdivisiones históricas no separan los grupos automáticos.
+    'extension': id == idLoteLibre
+        ? 'A'
+        : id == 70
+        ? 'B'
+        : null,
+    'codigo': id == idLoteLibre
+        ? '50-A'
+        : id == 70
+        ? '77-B'
+        : '77',
     'sindicatoId': 7,
     'sindicatoNombre': 'LIBERTAD',
+    'estado': 'SIN_SISTEMA',
     'tenedor': tenedor,
   };
 
@@ -208,13 +236,15 @@ class _ApiEspia extends ApiClient {
       // Una libre y una tomada: solo la libre puede ofrecerse.
       return [
         _lote(idLoteLibre),
-        _lote(70, tenedor: {'id': 1, 'nombreCompleto': 'OTRO'}),
+        _lote(
+          70,
+          tenedor: {'productorId': 1, 'nombre': 'OTRO', 'desde': '2026-08-01'},
+        ),
       ];
     }
-    if (ruta.startsWith('/sistemas')) {
-      return [
-        {'id': idSistema, 'codigo': 'RIEGO-1'},
-      ];
+    if (ruta == '/sistemas') {
+      consultasSistemas++;
+      return <dynamic>[];
     }
     return <dynamic>[];
   }
@@ -231,9 +261,6 @@ class _ApiEspia extends ApiClient {
     creados[ruta] = cuerpo as Map<String, dynamic>;
     if (ruta == '/lotes') {
       return _lote(idLote);
-    }
-    if (ruta == '/sistemas') {
-      return {'id': idSistema, 'codigo': cuerpo['codigo']};
     }
     return {
       'id': idProductor,
@@ -253,13 +280,13 @@ class _ApiEspia extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     reemplazados[ruta] = cuerpo as Map<String, dynamic>;
-    if (ruta.contains('/traslado')) {
-      consultasDeTraslado.add(query ?? const {});
-      return {'id': idSistema, 'codigo': 'X'};
-    }
     return _lote(
       ruta.contains('$idLoteLibre') ? idLoteLibre : idLote,
-      tenedor: {'id': idProductor, 'nombreCompleto': 'JUAN'},
+      tenedor: {
+        'productorId': idProductor,
+        'nombre': 'JUAN',
+        'desde': '2026-08-01',
+      },
     );
   }
 }

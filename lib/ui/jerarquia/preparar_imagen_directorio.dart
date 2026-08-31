@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 
 import '../../core/fondo_ia.dart';
 import '../../models/imagen.dart';
@@ -49,10 +50,14 @@ class ImagenDirectorioPreparada {
   const ImagenDirectorioPreparada({
     required this.bytes,
     required this.nombreArchivo,
+    required this.originalBytes,
+    required this.nombreOriginal,
   });
 
   final Uint8List bytes;
   final String nombreArchivo;
+  final Uint8List originalBytes;
+  final String nombreOriginal;
 }
 
 Future<ImagenDirectorioPreparada?> prepararImagenDirectorio(
@@ -91,9 +96,19 @@ class _PrepararImagenDirectorioDialogoState
   bool _quitarFondo = true;
   bool _procesando = false;
   double _intensidad = 0.55;
+  int _realce = 0;
   String? _error;
+  late Uint8List _bytesEdicion;
+  int _versionImagen = 0;
+  bool _ajustandoRecorte = false;
 
-  Uint8List get _original => Uint8List.fromList(widget.archivo.bytes!);
+  Uint8List get _original => _bytesEdicion;
+
+  @override
+  void initState() {
+    super.initState();
+    _bytesEdicion = Uint8List.fromList(widget.archivo.bytes!);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,6 +118,9 @@ class _PrepararImagenDirectorioDialogoState
       content: SizedBox(
         width: 500,
         child: SingleChildScrollView(
+          physics: _ajustandoRecorte
+              ? const NeverScrollableScrollPhysics()
+              : null,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -117,6 +135,7 @@ class _PrepararImagenDirectorioDialogoState
               ),
               const SizedBox(height: 12),
               RecortadorImagen(
+                key: ValueKey(_versionImagen),
                 bytes: _original,
                 alCambiar: (recorte) {
                   if (!mounted) return;
@@ -126,6 +145,27 @@ class _PrepararImagenDirectorioDialogoState
                     _error = null;
                   });
                 },
+                alCambiarInteraccion: (ajustando) {
+                  if (!mounted || _ajustandoRecorte == ajustando) return;
+                  setState(() => _ajustandoRecorte = ajustando);
+                },
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                children: [
+                  TextButton.icon(
+                    onPressed: _procesando ? null : () => _girar(-90),
+                    icon: const Icon(Icons.rotate_left, size: 20),
+                    label: const Text('Girar izquierda'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _procesando ? null : () => _girar(90),
+                    icon: const Icon(Icons.rotate_right, size: 20),
+                    label: const Text('Girar derecha'),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               SwitchListTile.adaptive(
@@ -171,6 +211,35 @@ class _PrepararImagenDirectorioDialogoState
                   ],
                 ),
               ],
+              Text('Grosor de los trazos', style: tema.textTheme.labelMedium),
+              Row(
+                children: [
+                  const Text('Original'),
+                  Expanded(
+                    child: Slider(
+                      value: _realce.toDouble(),
+                      min: 0,
+                      max: 3,
+                      divisions: 3,
+                      label: _realce == 0 ? 'Sin realce' : 'Nivel $_realce',
+                      onChanged: _procesando
+                          ? null
+                          : (valor) => setState(() {
+                              _realce = valor.round();
+                              _preparada = null;
+                              _error = null;
+                            }),
+                    ),
+                  ),
+                  const Text('Más grueso'),
+                ],
+              ),
+              Text(
+                'Úsalo cuando la firma o el sello queden con líneas demasiado delgadas.',
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.outline,
+                ),
+              ),
               if (_preparada != null) ...[
                 const SizedBox(height: 8),
                 Text('Vista previa', style: tema.textTheme.labelLarge),
@@ -258,6 +327,8 @@ class _PrepararImagenDirectorioDialogoState
                   ImagenDirectorioPreparada(
                     bytes: _preparada!,
                     nombreArchivo: _nombrePng(),
+                    originalBytes: _original,
+                    nombreOriginal: widget.archivo.name,
                   ),
                 ),
           child: const Text('Subir PNG'),
@@ -292,10 +363,40 @@ class _PrepararImagenDirectorioDialogoState
         quitarFondo: _quitarFondo,
         tipoMime: _tipoMime(),
         intensidad: _intensidad,
+        realce: _realce,
         ladoMaximo: widget.clase.ladoMaximo,
         pesoMaximo: widget.clase.pesoMaximo,
       );
       if (mounted) setState(() => _preparada = resultado.bytes);
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _procesando = false);
+    }
+  }
+
+  Future<void> _girar(num grados) async {
+    setState(() {
+      _procesando = true;
+      _preparada = null;
+      _error = null;
+    });
+    try {
+      final decodificada = img.decodeImage(_original);
+      if (decodificada == null) {
+        throw StateError('No se pudo girar la imagen.');
+      }
+      final orientada = img.bakeOrientation(decodificada);
+      final girada = img.copyRotate(orientada, angle: grados);
+      final bytes = _tipoMime() == 'image/png'
+          ? img.encodePng(girada)
+          : img.encodeJpg(girada, quality: 95);
+      if (!mounted) return;
+      setState(() {
+        _bytesEdicion = Uint8List.fromList(bytes);
+        _versionImagen++;
+        _recorte = null;
+      });
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     } finally {

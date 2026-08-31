@@ -58,10 +58,13 @@ void main() {
     'completa': completa,
   };
 
-  Widget pantalla(Map<String, dynamic> respuesta) => TemaScope(
+  Widget pantalla(
+    Map<String, dynamic> respuesta, {
+    Map<String, dynamic>? configuracion,
+  }) => TemaScope(
     preferencia: PreferenciaTema(),
     child: PadronScope(
-      padron: Padron(api: _ApiFija(respuesta)),
+      padron: Padron(api: _ApiFija(respuesta, configuracion)),
       child: const MaterialApp(
         home: CredencialPreviaPagina(productorId: 1, nombre: 'JUAN'),
       ),
@@ -95,8 +98,8 @@ void main() {
     expect(find.text('Falta un dato para poder imprimirla.'), findsOneWidget);
     expect(find.text('Secretario General del sindicato'), findsOneWidget);
     expect(find.text('Jerarquía → Sindicatos → Directorio'), findsOneWidget);
-    // El hueco del reverso se marca en rojo, no se deja en blanco.
-    expect(find.text('SIN FIRMANTE'), findsOneWidget);
+    // La firma del sindicato es opcional: no debe dibujarse como un error.
+    expect(find.text('SIN FIRMANTE'), findsNothing);
 
     final anverso = tester.widget<FilledButton>(
       find.ancestor(
@@ -154,15 +157,67 @@ void main() {
     );
     expect(find.text('1. Imprimir anverso'), findsNothing);
   });
+
+  testWidgets('usa las plantillas personalizadas devueltas por el editor', (
+    tester,
+  ) async {
+    const cara = '/api/v1/configuracion/credencial/plantilla/CARA?v=101';
+    const reverso = '/api/v1/configuracion/credencial/plantilla/REVERSO?v=202';
+    final configuracion = <String, dynamic>{
+      'diseno': {
+        'ancho': 242.65,
+        'alto': 153.01,
+        'elementos': [
+          {
+            'id': 'nombre-prueba',
+            'cara': 'CARA',
+            'tipo': 'TEXTO',
+            'campo': 'NOMBRE_COMPLETO',
+            'etiqueta': 'Nombre',
+            'x': 10,
+            'y': 10,
+            'ancho': 100,
+            'alto': 10,
+            'tamanoFuente': 8,
+            'negrita': true,
+            'alineacion': 'IZQUIERDA',
+            'color': '#000000',
+            'texto': '',
+          },
+        ],
+      },
+      'camposDisponibles': <Object>[],
+      'plantillaCaraUrl': cara,
+      'plantillaReversoUrl': reverso,
+    };
+
+    await tester.pumpWidget(
+      pantalla(previa(completa: true), configuracion: configuracion),
+    );
+    await tester.pump();
+
+    final urls = tester
+        .widgetList<Image>(find.byType(Image))
+        .map((imagen) => imagen.image)
+        .whereType<NetworkImage>()
+        .map((imagen) => imagen.url);
+    expect(urls, contains(ApiConfig.urlAbsoluta(cara)));
+    expect(urls, contains(ApiConfig.urlAbsoluta(reverso)));
+  });
 }
 
 /// Un ApiClient que responde siempre lo mismo y no llama a ningún servidor.
 class _ApiFija extends ApiClient {
-  _ApiFija(this.respuesta);
+  _ApiFija(this.respuesta, [this.configuracion]);
 
   final Map<String, dynamic> respuesta;
+  final Map<String, dynamic>? configuracion;
 
   @override
-  Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async =>
-      respuesta;
+  Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
+    if (ruta == '/configuracion/credencial' && configuracion != null) {
+      return configuracion;
+    }
+    return respuesta;
+  }
 }

@@ -11,6 +11,8 @@ class Sindicato {
     this.latitud,
     this.longitud,
     this.ubicacionActualizadaEn,
+    this.totalProductores,
+    this.porcentajeImpresion,
     this.auditoria = Auditoria.habilitado,
   });
 
@@ -34,6 +36,11 @@ class Sindicato {
 
   final DateTime? ubicacionActualizadaEn;
 
+  /// Resumen opcional que se completa al mostrar la jerarquía de una central.
+  /// No forma parte de los datos editables del sindicato.
+  final int? totalProductores;
+  final double? porcentajeImpresion;
+
   bool get tieneUbicacion => latitud != null && longitud != null;
 
   /// Coordenadas listas para mostrar, con la precisión que tiene sentido leer.
@@ -43,20 +50,38 @@ class Sindicato {
       : 'Sin ubicación';
 
   factory Sindicato.desdeJson(Map<String, dynamic> json) => Sindicato(
-        id: (json['id'] as num?)?.toInt() ?? 0,
-        nombre: json['nombre'] as String? ?? '',
-        centralId: (json['centralId'] as num?)?.toInt() ?? 0,
-        centralNombre: json['centralNombre'] as String? ?? '',
-        numero: json['numero'] as String?,
-        latitud: (json['latitud'] as num?)?.toDouble(),
-        longitud: (json['longitud'] as num?)?.toDouble(),
-        ubicacionActualizadaEn: switch (json['ubicacionActualizadaEn']) {
-          final String s => DateTime.tryParse(s),
-          _ => null,
-        },
-        auditoria:
-            Auditoria.desdeJson(json['auditoria'] as Map<String, dynamic>?),
-      );
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    nombre: json['nombre'] as String? ?? '',
+    centralId: (json['centralId'] as num?)?.toInt() ?? 0,
+    centralNombre: json['centralNombre'] as String? ?? '',
+    numero: json['numero'] as String?,
+    latitud: (json['latitud'] as num?)?.toDouble(),
+    longitud: (json['longitud'] as num?)?.toDouble(),
+    ubicacionActualizadaEn: switch (json['ubicacionActualizadaEn']) {
+      final String s => DateTime.tryParse(s),
+      _ => null,
+    },
+    totalProductores: (json['totalProductores'] as num?)?.toInt(),
+    porcentajeImpresion: (json['porcentajeImpresion'] as num?)?.toDouble(),
+    auditoria: Auditoria.desdeJson(json['auditoria'] as Map<String, dynamic>?),
+  );
+
+  Sindicato conResumenImpresion({
+    required int totalProductores,
+    required double porcentajeImpresion,
+  }) => Sindicato(
+    id: id,
+    nombre: nombre,
+    centralId: centralId,
+    centralNombre: centralNombre,
+    numero: numero,
+    latitud: latitud,
+    longitud: longitud,
+    ubicacionActualizadaEn: ubicacionActualizadaEn,
+    totalProductores: totalProductores,
+    porcentajeImpresion: porcentajeImpresion,
+    auditoria: auditoria,
+  );
 
   @override
   bool operator ==(Object other) => other is Sindicato && other.id == id;
@@ -80,8 +105,8 @@ class SindicatoRequest {
   /// tenía. Omitirlo dejaría el anterior, que no es lo que pide quien vacía
   /// el campo.
   Map<String, dynamic> aJson() => {
-        'nombre': nombre,
-        'centralId': centralId,
-        'numero': numero,
-      };
+    'nombre': nombre,
+    'centralId': centralId,
+    'numero': numero,
+  };
 }

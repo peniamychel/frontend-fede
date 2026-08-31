@@ -48,8 +48,8 @@ class CredencialPrevia {
   final String apellidos;
   final String ci;
 
-  /// Códigos de los lotes que tiene hoy. Puede venir vacío sin que eso impida
-  /// emitir: quien vendió su parcela sigue siendo afiliado.
+  /// Códigos de los lotes que tiene hoy. Debe existir al menos uno con número
+  /// para que se pueda imprimir el carnet de productor.
   final String lotes;
 
   /// El código del padrón, `2-IVI-1`. Null si todavía no se puede armar.
@@ -242,6 +242,76 @@ class PliegoPrevio {
         .toList(),
     completa: json['completa'] as bool? ?? false,
   );
+}
+
+/// Cola y cifras del panel de impresión masiva de un sindicato.
+class PanelImpresionSindicato {
+  const PanelImpresionSindicato({
+    required this.sindicatoId,
+    required this.sindicato,
+    required this.total,
+    required this.impresos,
+    required this.faltantesConFoto,
+    required this.sinFoto,
+    required this.listosParaImprimir,
+    required this.faltantesDelSindicato,
+    required this.candidatos,
+  });
+
+  final int sindicatoId;
+  final String sindicato;
+  final int total;
+  final int impresos;
+  final int faltantesConFoto;
+  final int sinFoto;
+  final int listosParaImprimir;
+  final List<Faltante> faltantesDelSindicato;
+  final List<CandidatoImpresionCredencial> candidatos;
+
+  factory PanelImpresionSindicato.desdeJson(Map<String, dynamic> json) =>
+      PanelImpresionSindicato(
+        sindicatoId: (json['sindicatoId'] as num?)?.toInt() ?? 0,
+        sindicato: json['sindicato'] as String? ?? '',
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        impresos: (json['impresos'] as num?)?.toInt() ?? 0,
+        faltantesConFoto: (json['faltantesConFoto'] as num?)?.toInt() ?? 0,
+        sinFoto: (json['sinFoto'] as num?)?.toInt() ?? 0,
+        listosParaImprimir: (json['listosParaImprimir'] as num?)?.toInt() ?? 0,
+        faltantesDelSindicato: Faltante.lista(json['faltantesDelSindicato']),
+        candidatos: ((json['candidatos'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(CandidatoImpresionCredencial.desdeJson)
+            .toList(),
+      );
+}
+
+/// Productor no impreso que ya tiene foto; puede seguir bloqueado por otro dato.
+class CandidatoImpresionCredencial {
+  const CandidatoImpresionCredencial({
+    required this.credencial,
+    required this.impresiones,
+    required this.ultimaImpresion,
+    required this.seleccionable,
+  });
+
+  final CredencialPrevia credencial;
+  final int impresiones;
+  final DateTime? ultimaImpresion;
+  final bool seleccionable;
+
+  int get productorId => credencial.productorId;
+
+  factory CandidatoImpresionCredencial.desdeJson(Map<String, dynamic> json) =>
+      CandidatoImpresionCredencial(
+        credencial: CredencialPrevia.desdeJson(
+          (json['credencial'] as Map<String, dynamic>?) ?? const {},
+        ),
+        impresiones: (json['impresiones'] as num?)?.toInt() ?? 0,
+        ultimaImpresion: DateTime.tryParse(
+          json['ultimaImpresion'] as String? ?? '',
+        ),
+        seleccionable: json['seleccionable'] as bool? ?? false,
+      );
 }
 
 /// Un productor al que le falta algo para su credencial.

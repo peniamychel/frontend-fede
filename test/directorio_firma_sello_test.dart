@@ -187,8 +187,16 @@ void main() {
       expect(find.text('Preparar firma'), findsOneWidget);
       expect(find.text('Quitar fondo claro'), findsOneWidget);
       expect(find.text('Cantidad de fondo a eliminar'), findsOneWidget);
+      expect(find.text('Grosor de los trazos'), findsOneWidget);
+      expect(find.text('Girar izquierda'), findsOneWidget);
+      expect(find.text('Girar derecha'), findsOneWidget);
       expect(find.text('Preparar vista previa'), findsOneWidget);
       expect(find.text('Subir PNG'), findsOneWidget);
+
+      await tester.tap(find.text('Girar derecha'));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(tester.takeException(), isNull);
+      expect(find.text('Girar derecha'), findsOneWidget);
     },
   );
 
@@ -219,6 +227,59 @@ void main() {
     expect(find.text('Preparar pie de firma'), findsOneWidget);
     expect(find.text('Quitar fondo claro'), findsOneWidget);
     expect(find.text('Subir PNG'), findsOneWidget);
+  });
+
+  testWidgets('las imágenes cargadas ofrecen edición desde el original', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1100, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final conFirma = Cargo(
+      id: 22,
+      cargo: TipoCargo.secretarioGeneral,
+      productorId: 8,
+      productorNombre: 'ANA QUISPE',
+      ambito: Ambito.central,
+      ambitoId: 3,
+      ambitoNombre: 'IVIRGARZAMA',
+      desde: DateTime(2026, 8, 18),
+      hasta: null,
+      vigente: true,
+      firmaUrl: '/api/v1/archivos/firmas/firma.png',
+      pieFirmaUrl: '/api/v1/archivos/pies-firma/pie.png',
+    );
+    const conSello = Directorio(
+      ambito: Ambito.central,
+      ambitoId: 3,
+      ambitoNombre: 'IVIRGARZAMA',
+      selloUrl: '/api/v1/archivos/sellos/sello.png',
+      puestos: [],
+    );
+
+    await tester.pumpWidget(
+      PadronScope(
+        padron: Padron(api: ApiClient()),
+        child: MaterialApp(
+          home: Scaffold(
+            body: ListView(
+              children: [
+                FirmasCargo(
+                  cargo: conFirma,
+                  alCambiar: _nada,
+                  permitePieFirmaImagen: true,
+                  firmaObligatoria: true,
+                ),
+                const SelloDirectorio(directorio: conSello, alCambiar: _nada),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Editar'), findsNWidgets(2));
+    expect(find.text('Editar imagen'), findsOneWidget);
   });
 }
 

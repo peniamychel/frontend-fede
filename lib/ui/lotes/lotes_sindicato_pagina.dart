@@ -5,7 +5,6 @@ import '../padron_scope.dart';
 import '../widgets/estados.dart';
 import 'lote_formulario.dart';
 import 'lote_pagina.dart';
-import 'sistemas_pagina.dart';
 
 /// Las parcelas de un sindicato.
 ///
@@ -46,18 +45,15 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Parcelas'),
-            Text(widget.sindicato.nombre,
-                style: Theme.of(context).textTheme.bodySmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
+            Text(
+              widget.sindicato.nombre,
+              style: Theme.of(context).textTheme.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'Sistemas',
-            onPressed: _verSistemas,
-            icon: const Icon(Icons.settings_outlined),
-          ),
           IconButton(
             tooltip: 'Recargar',
             onPressed: _recargar,
@@ -78,7 +74,8 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
             return SinResultados(
               icono: Icons.crop_landscape,
               mensaje: 'Este sindicato no tiene parcelas cargadas.',
-              detalle: 'Cargá la primera y después vas a poder ubicarla en el '
+              detalle:
+                  'Cargá la primera y después vas a poder ubicarla en el '
                   'mapa, medirla y traspasarla.',
               accion: FilledButton.icon(
                 onPressed: _crear,
@@ -88,8 +85,9 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
             );
           }
 
-          final visibles =
-              _soloSinTenedor ? todos.where((l) => !l.tieneTenedor).toList() : todos;
+          final visibles = _soloSinTenedor
+              ? todos.where((l) => !l.tieneTenedor).toList()
+              : todos;
 
           return Column(
             children: [
@@ -111,6 +109,9 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
                         itemBuilder: (context, i) => _Fila(
                           lote: visibles[i],
                           alAbrir: () => _abrir(visibles[i]),
+                          alEliminar: visibles[i].tieneTenedor
+                              ? null
+                              : () => _eliminar(visibles[i]),
                         ),
                       ),
               ),
@@ -133,19 +134,50 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
   }
 
   Future<void> _abrir(Lote lote) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => LotePagina(loteId: lote.id)),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => LotePagina(loteId: lote.id)));
     if (mounted) _recargar();
   }
 
-  Future<void> _verSistemas() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SistemasPagina(sindicato: widget.sindicato),
+  Future<void> _eliminar(Lote lote) async {
+    final identificacion = lote.codigo.isEmpty
+        ? 'parcela ${lote.id}'
+        : 'parcela ${lote.codigo}';
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          Icons.delete_outline,
+          color: Theme.of(context).colorScheme.error,
+        ),
+        title: Text('¿Eliminar $identificacion?'),
+        content: const Text(
+          'La parcela no tiene un productor asignado. Se eliminarán sus datos '
+          'y esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Eliminar'),
+          ),
+        ],
       ),
     );
-    if (mounted) _recargar();
+    if (confirmado != true || !mounted) return;
+
+    try {
+      await PadronScope.of(context).lotes.eliminar(lote.id);
+      if (!mounted) return;
+      mostrarExito(context, 'Parcela eliminada.');
+      _recargar();
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    }
   }
 }
 
@@ -166,8 +198,10 @@ class _Resumen extends StatelessWidget {
     final tema = Theme.of(context);
     final sinTenedor = lotes.where((l) => !l.tieneTenedor).length;
     final medidas = lotes.where((l) => l.superficie != null);
-    final hectareas =
-        medidas.fold<double>(0, (suma, l) => suma + (l.superficie ?? 0));
+    final hectareas = medidas.fold<double>(
+      0,
+      (suma, l) => suma + (l.superficie ?? 0),
+    );
     final ubicadas = lotes.where((l) => l.tieneUbicacion).length;
 
     return Padding(
@@ -205,8 +239,9 @@ class _Resumen extends StatelessWidget {
             Text(
               'Sin medir no es lo mismo que cero: el padrón original no trae la '
               'superficie.',
-              style: tema.textTheme.bodySmall
-                  ?.copyWith(color: tema.colorScheme.outline),
+              style: tema.textTheme.bodySmall?.copyWith(
+                color: tema.colorScheme.outline,
+              ),
             ),
           ],
         ],
@@ -231,19 +266,27 @@ class _Cifra extends StatelessWidget {
       children: [
         Text(valor, style: tema.textTheme.titleLarge),
         const SizedBox(width: 4),
-        Text(etiqueta,
-            style: tema.textTheme.bodySmall
-                ?.copyWith(color: tema.colorScheme.outline)),
+        Text(
+          etiqueta,
+          style: tema.textTheme.bodySmall?.copyWith(
+            color: tema.colorScheme.outline,
+          ),
+        ),
       ],
     );
   }
 }
 
 class _Fila extends StatelessWidget {
-  const _Fila({required this.lote, required this.alAbrir});
+  const _Fila({
+    required this.lote,
+    required this.alAbrir,
+    required this.alEliminar,
+  });
 
   final Lote lote;
   final VoidCallback alAbrir;
+  final VoidCallback? alEliminar;
 
   @override
   Widget build(BuildContext context) {
@@ -270,11 +313,7 @@ class _Fila extends StatelessWidget {
             ),
           ),
           Text(
-            [
-              lote.superficieTexto,
-              lote.estado.etiqueta,
-              if (lote.tieneSistema) 'Sistema ${lote.sistema!.codigo}',
-            ].join(' · '),
+            [lote.superficieTexto, lote.estado.etiqueta].join(' · '),
             style: tema.textTheme.bodySmall,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -282,7 +321,18 @@ class _Fila extends StatelessWidget {
         ],
       ),
       isThreeLine: true,
-      trailing: const Icon(Icons.chevron_right, size: 20),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (alEliminar != null)
+            IconButton(
+              tooltip: 'Eliminar parcela',
+              onPressed: alEliminar,
+              icon: Icon(Icons.delete_outline, color: tema.colorScheme.error),
+            ),
+          const Icon(Icons.chevron_right, size: 20),
+        ],
+      ),
       onTap: alAbrir,
     );
   }

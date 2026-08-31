@@ -30,7 +30,7 @@ class CredencialPreviaPagina extends StatefulWidget {
 }
 
 class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
-  late Future<(CredencialPrevia, DisenoCredencial)> _futuro;
+  late Future<(CredencialPrevia, EditorDisenoCredencial)> _futuro;
 
   @override
   void initState() {
@@ -47,7 +47,7 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
     });
   }
 
-  Future<(CredencialPrevia, DisenoCredencial)> _cargarTodo(
+  Future<(CredencialPrevia, EditorDisenoCredencial)> _cargarTodo(
     Padron padron,
   ) async {
     final previa = await padron.productores.previaCredencial(
@@ -58,10 +58,24 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
       final diseno = editor.diseno.elementos.isEmpty
           ? DisenoCredencial.predeterminado()
           : editor.diseno;
-      return (previa, diseno);
+      return (
+        previa,
+        EditorDisenoCredencial(
+          diseno: diseno,
+          campos: editor.campos,
+          plantillaCaraUrl: editor.plantillaCaraUrl,
+          plantillaReversoUrl: editor.plantillaReversoUrl,
+        ),
+      );
     } catch (_) {
       // Mantiene operativa la previa si se abre contra un backend anterior.
-      return (previa, DisenoCredencial.predeterminado());
+      return (
+        previa,
+        EditorDisenoCredencial(
+          diseno: DisenoCredencial.predeterminado(),
+          campos: const [],
+        ),
+      );
     }
   }
 
@@ -78,15 +92,20 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
           ),
         ],
       ),
-      body: CargaAsync<(CredencialPrevia, DisenoCredencial)>(
+      body: CargaAsync<(CredencialPrevia, EditorDisenoCredencial)>(
         futuro: _futuro,
         alReintentar: _recargar,
         constructor: (context, datos) => _Contenido(
           previa: datos.$1,
-          diseno: datos.$2,
+          editor: datos.$2,
           cargar: (lado) => PadronScope.of(
             context,
           ).productores.descargarLadoCredencial(datos.$1.productorId, lado),
+          alAnversoImpreso: () async {
+            await PadronScope.of(
+              context,
+            ).productores.confirmarImpresionCredencial(datos.$1.productorId);
+          },
         ),
       ),
     );
@@ -96,13 +115,15 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
 class _Contenido extends StatelessWidget {
   const _Contenido({
     required this.previa,
-    required this.diseno,
+    required this.editor,
     required this.cargar,
+    required this.alAnversoImpreso,
   });
 
   final CredencialPrevia previa;
-  final DisenoCredencial diseno;
+  final EditorDisenoCredencial editor;
   final CargarLadoCredencial cargar;
+  final RegistrarAnversoImpreso alAnversoImpreso;
 
   @override
   Widget build(BuildContext context) {
@@ -118,15 +139,29 @@ class _Contenido extends StatelessWidget {
           children: [
             const _Rotulo('Anverso'),
             const SizedBox(height: 8),
-            TarjetaPrevia(previa: previa, reverso: false, diseno: diseno),
+            TarjetaPrevia(
+              previa: previa,
+              reverso: false,
+              diseno: editor.diseno,
+              plantillaUrl: editor.plantillaCaraUrl,
+            ),
             const SizedBox(height: 24),
             const _Rotulo('Reverso'),
             const SizedBox(height: 8),
-            TarjetaPrevia(previa: previa, reverso: true, diseno: diseno),
+            TarjetaPrevia(
+              previa: previa,
+              reverso: true,
+              diseno: editor.diseno,
+              plantillaUrl: editor.plantillaReversoUrl,
+            ),
           ],
         );
 
-        final informe = _Informe(previa: previa, cargar: cargar);
+        final informe = _Informe(
+          previa: previa,
+          cargar: cargar,
+          alAnversoImpreso: alAnversoImpreso,
+        );
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -169,10 +204,15 @@ class _Rotulo extends StatelessWidget {
 
 /// El veredicto y, si hace falta, qué completar.
 class _Informe extends StatelessWidget {
-  const _Informe({required this.previa, required this.cargar});
+  const _Informe({
+    required this.previa,
+    required this.cargar,
+    required this.alAnversoImpreso,
+  });
 
   final CredencialPrevia previa;
   final CargarLadoCredencial cargar;
+  final RegistrarAnversoImpreso alAnversoImpreso;
 
   @override
   Widget build(BuildContext context) {
@@ -282,6 +322,7 @@ class _Informe extends StatelessWidget {
           habilitada: previa.completa,
           nombre: previa.nombreCompleto,
           cargar: cargar,
+          alAnversoImpreso: alAnversoImpreso,
         ),
         if (!previa.completa) ...[
           const SizedBox(height: 8),

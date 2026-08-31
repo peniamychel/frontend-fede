@@ -47,21 +47,14 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   _OpcionParcela _opcionParcela = _OpcionParcela.ninguna;
   late final TextEditingController _parcelaNumero;
   late final TextEditingController _parcelaSuperficie;
-  ExtensionLote? _parcelaExtension;
   Lote? _parcelaExistente;
 
   /// Parcelas del sindicato elegido que hoy no tiene nadie. Son las únicas que
   /// se pueden asignar sin quitárselas a otro: eso es un traspaso, tiene fecha
   /// y motivo, y se hace desde la ficha de la parcela.
   List<Lote> _parcelasLibres = const [];
-
-  _OpcionSistema _opcionSistema = _OpcionSistema.ninguno;
-  late final TextEditingController _sistemaCodigo;
-  late final TextEditingController _sistemaDescripcion;
-  Sistema? _sistemaExistente;
-
-  /// Sistemas dados de alta que no están instalados en ninguna parcela.
-  List<Sistema> _sistemasLibres = const [];
+  List<Lote> _parcelasDelSindicato = const [];
+  EstadoLote _clasificacionParcela = EstadoLote.sinSistema;
 
   bool _cargandoDisponibles = false;
 
@@ -102,9 +95,8 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     _ci = TextEditingController(text: p?.ci ?? '');
     if (!_esEdicion) _ci.addListener(_alCambiarCedula);
     _parcelaNumero = TextEditingController();
+    _parcelaNumero.addListener(_alCambiarNumeroParcela);
     _parcelaSuperficie = TextEditingController();
-    _sistemaCodigo = TextEditingController();
-    _sistemaDescripcion = TextEditingController();
     _marcado = p?.marcado ?? false;
     _sindicatoBloqueado = p == null && widget.sindicatoFijo != null;
 
@@ -134,10 +126,9 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     _nombres.dispose();
     _apellidos.dispose();
     _ci.dispose();
+    _parcelaNumero.removeListener(_alCambiarNumeroParcela);
     _parcelaNumero.dispose();
     _parcelaSuperficie.dispose();
-    _sistemaCodigo.dispose();
-    _sistemaDescripcion.dispose();
     super.dispose();
   }
 
@@ -219,15 +210,14 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   void _olvidarParcelaElegida() {
     _parcelaExistente = null;
     _parcelasLibres = const [];
+    _parcelasDelSindicato = const [];
     if (_opcionParcela == _OpcionParcela.existente) {
       _opcionParcela = _OpcionParcela.ninguna;
-      _opcionSistema = _OpcionSistema.ninguno;
     }
   }
 
-  /// Trae lo que se puede asignar sin quitárselo a nadie: las parcelas del
-  /// sindicato que hoy no tiene ningún productor, y los sistemas que no están
-  /// instalados en ninguna parcela.
+  /// Trae todas las parcelas para poder avisar quiénes ya usan el número, y
+  /// separa las que están libres para la opción de reutilizar una fila.
   ///
   /// Si falla no se avisa con un error: es material opcional del alta, y
   /// bloquear el registro de un productor porque no se pudo listar lo
@@ -238,28 +228,41 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     if (_esEdicion || sindicato == null) return;
 
     setState(() => _cargandoDisponibles = true);
-    final padron = PadronScope.of(context);
     try {
-      final resultados = await Future.wait([
-        padron.lotes.listar(sindicatoId: sindicato.id),
-        padron.sistemas.listar(disponibles: true),
-      ]);
+      final lotes = await PadronScope.of(
+        context,
+      ).lotes.listar(sindicatoId: sindicato.id);
       if (!mounted) return;
       setState(() {
-        _parcelasLibres = (resultados[0] as List<Lote>)
+        _parcelasDelSindicato = lotes;
+        _parcelasLibres = lotes
             .where((l) => !l.tieneTenedor)
             .toList(growable: false);
-        _sistemasLibres = resultados[1] as List<Sistema>;
         _cargandoDisponibles = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _parcelasLibres = const [];
-        _sistemasLibres = const [];
+        _parcelasDelSindicato = const [];
         _cargandoDisponibles = false;
       });
     }
+  }
+
+  void _alCambiarNumeroParcela() {
+    if (mounted) setState(() {});
+  }
+
+  List<Lote> get _ocupantesDelNumero {
+    final numero = _texto(_parcelaNumero)?.toUpperCase();
+    if (numero == null) return const [];
+    return _parcelasDelSindicato
+        .where(
+          (lote) =>
+              lote.tieneTenedor && lote.numero?.trim().toUpperCase() == numero,
+        )
+        .toList(growable: false);
   }
 
   String? _texto(TextEditingController c) {
@@ -447,8 +450,9 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
       const SizedBox(height: 24),
       _titulo(context, 'Parcela'),
       Text(
-        'Opcional. Se le puede dar una parcela nueva o una del sindicato que '
-        'hoy no tenga nadie.',
+        'Opcional. El número puede repetirse cuando varias personas comparten '
+        'el lote; en ese caso el número de lote recibe letras A, B, C… El '
+        'código propio de cada productor no cambia.',
         style: tema.textTheme.bodySmall?.copyWith(
           color: tema.colorScheme.outline,
         ),
@@ -467,49 +471,19 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
           ),
         ],
         selected: {_opcionParcela},
-        onSelectionChanged: (elegido) => setState(() {
-          _opcionParcela = elegido.first;
-          if (_opcionParcela == _OpcionParcela.ninguna) {
-            // Sin parcela no hay dónde instalar un sistema.
-            _opcionSistema = _OpcionSistema.ninguno;
-          }
-        }),
+        onSelectionChanged: (elegido) =>
+            setState(() => _opcionParcela = elegido.first),
       ),
       if (_opcionParcela == _OpcionParcela.nueva) ...[
         const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 2,
-              child: _campo(
-                controlador: _parcelaNumero,
-                etiqueta: 'N° de parcela',
-                campoServidor: 'numero',
-                maximo: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: DropdownButtonFormField<ExtensionLote?>(
-                initialValue: _parcelaExtension,
-                decoration: const InputDecoration(labelText: 'Extensión'),
-                items: [
-                  const DropdownMenuItem<ExtensionLote?>(
-                    value: null,
-                    child: Text('—'),
-                  ),
-                  for (final e in ExtensionLote.values)
-                    DropdownMenuItem<ExtensionLote?>(
-                      value: e,
-                      child: Text(e.valor),
-                    ),
-                ],
-                onChanged: (v) => setState(() => _parcelaExtension = v),
-              ),
-            ),
-          ],
+        _campo(
+          controlador: _parcelaNumero,
+          etiqueta: 'N° de parcela *',
+          campoServidor: 'numero',
+          maximo: 20,
+          obligatorio: true,
         ),
+        if (_texto(_parcelaNumero) != null) _resumenNumeroCompartido(context),
         _campo(
           controlador: _parcelaSuperficie,
           etiqueta: 'Superficie en hectáreas',
@@ -546,93 +520,112 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                   ),
                 ),
             ],
-            onChanged: (v) => setState(() => _parcelaExistente = v),
+            onChanged: (v) => setState(() {
+              _parcelaExistente = v;
+              if (v != null && clasificacionesParcela.contains(v.estado)) {
+                _clasificacionParcela = v.estado;
+              }
+            }),
             validator: (v) => v == null ? 'Elegí una parcela' : null,
           ),
       ],
-      if (_opcionParcela != _OpcionParcela.ninguna) ..._seccionSistema(context),
+      if (_opcionParcela != _OpcionParcela.ninguna)
+        ..._seccionClasificacion(context),
     ];
   }
 
-  List<Widget> _seccionSistema(BuildContext context) {
+  List<Widget> _seccionClasificacion(BuildContext context) {
     final tema = Theme.of(context);
     return [
       const SizedBox(height: 20),
       Text(
-        'Sistema de la parcela',
+        'Clasificación de la parcela',
         style: tema.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
       ),
       Text(
-        'Opcional. El sistema es un agregado que la parcela puede tener, y que '
-        'después se puede trasladar a otra.',
+        'Cada productor del mismo número puede tener una opción diferente.',
         style: tema.textTheme.bodySmall?.copyWith(
           color: tema.colorScheme.outline,
         ),
       ),
       const SizedBox(height: 12),
-      SegmentedButton<_OpcionSistema>(
-        segments: const [
-          ButtonSegment(
-            value: _OpcionSistema.ninguno,
-            label: Text('Sin sistema'),
-          ),
-          ButtonSegment(value: _OpcionSistema.nuevo, label: Text('Nuevo')),
-          ButtonSegment(
-            value: _OpcionSistema.existente,
-            label: Text('Existente'),
-          ),
+      DropdownButtonFormField<EstadoLote>(
+        initialValue: _clasificacionParcela,
+        decoration: const InputDecoration(labelText: 'Tipo *'),
+        items: [
+          for (final estado in clasificacionesParcela)
+            DropdownMenuItem(value: estado, child: Text(estado.etiqueta)),
         ],
-        selected: {_opcionSistema},
-        onSelectionChanged: (elegido) =>
-            setState(() => _opcionSistema = elegido.first),
+        onChanged: (valor) {
+          if (valor != null) {
+            setState(() => _clasificacionParcela = valor);
+          }
+        },
       ),
-      if (_opcionSistema == _OpcionSistema.nuevo) ...[
-        const SizedBox(height: 12),
-        _campo(
-          controlador: _sistemaCodigo,
-          etiqueta: 'Código del sistema *',
-          campoServidor: 'codigo',
-          maximo: 40,
-          obligatorio: true,
-          textoEnMayusculas: true,
-        ),
-        _campo(
-          controlador: _sistemaDescripcion,
-          etiqueta: 'Descripción',
-          campoServidor: 'descripcion',
-          maximo: 200,
-        ),
-      ],
-      if (_opcionSistema == _OpcionSistema.existente) ...[
-        const SizedBox(height: 12),
-        if (_cargandoDisponibles)
-          const LinearProgressIndicator()
-        else if (_sistemasLibres.isEmpty)
-          const _Aviso(
-            texto: 'No hay sistemas sin instalar. Podés dar de alta uno nuevo.',
-          )
-        else
-          DropdownButtonFormField<Sistema?>(
-            initialValue: _sistemaExistente,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Sistema disponible *',
-            ),
-            items: [
-              for (final s in _sistemasLibres)
-                DropdownMenuItem<Sistema?>(
-                  value: s,
-                  child: Text(s.codigo, overflow: TextOverflow.ellipsis),
-                ),
-            ],
-            onChanged: (v) => setState(() => _sistemaExistente = v),
-            validator: (v) => v == null ? 'Elegí un sistema' : null,
-          ),
-      ],
     ];
   }
 
-  /// Le da la parcela al productor recién creado, y el sistema a la parcela.
+  Widget _resumenNumeroCompartido(BuildContext context) {
+    final tema = Theme.of(context);
+    final ocupantes = _ocupantesDelNumero;
+    final lleno = ocupantes.length >= 8;
+    final cantidadConSistema = ocupantes
+        .where((lote) => lote.estado == EstadoLote.conSistema)
+        .length;
+    final proxima = lleno
+        ? null
+        : String.fromCharCode(
+            65 +
+                (_clasificacionParcela == EstadoLote.conSistema
+                    ? cantidadConSistema
+                    : ocupantes.length),
+          );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: lleno
+            ? tema.colorScheme.errorContainer
+            : tema.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ocupantes.isEmpty
+                ? 'Este número todavía no tiene productores: el lote irá sin letra.'
+                : lleno
+                ? 'Este número ya tiene ocho productores; no admite otra letra.'
+                : _clasificacionParcela == EstadoLote.conSistema
+                ? 'Este número ya tiene ${ocupantes.length} productor(es). Como el nuevo tiene Sistema, se asignará la letra $proxima y se reordenarán las demás.'
+                : cantidadConSistema > 0
+                ? 'Este número ya tiene ${ocupantes.length} productor(es). Quienes tienen Sistema conservan las primeras letras; se asignará la letra $proxima.'
+                : 'Este número ya tiene ${ocupantes.length} productor(es). Se asignará la letra $proxima.',
+            style: tema.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: lleno ? tema.colorScheme.onErrorContainer : null,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'El nuevo productor conserva el correlativo que le corresponda en la central; la letra solo identifica el lote compartido.',
+            style: tema.textTheme.bodySmall,
+          ),
+          for (var i = 0; i < ocupantes.length; i++) ...[
+            const SizedBox(height: 6),
+            Text(
+              '${ocupantes[i].tenedor!.codigoPadron ?? ocupantes[i].tenedor!.letra ?? String.fromCharCode(65 + i)} · '
+              '${ocupantes[i].tenedor!.nombre} · ${ocupantes[i].estado.etiqueta}',
+              style: tema.textTheme.bodySmall,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Le da la parcela al productor recién creado con su clasificación.
   ///
   /// Va después del alta y no dentro, porque hacen falta el id del productor y
   /// el de la parcela para encadenarlos. Si algo de esto falla, el productor ya
@@ -641,49 +634,53 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   Future<void> _asignarParcela(Productor productor, Sindicato sindicato) async {
     final padron = PadronScope.of(context);
 
-    final Lote parcela = switch (_opcionParcela) {
-      _OpcionParcela.nueva => await padron.lotes.crear(
-        LoteRequest(
-          sindicatoId: sindicato.id,
-          productorId: productor.id,
-          numero: _texto(_parcelaNumero),
-          extension: _parcelaExtension,
-          superficie: double.tryParse(
-            (_texto(_parcelaSuperficie) ?? '').replaceAll(',', '.'),
+    switch (_opcionParcela) {
+      case _OpcionParcela.nueva:
+        await padron.lotes.crear(
+          LoteRequest(
+            sindicatoId: sindicato.id,
+            productorId: productor.id,
+            numero: _texto(_parcelaNumero),
+            estado: _clasificacionParcela.valor,
+            superficie: double.tryParse(
+              (_texto(_parcelaSuperficie) ?? '').replaceAll(',', '.'),
+            ),
           ),
-        ),
-      ),
-      _OpcionParcela.existente => await padron.lotes.traspasar(
-        _parcelaExistente!.id,
-        TraspasoRequest(motivo: MotivoTraspaso.otro, productorId: productor.id),
-      ),
-      _OpcionParcela.ninguna => throw StateError(
-        'sin parcela no hay nada que asignar',
-      ),
-    };
-
-    switch (_opcionSistema) {
-      case _OpcionSistema.ninguno:
+        );
         break;
-      case _OpcionSistema.nuevo:
-        final creado = await padron.sistemas.crear(
-          SistemaRequest(
-            codigo: _texto(_sistemaCodigo)!,
-            descripcion: _texto(_sistemaDescripcion),
-          ),
+      case _OpcionParcela.existente:
+        await _asignarExistente(
+          productor,
+          _parcelaExistente!,
+          _clasificacionParcela,
         );
-        await padron.sistemas.trasladar(
-          creado.id,
-          parcela.id,
-          const TraspasoRequest(motivo: MotivoTraspaso.otro),
-        );
-      case _OpcionSistema.existente:
-        await padron.sistemas.trasladar(
-          _sistemaExistente!.id,
-          parcela.id,
-          const TraspasoRequest(motivo: MotivoTraspaso.otro),
-        );
+        break;
+      case _OpcionParcela.ninguna:
+        throw StateError('sin parcela no hay nada que asignar');
     }
+  }
+
+  Future<Lote> _asignarExistente(
+    Productor productor,
+    Lote parcela,
+    EstadoLote estado,
+  ) async {
+    final lotes = PadronScope.of(context).lotes;
+    await lotes.actualizar(
+      parcela.id,
+      LoteRequest(
+        sindicatoId: parcela.sindicatoId,
+        numero: parcela.numero,
+        extension: parcela.extension,
+        estado: estado.valor,
+        mercado: parcela.mercado?.valor,
+        superficie: parcela.superficie,
+      ),
+    );
+    return lotes.traspasar(
+      parcela.id,
+      TraspasoRequest(motivo: MotivoTraspaso.otro, productorId: productor.id),
+    );
   }
 
   Future<void> _guardar() async {
@@ -695,6 +692,15 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     }
 
     if (!_formulario.currentState!.validate()) return;
+
+    if (_opcionParcela == _OpcionParcela.nueva &&
+        _ocupantesDelNumero.length >= 8) {
+      mostrarAviso(
+        context,
+        'Ese número de lote ya usa todas las letras de A a H.',
+      );
+      return;
+    }
 
     final sindicato = _sindicato;
     if (sindicato == null) {
@@ -830,7 +836,8 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                           _campo(
                             controlador: _nombres,
                             etiqueta: 'Nombres *',
-                            ayuda: 'Se guardan en mayúsculas y sin tildes.',
+                            ayuda:
+                                'Se guardan en mayúsculas, conservando Ñ y tildes.',
                             campoServidor: 'nombres',
                             maximo: ProductorRequest.maxNombres,
                             obligatorio: true,
@@ -1172,9 +1179,6 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
 
 /// Qué hacer con la parcela al registrar a alguien.
 enum _OpcionParcela { ninguna, nueva, existente }
-
-/// Y con el sistema de esa parcela.
-enum _OpcionSistema { ninguno, nuevo, existente }
 
 enum _EstadoCedula {
   pendiente,

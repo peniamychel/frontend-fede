@@ -135,6 +135,19 @@ void main() {
     expect(estados, containsAllInOrder([true, false]));
   });
 
+  testWidgets('en móvil cada esquina tiene un área táctil amplia', (
+    tester,
+  ) async {
+    await tester.pumpWidget(banco(proporcionFija: Proporcion.cuadrada));
+    await esperarImagen(tester);
+
+    final tamano = tester.getSize(
+      find.byKey(const ValueKey('recorte-inferiorDerecha')),
+    );
+    expect(tamano.width, greaterThanOrEqualTo(88));
+    expect(tamano.height, greaterThanOrEqualTo(88));
+  });
+
   testWidgets('sobrevive a que lo quiten del árbol mientras decodifica', (
     tester,
   ) async {

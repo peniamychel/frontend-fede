@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'dart:typed_data';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
@@ -125,6 +126,12 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
                         ),
                         if (url != null)
                           TextButton.icon(
+                            onPressed: _ocupado ? null : _editar,
+                            icon: const Icon(Icons.tune, size: 18),
+                            label: const Text('Editar imagen'),
+                          ),
+                        if (url != null)
+                          TextButton.icon(
                             onPressed: _ocupado ? null : _borrar,
                             icon: Icon(
                               Icons.delete_outline,
@@ -200,6 +207,8 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
         id: widget.directorio.ambitoId,
         bytes: preparada.bytes,
         nombreArchivo: preparada.nombreArchivo,
+        originalBytes: preparada.originalBytes,
+        nombreOriginal: preparada.nombreOriginal,
       );
       if (!mounted) return;
       setState(() => _ocupado = false);
@@ -209,6 +218,30 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
         detalle: 'Guardado como PNG con transparencia.',
       );
       widget.alCambiar();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _ocupado = false);
+      mostrarError(context, e);
+    }
+  }
+
+  Future<void> _editar() async {
+    setState(() => _ocupado = true);
+    try {
+      final descarga = await PadronScope.of(context).directorios
+          .descargarOriginalSello(
+            widget.directorio.ambito,
+            widget.directorio.ambitoId,
+          );
+      if (!mounted) return;
+      setState(() => _ocupado = false);
+      await _prepararYSubir(
+        PlatformFile(
+          name: descarga.nombreArchivo,
+          size: descarga.bytes.length,
+          bytes: Uint8List.fromList(descarga.bytes),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _ocupado = false);

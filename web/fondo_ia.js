@@ -241,6 +241,49 @@
     contexto.putImageData(imagen, 0, 0);
   }
 
+  function reforzarTrazos(canvas, nivel) {
+    const radio = Math.max(0, Math.min(3, Math.round(nivel)));
+    if (radio === 0) return;
+    const contexto = canvas.getContext('2d', {alpha: true, willReadFrequently: true});
+    const imagen = contexto.getImageData(0, 0, canvas.width, canvas.height);
+    const datos = imagen.data;
+    const origen = new Uint8ClampedArray(datos);
+    const ancho = canvas.width;
+    const alto = canvas.height;
+    const tinta = (indice) => origen[indice + 3]
+      * (765 - origen[indice] - origen[indice + 1] - origen[indice + 2]) / 765;
+
+    for (let y = 0; y < alto; y++) {
+      for (let x = 0; x < ancho; x++) {
+        const destino = (y * ancho + x) * 4;
+        let mejor = destino;
+        let mejorTinta = tinta(destino);
+        const tintaActual = mejorTinta;
+        for (let dy = -radio; dy <= radio; dy++) {
+          for (let dx = -radio; dx <= radio; dx++) {
+            if (dx * dx + dy * dy > radio * radio) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= ancho || ny >= alto) continue;
+            const candidato = (ny * ancho + nx) * 4;
+            const valor = tinta(candidato);
+            if (valor > mejorTinta) {
+              mejor = candidato;
+              mejorTinta = valor;
+            }
+          }
+        }
+        if (mejorTinta > tintaActual + 4) {
+          datos[destino] = origen[mejor];
+          datos[destino + 1] = origen[mejor + 1];
+          datos[destino + 2] = origen[mejor + 2];
+          datos[destino + 3] = origen[mejor + 3];
+        }
+      }
+    }
+    contexto.putImageData(imagen, 0, 0);
+  }
+
   async function procesarDocumento(origenDataUrl, parametrosJson) {
     const parametros = JSON.parse(parametrosJson);
     const imagen = await cargarImagen(origenDataUrl);
@@ -266,6 +309,7 @@
         const intensidad = Number(parametros.intensidad);
         quitarFondoUniforme(salida, Number.isFinite(intensidad) ? intensidad : 0.55);
       }
+      reforzarTrazos(salida, Number(parametros.realce) || 0);
       ultimo = salida.toDataURL('image/png');
       if (pesoDataUrl(ultimo) <= pesoMaximo || Math.max(ancho, alto) <= 128) {
         return ultimo;

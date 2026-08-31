@@ -20,7 +20,7 @@ void main() {
       final Object cuerpo;
       if (ruta.endsWith('/federaciones')) {
         cuerpo = [
-          {'id': 10, 'nombre': 'Federación de prueba'},
+          {'id': 10, 'nombre': 'CARRASCO TROPICAL'},
         ];
       } else if (ruta.endsWith('/federaciones/10/centrales')) {
         cuerpo = [
@@ -28,9 +28,25 @@ void main() {
             'id': 20,
             'nombre': 'Central de prueba',
             'federacionId': 10,
-            'federacionNombre': 'Federación de prueba',
+            'federacionNombre': 'CARRASCO TROPICAL',
           },
         ];
+      } else if (ruta.endsWith('/centrales/20/credenciales/impresion')) {
+        cuerpo = {
+          'centralId': 20,
+          'central': 'Central de prueba',
+          'federacion': 'CARRASCO TROPICAL',
+          'sindicatos': 0,
+          'sindicatosSinSello': 0,
+          'total': 0,
+          'impresos': 0,
+          'pendientes': 0,
+          'pendientesConFoto': 0,
+          'sinFoto': 0,
+          'listosParaImprimir': 0,
+          'porcentajeAvance': 0,
+          'detalle': <Object>[],
+        };
       } else if (ruta.endsWith('/productores')) {
         cuerpo = {
           'content': <Object>[],
@@ -75,7 +91,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('Atrás recorre Sindicato, Central, Federación y la raíz', (
+  testWidgets('Atrás recorre Sindicato, Central y vuelve a la raíz', (
     tester,
   ) async {
     await montar(tester);
@@ -86,19 +102,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Federación de prueba'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Central de prueba'));
     await tester.pumpAndSettle();
     expect(find.text('Sindicatos de Central de prueba'), findsOneWidget);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('Centrales de Federación de prueba'), findsOneWidget);
-
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(find.text('Federaciones'), findsOneWidget);
+    expect(find.text('Centrales de CARRASCO TROPICAL'), findsOneWidget);
+    expect(find.text('Federaciones'), findsNothing);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();

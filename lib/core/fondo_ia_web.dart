@@ -53,6 +53,7 @@ Future<ImagenPngPreparada> prepararDocumentoSinFondo({
   required bool quitarFondo,
   required String tipoMime,
   required double intensidad,
+  required int realce,
   required int ladoMaximo,
   required int pesoMaximo,
 }) async {
@@ -66,6 +67,7 @@ Future<ImagenPngPreparada> prepararDocumentoSinFondo({
     },
     'quitarFondo': quitarFondo,
     'intensidad': intensidad.clamp(0.0, 1.0),
+    'realce': realce.clamp(0, 3),
     'ladoMaximo': ladoMaximo,
     'pesoMaximo': pesoMaximo,
   });

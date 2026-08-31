@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'dart:typed_data';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
@@ -195,6 +196,12 @@ class _FirmasCargoState extends State<FirmasCargo> {
                 ),
               ),
               if (url != null)
+                TextButton.icon(
+                  onPressed: _ocupado ? null : () => _editar(tipo, clase),
+                  icon: const Icon(Icons.tune, size: 17),
+                  label: const Text('Editar'),
+                ),
+              if (url != null)
                 IconButton(
                   tooltip: 'Borrar ${clase.etiqueta}',
                   onPressed: _ocupado ? null : () => _borrar(tipo),
@@ -339,6 +346,8 @@ class _FirmasCargoState extends State<FirmasCargo> {
         tipo: tipo,
         bytes: preparada.bytes,
         nombreArchivo: preparada.nombreArchivo,
+        originalBytes: preparada.originalBytes,
+        nombreOriginal: preparada.nombreOriginal,
       );
       if (!mounted) return;
       setState(() => _ocupado = false);
@@ -348,6 +357,30 @@ class _FirmasCargoState extends State<FirmasCargo> {
         detalle: 'Guardado como PNG con transparencia.',
       );
       widget.alCambiar();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _ocupado = false);
+      mostrarError(context, e);
+    }
+  }
+
+  Future<void> _editar(
+    TipoImagenCargo tipo,
+    ClaseImagenDirectorio clase,
+  ) async {
+    setState(() => _ocupado = true);
+    try {
+      final descarga = await PadronScope.of(
+        context,
+      ).directorios.descargarOriginalImagen(widget.cargo.id, tipo);
+      if (!mounted) return;
+      setState(() => _ocupado = false);
+      final archivo = PlatformFile(
+        name: descarga.nombreArchivo,
+        size: descarga.bytes.length,
+        bytes: Uint8List.fromList(descarga.bytes),
+      );
+      await _prepararYSubir(tipo, clase, archivo);
     } catch (e) {
       if (!mounted) return;
       setState(() => _ocupado = false);

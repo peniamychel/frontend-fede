@@ -1,8 +1,84 @@
 enum CaraCredencial { cara, reverso }
 
-enum TipoElementoCredencial { texto, imagen, pieFirma }
+enum TipoElementoCredencial { texto, imagen, pieFirma, plantilla }
 
 enum AlineacionCredencial { izquierda, centro, derecha }
+
+/// Familias incluidas en la aplicación para que la vista previa y el PDF
+/// conserven la misma tipografía aun cuando el equipo esté sin Internet.
+enum FuenteCredencial {
+  roboto,
+  montserrat,
+  merriweather,
+  lato,
+  ubuntu,
+  ptSans,
+  barlow,
+  alegreyaSans,
+  titilliumWeb,
+  anton,
+  crimsonText,
+  spectral,
+  cardo,
+}
+
+extension FuenteCredencialDatos on FuenteCredencial {
+  String get etiqueta => switch (this) {
+    FuenteCredencial.roboto => 'Roboto',
+    FuenteCredencial.montserrat => 'Montserrat',
+    FuenteCredencial.merriweather => 'Merriweather',
+    FuenteCredencial.lato => 'Lato',
+    FuenteCredencial.ubuntu => 'Ubuntu',
+    FuenteCredencial.ptSans => 'PT Sans',
+    FuenteCredencial.barlow => 'Barlow',
+    FuenteCredencial.alegreyaSans => 'Alegreya Sans',
+    FuenteCredencial.titilliumWeb => 'Titillium Web',
+    FuenteCredencial.anton => 'Anton',
+    FuenteCredencial.crimsonText => 'Crimson Text',
+    FuenteCredencial.spectral => 'Spectral',
+    FuenteCredencial.cardo => 'Cardo',
+  };
+
+  String get descripcion => switch (this) {
+    FuenteCredencial.roboto => 'Formal y legible',
+    FuenteCredencial.montserrat => 'Institucional y gruesa',
+    FuenteCredencial.merriweather => 'Clásica con serifas',
+    FuenteCredencial.lato => 'Sobria y moderna',
+    FuenteCredencial.ubuntu => 'Amable y robusta',
+    FuenteCredencial.ptSans => 'Compacta y administrativa',
+    FuenteCredencial.barlow => 'Técnica y contemporánea',
+    FuenteCredencial.alegreyaSans => 'Elegante y humanista',
+    FuenteCredencial.titilliumWeb => 'Condensada y formal',
+    FuenteCredencial.anton => 'Muy gruesa para títulos',
+    FuenteCredencial.crimsonText => 'Editorial con serifas',
+    FuenteCredencial.spectral => 'Institucional y refinada',
+    FuenteCredencial.cardo => 'Clásica y protocolar',
+  };
+
+  String get familiaFlutter => switch (this) {
+    FuenteCredencial.roboto => 'CredencialRoboto',
+    FuenteCredencial.montserrat => 'CredencialMontserrat',
+    FuenteCredencial.merriweather => 'CredencialMerriweather',
+    FuenteCredencial.lato => 'CredencialLato',
+    FuenteCredencial.ubuntu => 'CredencialUbuntu',
+    FuenteCredencial.ptSans => 'CredencialPTSans',
+    FuenteCredencial.barlow => 'CredencialBarlow',
+    FuenteCredencial.alegreyaSans => 'CredencialAlegreyaSans',
+    FuenteCredencial.titilliumWeb => 'CredencialTitilliumWeb',
+    FuenteCredencial.anton => 'CredencialAnton',
+    FuenteCredencial.crimsonText => 'CredencialCrimsonText',
+    FuenteCredencial.spectral => 'CredencialSpectral',
+    FuenteCredencial.cardo => 'CredencialCardo',
+  };
+
+  String get valorApi => switch (this) {
+    FuenteCredencial.ptSans => 'PT_SANS',
+    FuenteCredencial.alegreyaSans => 'ALEGREYA_SANS',
+    FuenteCredencial.titilliumWeb => 'TITILLIUM_WEB',
+    FuenteCredencial.crimsonText => 'CRIMSON_TEXT',
+    _ => name.toUpperCase(),
+  };
+}
 
 class ElementoDisenoCredencial {
   const ElementoDisenoCredencial({
@@ -20,6 +96,8 @@ class ElementoDisenoCredencial {
     required this.alineacion,
     required this.color,
     required this.texto,
+    this.fuente = FuenteCredencial.roboto,
+    this.recurso,
   });
 
   final String id;
@@ -36,6 +114,8 @@ class ElementoDisenoCredencial {
   final AlineacionCredencial alineacion;
   final String color;
   final String texto;
+  final FuenteCredencial fuente;
+  final String? recurso;
 
   factory ElementoDisenoCredencial.desdeJson(Map<String, dynamic> json) =>
       ElementoDisenoCredencial(
@@ -46,6 +126,7 @@ class ElementoDisenoCredencial {
         tipo: switch (json['tipo']) {
           'IMAGEN' => TipoElementoCredencial.imagen,
           'PIE_FIRMA' => TipoElementoCredencial.pieFirma,
+          'PLANTILLA' => TipoElementoCredencial.plantilla,
           _ => TipoElementoCredencial.texto,
         },
         campo: json['campo'] as String? ?? '',
@@ -63,6 +144,22 @@ class ElementoDisenoCredencial {
         },
         color: json['color'] as String? ?? '#000000',
         texto: json['texto'] as String? ?? '',
+        fuente: switch (json['fuente']) {
+          'MONTSERRAT' => FuenteCredencial.montserrat,
+          'MERRIWEATHER' => FuenteCredencial.merriweather,
+          'LATO' => FuenteCredencial.lato,
+          'UBUNTU' => FuenteCredencial.ubuntu,
+          'PT_SANS' => FuenteCredencial.ptSans,
+          'BARLOW' => FuenteCredencial.barlow,
+          'ALEGREYA_SANS' => FuenteCredencial.alegreyaSans,
+          'TITILLIUM_WEB' => FuenteCredencial.titilliumWeb,
+          'ANTON' => FuenteCredencial.anton,
+          'CRIMSON_TEXT' => FuenteCredencial.crimsonText,
+          'SPECTRAL' => FuenteCredencial.spectral,
+          'CARDO' => FuenteCredencial.cardo,
+          _ => FuenteCredencial.roboto,
+        },
+        recurso: json['recurso'] as String?,
       );
 
   Map<String, dynamic> aJson() => {
@@ -72,6 +169,7 @@ class ElementoDisenoCredencial {
       TipoElementoCredencial.texto => 'TEXTO',
       TipoElementoCredencial.imagen => 'IMAGEN',
       TipoElementoCredencial.pieFirma => 'PIE_FIRMA',
+      TipoElementoCredencial.plantilla => 'PLANTILLA',
     },
     'campo': campo,
     'etiqueta': etiqueta,
@@ -88,6 +186,8 @@ class ElementoDisenoCredencial {
     },
     'color': color,
     'texto': texto,
+    'fuente': fuente.valorApi,
+    'recurso': recurso,
   };
 
   ElementoDisenoCredencial copiar({
@@ -100,6 +200,8 @@ class ElementoDisenoCredencial {
     bool? negrita,
     AlineacionCredencial? alineacion,
     String? texto,
+    FuenteCredencial? fuente,
+    String? recurso,
   }) => ElementoDisenoCredencial(
     id: id,
     cara: cara ?? this.cara,
@@ -115,6 +217,8 @@ class ElementoDisenoCredencial {
     alineacion: alineacion ?? this.alineacion,
     color: color,
     texto: texto ?? this.texto,
+    fuente: fuente ?? this.fuente,
+    recurso: recurso ?? this.recurso,
   );
 }
 
@@ -170,16 +274,27 @@ class CampoCredencial {
         tipo: switch (json['tipo']) {
           'IMAGEN' => TipoElementoCredencial.imagen,
           'PIE_FIRMA' => TipoElementoCredencial.pieFirma,
+          'PLANTILLA' => TipoElementoCredencial.plantilla,
           _ => TipoElementoCredencial.texto,
         },
       );
 }
 
 class EditorDisenoCredencial {
-  const EditorDisenoCredencial({required this.diseno, required this.campos});
+  const EditorDisenoCredencial({
+    required this.diseno,
+    required this.campos,
+    this.plantillaCaraUrl,
+    this.plantillaReversoUrl,
+  });
 
   final DisenoCredencial diseno;
   final List<CampoCredencial> campos;
+  final String? plantillaCaraUrl;
+  final String? plantillaReversoUrl;
+
+  String? plantillaUrl(CaraCredencial cara) =>
+      cara == CaraCredencial.cara ? plantillaCaraUrl : plantillaReversoUrl;
 
   factory EditorDisenoCredencial.desdeJson(Map<String, dynamic> json) =>
       EditorDisenoCredencial(
@@ -190,6 +305,21 @@ class EditorDisenoCredencial {
             .whereType<Map<String, dynamic>>()
             .map(CampoCredencial.desdeJson)
             .toList(),
+        plantillaCaraUrl: json['plantillaCaraUrl'] as String?,
+        plantillaReversoUrl: json['plantillaReversoUrl'] as String?,
+      );
+}
+
+class ImagenDisenoSubida {
+  const ImagenDisenoSubida({required this.clave, required this.url});
+
+  final String clave;
+  final String url;
+
+  factory ImagenDisenoSubida.desdeJson(Map<String, dynamic> json) =>
+      ImagenDisenoSubida(
+        clave: json['clave'] as String? ?? '',
+        url: json['url'] as String? ?? '',
       );
 }
 
@@ -197,6 +327,22 @@ const Map<String, dynamic> _predeterminado = {
   'ancho': 242.65,
   'alto': 153.01,
   'elementos': [
+    {
+      'id': 'plantilla-cara',
+      'cara': 'CARA',
+      'tipo': 'PLANTILLA',
+      'campo': 'PLANTILLA',
+      'etiqueta': 'Plantilla',
+      'x': 0,
+      'y': 0,
+      'ancho': 242.65,
+      'alto': 153.01,
+      'tamanoFuente': 5.5,
+      'negrita': false,
+      'alineacion': 'CENTRO',
+      'color': '#000000',
+      'texto': '',
+    },
     {
       'id': 'numero-padron',
       'cara': 'CARA',
@@ -303,6 +449,22 @@ const Map<String, dynamic> _predeterminado = {
       'y': 18.1,
       'ancho': 57.6,
       'alto': 57,
+      'tamanoFuente': 5.5,
+      'negrita': false,
+      'alineacion': 'CENTRO',
+      'color': '#000000',
+      'texto': '',
+    },
+    {
+      'id': 'plantilla-reverso',
+      'cara': 'REVERSO',
+      'tipo': 'PLANTILLA',
+      'campo': 'PLANTILLA',
+      'etiqueta': 'Plantilla',
+      'x': 0,
+      'y': 0,
+      'ancho': 242.65,
+      'alto': 153.01,
       'tamanoFuente': 5.5,
       'negrita': false,
       'alineacion': 'CENTRO',

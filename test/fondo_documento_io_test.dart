@@ -22,6 +22,7 @@ void main() {
       quitarFondo: true,
       tipoMime: 'image/png',
       intensidad: .55,
+      realce: 0,
       ladoMaximo: 600,
       pesoMaximo: 200 * 1024,
     );
@@ -30,5 +31,19 @@ void main() {
     expect(preparada.getPixel(0, 0).a, 0);
     expect(preparada.getPixel(50, 30).a, greaterThan(0));
     expect(resultado.bytes.length, lessThanOrEqualTo(200 * 1024));
+
+    final realzada = await prepararDocumentoSinFondo(
+      bytes: Uint8List.fromList(img.encodePng(origen)),
+      recorte: const Recorte(x: 0, y: 0, ancho: 120, alto: 60),
+      quitarFondo: true,
+      tipoMime: 'image/png',
+      intensidad: .55,
+      realce: 2,
+      ladoMaximo: 600,
+      pesoMaximo: 200 * 1024,
+    );
+    final conTrazoGrueso = img.decodePng(realzada.bytes)!;
+    expect(preparada.getPixel(50, 23).a, 0);
+    expect(conTrazoGrueso.getPixel(50, 23).a, greaterThan(0));
   });
 }

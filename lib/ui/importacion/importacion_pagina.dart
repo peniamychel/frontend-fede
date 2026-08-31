@@ -29,7 +29,7 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
 
   ImportacionResultado? _informe;
   bool _trabajando = false;
-  bool _crearJerarquia = true;
+  bool _sindicatosAprobados = false;
   bool _ignorarFilasConError = false;
 
   /// Queda en true cuando la confirmación terminó, para no importar dos veces
@@ -93,15 +93,18 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('1. Elegí el destino y la planilla',
-                style: tema.textTheme.titleMedium),
+            Text(
+              '1. Elegí el destino y la planilla',
+              style: tema.textTheme.titleMedium,
+            ),
             const SizedBox(height: 16),
             DropdownButtonFormField<Federacion>(
               initialValue: _federacion,
               isExpanded: true,
               decoration: const InputDecoration(
                 labelText: 'Federación destino',
-                helperText: 'La planilla trae la central, pero no la federación.',
+                helperText:
+                    'La planilla trae la central, pero no la federación.',
               ),
               items: [
                 for (final f in federaciones)
@@ -110,9 +113,10 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
               onChanged: _trabajando
                   ? null
                   : (f) => setState(() {
-                        _federacion = f;
-                        _informe = null;
-                      }),
+                      _federacion = f;
+                      _informe = null;
+                      _sindicatosAprobados = false;
+                    }),
             ),
             const SizedBox(height: 16),
             _selectorArchivo(context),
@@ -132,17 +136,21 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(Icons.fact_check_outlined),
-              label: Text(_informe == null
-                  ? 'Analizar sin importar'
-                  : 'Volver a analizar'),
+              label: Text(
+                _informe == null
+                    ? 'Analizar sin importar'
+                    : 'Volver a analizar',
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'El análisis no modifica nada: sirve para ver qué se importaría.',
-              style: tema.textTheme.bodySmall
-                  ?.copyWith(color: tema.colorScheme.outline),
+              style: tema.textTheme.bodySmall?.copyWith(
+                color: tema.colorScheme.outline,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -180,17 +188,21 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
             const SizedBox(width: 14),
             Expanded(
               child: archivo == null
-                  ? Text('Elegir planilla .xlsx',
-                      style: tema.textTheme.bodyLarge)
+                  ? Text(
+                      'Elegir planilla .xlsx',
+                      style: tema.textTheme.bodyLarge,
+                    )
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(archivo.name,
-                            style: tema.textTheme.bodyLarge?.copyWith(
-                              color: tema.colorScheme.onPrimaryContainer,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
+                        Text(
+                          archivo.name,
+                          style: tema.textTheme.bodyLarge?.copyWith(
+                            color: tema.colorScheme.onPrimaryContainer,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         Text(
                           '${(archivo.size / 1024).toStringAsFixed(1)} KB',
                           style: tema.textTheme.bodySmall?.copyWith(
@@ -225,8 +237,10 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
           padding: const EdgeInsets.all(20),
           child: Row(
             children: [
-              Icon(Icons.check_circle,
-                  color: tema.colorScheme.onPrimaryContainer),
+              Icon(
+                Icons.check_circle,
+                color: tema.colorScheme.onPrimaryContainer,
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
@@ -243,8 +257,10 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
       );
     }
 
-    final puedeImportar = informe.hayAlgoQueImportar &&
-        (!informe.hayRechazos || _ignorarFilasConError);
+    final puedeImportar =
+        informe.hayAlgoQueImportar &&
+        (!informe.hayRechazos || _ignorarFilasConError) &&
+        (informe.sindicatosNuevos.isEmpty || _sindicatosAprobados);
 
     return Card(
       child: Padding(
@@ -254,25 +270,22 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
           children: [
             Text('2. Confirmá qué hacer', style: tema.textTheme.titleMedium),
             const SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _crearJerarquia,
-              onChanged: _trabajando
-                  ? null
-                  : (v) {
-                      setState(() => _crearJerarquia = v);
-                      // Cambiar esto cambia qué filas son válidas, así que hay
-                      // que rehacer el análisis: mostrar el anterior sería
-                      // mostrar algo que ya no corresponde.
-                      _analizar();
-                    },
-              title: const Text('Crear las centrales y sindicatos que falten'),
-              subtitle: Text(
-                _crearJerarquia
-                    ? 'Se darán de alta los que aparecen arriba.'
-                    : 'Las filas con jerarquía inexistente se rechazan.',
+            if (informe.sindicatosNuevos.isNotEmpty)
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _sindicatosAprobados,
+                onChanged: _trabajando
+                    ? null
+                    : (v) => setState(() => _sindicatosAprobados = v ?? false),
+                title: Text(
+                  'Aprobar la creación de '
+                  '${informe.sindicatosNuevos.length} sindicato(s)',
+                ),
+                subtitle: const Text(
+                  'Revisé la lista mostrada arriba y confirmo que estos '
+                  'sindicatos deben crearse en sus centrales.',
+                ),
               ),
-            ),
             if (informe.hayRechazos)
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -280,8 +293,10 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
                 onChanged: _trabajando
                     ? null
                     : (v) => setState(() => _ignorarFilasConError = v),
-                title: Text('Importar igual las ${informe.filasValidas} filas '
-                    'válidas'),
+                title: Text(
+                  'Importar igual las ${informe.filasValidas} filas '
+                  'válidas',
+                ),
                 subtitle: Text(
                   _ignorarFilasConError
                       ? 'Las ${informe.filasRechazadas} rechazadas quedan afuera.'
@@ -290,8 +305,9 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
               ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed:
-                  (!puedeImportar || _trabajando || _yaImportado) ? null : _confirmar,
+              onPressed: (!puedeImportar || _trabajando || _yaImportado)
+                  ? null
+                  : _confirmar,
               style: FilledButton.styleFrom(
                 backgroundColor: tema.colorScheme.primary,
               ),
@@ -299,7 +315,8 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(Icons.cloud_upload_outlined),
               label: Text('Importar ${informe.filasValidas} productores'),
             ),
@@ -307,11 +324,15 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
               const SizedBox(height: 8),
               Text(
                 informe.hayAlgoQueImportar
-                    ? 'Hay filas con errores. Corregí la planilla, o activá el '
-                        'interruptor de arriba para importar solo las válidas.'
+                    ? informe.sindicatosNuevos.isNotEmpty &&
+                              !_sindicatosAprobados
+                          ? 'Revisá y aprobá la lista de sindicatos nuevos.'
+                          : 'Hay filas con errores. Corregí la planilla, o activá '
+                                'la opción de arriba para importar solo las válidas.'
                     : 'Ninguna fila de la planilla se puede importar.',
-                style: tema.textTheme.bodySmall
-                    ?.copyWith(color: tema.colorScheme.error),
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.error,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -340,6 +361,7 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
       setState(() {
         _archivo = elegido;
         _informe = null;
+        _sindicatosAprobados = false;
         _yaImportado = false;
       });
     } catch (e) {
@@ -353,7 +375,10 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
   Future<void> _descargarPlantilla() async {
     final url = PadronScope.of(context).importaciones.urlPlantilla;
     try {
-      final abierta = await launchUrl(url, mode: LaunchMode.externalApplication);
+      final abierta = await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      );
       if (!abierta && mounted) {
         mostrarAviso(context, 'No se pudo abrir la descarga: $url');
       }
@@ -376,13 +401,25 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Se van a crear ${informe.productores} productores, '
-                '${informe.lotes} lotes y ${informe.observaciones} '
-                'observaciones en ${informe.federacionNombre}.'),
-            if (informe.tocaLaJerarquia) ...[
+            Text(
+              'Se van a crear ${informe.productores} productores, '
+              '${informe.lotes} lotes y ${informe.observaciones} '
+              'observaciones en ${informe.federacionNombre}.',
+            ),
+            if (informe.sindicatosNuevos.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Text('Además, ${informe.centralesNuevas.length} central(es) y '
-                  '${informe.sindicatosNuevos.length} sindicato(s) nuevos.'),
+              Text(
+                'También se crearán ${informe.sindicatosNuevos.length} '
+                'sindicato(s) que aprobaste.',
+              ),
+            ],
+            if (informe.centralesFaltantes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                '${informe.centralesFaltantes.length} central(es) no están '
+                'registradas y sus filas quedarán fuera.',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ],
             if (informe.posiblesDuplicados > 0) ...[
               const SizedBox(height: 12),
@@ -423,17 +460,22 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
       return;
     }
 
-    setState(() => _trabajando = true);
+    setState(() {
+      _trabajando = true;
+      if (simular) _sindicatosAprobados = false;
+    });
 
     try {
       final informe = await PadronScope.of(context).importaciones.importar(
-            bytes: bytes,
-            nombreArchivo: archivo.name,
-            federacionId: federacion.id,
-            simular: simular,
-            crearJerarquia: _crearJerarquia,
-            ignorarFilasConError: _ignorarFilasConError,
-          );
+        bytes: bytes,
+        nombreArchivo: archivo.name,
+        federacionId: federacion.id,
+        simular: simular,
+        // En el análisis se simula la creación para poder mostrar la lista.
+        // En la ejecución, true representa la aprobación explícita del usuario.
+        crearJerarquia: simular || _sindicatosAprobados,
+        ignorarFilasConError: _ignorarFilasConError,
+      );
       if (!mounted) return;
       setState(() {
         _informe = informe;
@@ -446,7 +488,8 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
         mostrarExito(
           context,
           'Importación completada',
-          detalle: '${informe.productores} productores, ${informe.lotes} lotes '
+          detalle:
+              '${informe.productores} productores, ${informe.lotes} lotes '
               'y ${informe.observaciones} observaciones '
               'en ${informe.duracionMs} ms.',
         );

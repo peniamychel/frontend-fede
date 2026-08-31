@@ -26,9 +26,8 @@ class _SinFotoPaginaState extends State<SinFotoPagina> {
       body: ListaPaginada<Productor>(
         key: _lista,
         clave: 'sin-foto',
-        cargar: (paginacion) => padron.productores.sinFoto(
-          paginacion: paginacion,
-        ),
+        cargar: (paginacion) =>
+            padron.productores.sinFoto(paginacion: paginacion),
         vacio: const SinResultados(
           icono: Icons.photo_camera_outlined,
           mensaje: 'Todos tienen fotografía.',
@@ -51,7 +50,9 @@ class _SinFotoPaginaState extends State<SinFotoPagina> {
                 builder: (_) => ProductorDetallePagina(productorId: p.id),
               ),
             );
-            if (cambio == true) _lista.currentState?.refrescar();
+            if (cambio == true) {
+              await _lista.currentState?.refrescarConservandoPosicion();
+            }
           },
         ),
       ),

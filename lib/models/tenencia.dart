@@ -34,17 +34,23 @@ class Tenedor {
     required this.productorId,
     required this.nombre,
     required this.desde,
+    this.codigoPadron,
+    this.letra,
   });
 
   final int productorId;
   final String nombre;
   final DateTime desde;
+  final String? codigoPadron;
+  final String? letra;
 
   factory Tenedor.desdeJson(Map<String, dynamic> json) => Tenedor(
-        productorId: (json['productorId'] as num?)?.toInt() ?? 0,
-        nombre: json['nombre'] as String? ?? '',
-        desde: DateTime.tryParse('${json['desde']}') ?? DateTime(1970),
-      );
+    productorId: (json['productorId'] as num?)?.toInt() ?? 0,
+    nombre: json['nombre'] as String? ?? '',
+    codigoPadron: json['codigoPadron'] as String?,
+    letra: json['letra'] as String?,
+    desde: DateTime.tryParse('${json['desde']}') ?? DateTime(1970),
+  );
 }
 
 /// El sistema instalado en un lote.
@@ -60,10 +66,10 @@ class SistemaEnLote {
   final DateTime desde;
 
   factory SistemaEnLote.desdeJson(Map<String, dynamic> json) => SistemaEnLote(
-        sistemaId: (json['sistemaId'] as num?)?.toInt() ?? 0,
-        codigo: json['codigo'] as String? ?? '',
-        desde: DateTime.tryParse('${json['desde']}') ?? DateTime(1970),
-      );
+    sistemaId: (json['sistemaId'] as num?)?.toInt() ?? 0,
+    codigo: json['codigo'] as String? ?? '',
+    desde: DateTime.tryParse('${json['desde']}') ?? DateTime(1970),
+  );
 }
 
 /// Traspasar un lote a otro productor, o trasladar un sistema a otro lote.
@@ -90,11 +96,11 @@ class TraspasoRequest {
   final String? observaciones;
 
   Map<String, dynamic> aJson() => {
-        'motivo': motivo.valor,
-        if (productorId != null) 'productorId': productorId,
-        if (desde != null) 'desde': _soloFecha(desde!),
-        if (observaciones != null) 'observaciones': observaciones,
-      };
+    'motivo': motivo.valor,
+    if (productorId != null) 'productorId': productorId,
+    if (desde != null) 'desde': _soloFecha(desde!),
+    if (observaciones != null) 'observaciones': observaciones,
+  };
 
   static String _soloFecha(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
@@ -146,21 +152,21 @@ class Tenencia {
   }
 
   factory Tenencia.desdeJson(Map<String, dynamic> json) => Tenencia(
-        id: (json['id'] as num?)?.toInt() ?? 0,
-        queEs: json['queEs'] as String? ?? '',
-        queEsId: (json['queEsId'] as num?)?.toInt() ?? 0,
-        conQuien: json['conQuien'] as String? ?? '',
-        conQuienId: (json['conQuienId'] as num?)?.toInt() ?? 0,
-        desde: DateTime.tryParse('${json['desde']}') ?? DateTime(1970),
-        hasta: switch (json['hasta']) {
-          final String s => DateTime.tryParse(s),
-          _ => null,
-        },
-        vigente: json['vigente'] as bool? ?? false,
-        motivo: MotivoTraspaso.desde(json['motivo']),
-        motivoEtiqueta: json['motivoEtiqueta'] as String?,
-        observaciones: json['observaciones'] as String?,
-      );
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    queEs: json['queEs'] as String? ?? '',
+    queEsId: (json['queEsId'] as num?)?.toInt() ?? 0,
+    conQuien: json['conQuien'] as String? ?? '',
+    conQuienId: (json['conQuienId'] as num?)?.toInt() ?? 0,
+    desde: DateTime.tryParse('${json['desde']}') ?? DateTime(1970),
+    hasta: switch (json['hasta']) {
+      final String s => DateTime.tryParse(s),
+      _ => null,
+    },
+    vigente: json['vigente'] as bool? ?? false,
+    motivo: MotivoTraspaso.desde(json['motivo']),
+    motivoEtiqueta: json['motivoEtiqueta'] as String?,
+    observaciones: json['observaciones'] as String?,
+  );
 }
 
 /// Un sistema: el agregado que un lote puede tener o no, y que se traslada.
@@ -182,14 +188,14 @@ class Sistema {
   bool get disponible => lote == null;
 
   factory Sistema.desdeJson(Map<String, dynamic> json) => Sistema(
-        id: (json['id'] as num?)?.toInt() ?? 0,
-        codigo: json['codigo'] as String? ?? '',
-        descripcion: json['descripcion'] as String?,
-        lote: switch (json['lote']) {
-          final Map<String, dynamic> m => SistemaEnUnLote.desdeJson(m),
-          _ => null,
-        },
-      );
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    codigo: json['codigo'] as String? ?? '',
+    descripcion: json['descripcion'] as String?,
+    lote: switch (json['lote']) {
+      final Map<String, dynamic> m => SistemaEnUnLote.desdeJson(m),
+      _ => null,
+    },
+  );
 
   @override
   bool operator ==(Object other) => other is Sistema && other.id == id;
@@ -217,7 +223,8 @@ class SistemaEnUnLote {
 
   final DateTime desde;
 
-  factory SistemaEnUnLote.desdeJson(Map<String, dynamic> json) => SistemaEnUnLote(
+  factory SistemaEnUnLote.desdeJson(Map<String, dynamic> json) =>
+      SistemaEnUnLote(
         loteId: (json['loteId'] as num?)?.toInt() ?? 0,
         codigo: json['codigo'] as String? ?? '',
         sindicato: json['sindicato'] as String? ?? '',
@@ -234,7 +241,7 @@ class SistemaRequest {
   final String? descripcion;
 
   Map<String, dynamic> aJson() => {
-        'codigo': codigo,
-        if (descripcion != null) 'descripcion': descripcion,
-      };
+    'codigo': codigo,
+    if (descripcion != null) 'descripcion': descripcion,
+  };
 }

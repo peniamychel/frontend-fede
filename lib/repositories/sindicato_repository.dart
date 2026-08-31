@@ -1,6 +1,7 @@
 import '../core/api_client.dart';
 import '../core/api_config.dart';
 import '../models/credencial_previa.dart';
+import '../models/lista_fisica_sindicato.dart';
 import '../models/sindicato.dart';
 
 class SindicatoRepository {
@@ -20,6 +21,49 @@ class SindicatoRepository {
     final datos = await _api.obtener('$_ruta/$id');
     return Sindicato.desdeJson(datos.comoObjeto);
   }
+
+  Future<ListaFisicaSindicato> listaFisica(int id) async {
+    final datos = await _api.obtener('$_ruta/$id/lista-fisica');
+    return ListaFisicaSindicato.desdeJson(datos.comoObjeto);
+  }
+
+  Future<ListaFisicaSindicato> agregarPaginasListaFisica(
+    int id,
+    List<ArchivoAdjunto> archivos,
+  ) async {
+    final datos = await _api.subirArchivos(
+      '$_ruta/$id/lista-fisica/paginas',
+      campo: 'archivos',
+      archivos: archivos,
+    );
+    return ListaFisicaSindicato.desdeJson(datos.comoObjeto);
+  }
+
+  Future<ListaFisicaSindicato> reemplazarPaginaListaFisica(
+    int id,
+    int paginaId,
+    ArchivoAdjunto archivo,
+  ) async {
+    final datos = await _api.reemplazarArchivo(
+      '$_ruta/$id/lista-fisica/paginas/$paginaId',
+      campo: 'archivo',
+      archivo: archivo,
+    );
+    return ListaFisicaSindicato.desdeJson(datos.comoObjeto);
+  }
+
+  Future<ListaFisicaSindicato> quitarPaginaListaFisica(
+    int id,
+    int paginaId,
+  ) async {
+    final datos = await _api.eliminarConRespuesta(
+      '$_ruta/$id/lista-fisica/paginas/$paginaId',
+    );
+    return ListaFisicaSindicato.desdeJson(datos.comoObjeto);
+  }
+
+  Future<DescargaBinaria> descargarListaFisica(int id) =>
+      _api.obtenerBytes('$_ruta/$id/lista-fisica.pdf');
 
   /// Dirección del informe en PDF: la nómina del sindicato lista para imprimir.
   ///
@@ -41,6 +85,35 @@ class SindicatoRepository {
     return PliegoPrevio.desdeJson(datos.comoObjeto);
   }
 
+  Future<PanelImpresionSindicato> panelImpresion(int id) async {
+    final datos = await _api.obtener('$_ruta/$id/credenciales/impresion');
+    return PanelImpresionSindicato.desdeJson(datos.comoObjeto);
+  }
+
+  Future<DescargaBinaria> descargarAnversosSeleccionados(
+    int id,
+    List<int> productorIds,
+  ) => _api.crearBytes('$_ruta/$id/credenciales/impresion/anversos.pdf', {
+    'productorIds': productorIds,
+  });
+
+  Future<PanelImpresionSindicato> confirmarAnversosImpresos(
+    int id,
+    List<int> productorIds,
+  ) async {
+    final datos = await _api.crear(
+      '$_ruta/$id/credenciales/impresion/confirmar',
+      {'productorIds': productorIds},
+    );
+    return PanelImpresionSindicato.desdeJson(datos.comoObjeto);
+  }
+
+  Future<DescargaBinaria> descargarReversos(int id, int cantidad) =>
+      _api.obtenerBytes(
+        '$_ruta/$id/credenciales/impresion/reversos.pdf',
+        query: {'cantidad': cantidad},
+      );
+
   /// Códigos de lote que aparecen más de una vez dentro del sindicato.
   /// Devuelve los códigos, no los lotes.
   Future<List<String>> lotesDuplicados(int id) async {
@@ -59,8 +132,10 @@ class SindicatoRepository {
   /// habilitar. Es la salida para lo que el backend no deja eliminar por
   /// tener registros dependientes.
   Future<Sindicato> cambiarEstado(int id, bool estado) async {
-    final datos = await _api
-        .parchear('$_ruta/$id/estado', cuerpo: {'estado': estado});
+    final datos = await _api.parchear(
+      '$_ruta/$id/estado',
+      cuerpo: {'estado': estado},
+    );
     return Sindicato.desdeJson(datos.comoObjeto);
   }
 
@@ -75,13 +150,19 @@ class SindicatoRepository {
 
   /// Los que ya tienen la sede marcada, para dibujarlos juntos en un mapa.
   Future<List<Sindicato>> conUbicacion({int? centralId}) async {
-    final datos = await _api.obtener('$_ruta/con-ubicacion',
-        query: {'centralId': centralId});
+    final datos = await _api.obtener(
+      '$_ruta/con-ubicacion',
+      query: {'centralId': centralId},
+    );
     return datos.comoLista.map(Sindicato.desdeJson).toList(growable: false);
   }
 
   /// Marca o mueve la sede. Devuelve el sindicato ya actualizado.
-  Future<Sindicato> marcarUbicacion(int id, double latitud, double longitud) async {
+  Future<Sindicato> marcarUbicacion(
+    int id,
+    double latitud,
+    double longitud,
+  ) async {
     final datos = await _api.reemplazar('$_ruta/$id/ubicacion', {
       'latitud': latitud,
       'longitud': longitud,

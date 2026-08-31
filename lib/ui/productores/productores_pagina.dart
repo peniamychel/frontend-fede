@@ -28,6 +28,7 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
   String _texto = '';
   Central? _central;
   Sindicato? _sindicato;
+  OrdenProductores _orden = OrdenProductores.recientes;
 
   List<Central> _centrales = const [];
   List<Sindicato> _sindicatos = const [];
@@ -70,8 +71,9 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
       return;
     }
     try {
-      final sindicatos =
-          await PadronScope.of(context).centrales.sindicatos(central.id);
+      final sindicatos = await PadronScope.of(
+        context,
+      ).centrales.sindicatos(central.id);
       if (!mounted) return;
       setState(() {
         _sindicatos = sindicatos;
@@ -91,7 +93,8 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
   }
 
   /// Firma de los filtros: al cambiar, la lista se reinicia desde la página 0.
-  String get _clave => '$_texto|${_central?.id}|${_sindicato?.id}';
+  String get _clave =>
+      '$_texto|${_central?.id}|${_sindicato?.id}|${_orden.name}';
 
   @override
   Widget build(BuildContext context) {
@@ -131,6 +134,7 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
                 texto: _texto.isEmpty ? null : _texto,
                 centralId: _central?.id,
                 sindicatoId: _sindicato?.id,
+                orden: _orden,
                 paginacion: paginacion,
               ),
               vacio: SinResultados(
@@ -153,10 +157,8 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
                         label: const Text('Importar desde Excel'),
                       ),
               ),
-              constructor: (context, p) => FilaProductor(
-                productor: p,
-                alTocar: () => _abrir(p),
-              ),
+              constructor: (context, p) =>
+                  FilaProductor(productor: p, alTocar: () => _abrir(p)),
             ),
           ),
         ],
@@ -243,6 +245,19 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
                 : (s) => setState(() => _sindicato = s),
           );
 
+          final selectorOrden = DropdownButtonFormField<OrdenProductores>(
+            initialValue: _orden,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Ordenar por'),
+            items: [
+              for (final orden in OrdenProductores.values)
+                DropdownMenuItem(value: orden, child: Text(orden.etiqueta)),
+            ],
+            onChanged: (orden) {
+              if (orden != null) setState(() => _orden = orden);
+            },
+          );
+
           if (enFila) {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,6 +267,8 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
                 Expanded(flex: 2, child: filtroCentral),
                 const SizedBox(width: 12),
                 Expanded(flex: 2, child: filtroSindicato),
+                const SizedBox(width: 12),
+                Expanded(flex: 2, child: selectorOrden),
               ],
             );
           }
@@ -267,6 +284,8 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
                   Expanded(child: filtroSindicato),
                 ],
               ),
+              const SizedBox(height: 12),
+              selectorOrden,
             ],
           );
         },
@@ -280,7 +299,9 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
         builder: (_) => ProductorDetallePagina(productorId: p.id),
       ),
     );
-    if (cambio == true) _lista.currentState?.refrescar();
+    if (cambio == true) {
+      await _lista.currentState?.refrescarConservandoPosicion();
+    }
   }
 
   Future<void> _crear() async {
@@ -293,12 +314,11 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
   /// Una importación puede crear centrales y sindicatos además de productores,
   /// así que al volver se recargan también los filtros.
   Future<void> _importar() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ImportacionPagina()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ImportacionPagina()));
     if (!mounted) return;
     _lista.currentState?.refrescar();
     _cargarCentrales();
   }
 }
-

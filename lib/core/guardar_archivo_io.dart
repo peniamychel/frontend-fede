@@ -9,7 +9,7 @@ Future<void> guardarArchivo(
   String tipoMime,
 ) async {
   final ruta = await FilePicker.saveFile(
-    dialogTitle: 'Guardar copia de seguridad',
+    dialogTitle: 'Guardar archivo',
     fileName: nombreArchivo,
     bytes: Uint8List.fromList(bytes),
   );

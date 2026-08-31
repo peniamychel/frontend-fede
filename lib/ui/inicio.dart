@@ -107,10 +107,10 @@ class _InicioState extends State<Inicio> {
                             Icon(Icons.badge_outlined),
                             SizedBox(width: 12),
                             Text(
-                              'Padrón FEDERA',
+                              'PADRÓN FEDERACIÓN\nCARRASCO TROPICAL',
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
-                                fontSize: 16,
+                                fontSize: 14,
                               ),
                             ),
                           ],
@@ -181,7 +181,9 @@ class _InicioState extends State<Inicio> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('¿Salir de la aplicación?'),
-        content: const Text('¿Querés cerrar Padrón FEDERA?'),
+        content: const Text(
+          '¿Querés cerrar PADRÓN FEDERACIÓN CARRASCO TROPICAL?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),

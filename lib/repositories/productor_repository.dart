@@ -7,6 +7,21 @@ import '../models/imagen.dart';
 import '../models/lado_credencial.dart';
 import '../models/productor.dart';
 
+/// Criterios disponibles para ordenar el padrón desde el servidor.
+///
+/// El segundo campo desempata homónimos y el backend agrega el id al final,
+/// evitando duplicados o saltos cuando la lista carga la siguiente página.
+enum OrdenProductores {
+  recientes('Modificados recientemente', ['updatedAt,desc', 'id,desc']),
+  apellidos('Apellidos (A–Z)', ['apellidos,asc', 'nombres,asc']),
+  nombres('Nombres (A–Z)', ['nombres,asc', 'apellidos,asc']);
+
+  const OrdenProductores(this.etiqueta, this.parametros);
+
+  final String etiqueta;
+  final List<String> parametros;
+}
+
 class ProductorRepository {
   const ProductorRepository(this._api);
 
@@ -27,7 +42,13 @@ class ProductorRepository {
     LadoCredencial lado,
   ) => _api.obtenerBytes(
     '$_ruta/$id/credencial.pdf',
-    query: {'cara': lado.parametroApi},
+    // El diseño y la plantilla pueden cambiar conservando la misma ruta.
+    // La marca temporal evita que Windows o el navegador reutilicen un PDF
+    // generado antes de la última edición.
+    query: {
+      'cara': lado.parametroApi,
+      'v': DateTime.now().millisecondsSinceEpoch,
+    },
   );
 
   /// Lo que va a salir impreso, y lo que falta para poder imprimirlo.
@@ -40,15 +61,23 @@ class ProductorRepository {
     return CredencialPrevia.desdeJson(datos.comoObjeto);
   }
 
+  /// Suma una impresión del anverso aceptada por el controlador de Windows.
+  /// El reverso no se contabiliza.
+  Future<Productor> confirmarImpresionCredencial(int id) async {
+    final datos = await _api.crear('$_ruta/$id/credencial/impresion', const {});
+    return Productor.desdeJson(datos.comoObjeto);
+  }
+
   /// Listado paginado del padrón. Los tres filtros son opcionales y
   /// combinables; [texto] busca a la vez en nombres, apellidos, cédula y carné.
   ///
-  /// El backend ordena por apellidos y nombres, desempatando siempre por id,
-  /// para que una misma fila no pueda salir en dos páginas distintas.
+  /// [orden] permite elegir el campo principal. El backend desempata siempre
+  /// por id para que una fila no pueda salir en dos páginas distintas.
   Future<Pagina<Productor>> listar({
     int? sindicatoId,
     int? centralId,
     String? texto,
+    OrdenProductores orden = OrdenProductores.apellidos,
     Paginacion paginacion = const Paginacion(),
   }) async {
     final datos = await _api.obtener(
@@ -58,6 +87,7 @@ class ProductorRepository {
         'centralId': centralId,
         'texto': texto,
         ...paginacion.query,
+        'sort': orden.parametros,
       },
     );
     return Pagina.desdeJson(datos.comoObjeto, Productor.desdeJson);
@@ -67,6 +97,20 @@ class ProductorRepository {
   Future<ProductorDetalle> obtener(int id) async {
     final datos = await _api.obtener('$_ruta/$id');
     return ProductorDetalle.desdeJson(datos.comoObjeto);
+  }
+
+  /// Ejecuta la única revisión SIE pendiente de una fila importada.
+  /// El backend evita repetir la consulta una vez que fue completada.
+  Future<RevisionSieProductor> revisarImportadoConSie(int id) async {
+    final datos = await _api.crear('$_ruta/$id/revision-sie', const {});
+    return RevisionSieProductor.desdeJson(datos.comoObjeto);
+  }
+
+  /// Comprobación manual temporal para productores que ya estaban cargados.
+  /// Siempre consulta SIE, aunque la revisión automática ya haya terminado.
+  Future<RevisionSieProductor> verificarManualmenteConSie(int id) async {
+    final datos = await _api.crear('$_ruta/$id/verificacion-sie', const {});
+    return RevisionSieProductor.desdeJson(datos.comoObjeto);
   }
 
   /// Productores sin rótulo de fotografía. En el padrón original son 3.113 de

@@ -11,7 +11,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
     <application
-        android:label="fede"
+        android:label="Padrón Carrasco Tropical"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 

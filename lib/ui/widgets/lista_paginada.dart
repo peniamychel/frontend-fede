@@ -86,6 +86,53 @@ class ListaPaginadaState<T> extends State<ListaPaginada<T>> {
   /// abajo, y lo que hay que llamar después de crear o borrar un registro.
   Future<void> refrescar() => _reiniciar();
 
+  /// Actualiza todas las páginas que el usuario ya alcanzó sin vaciar la lista
+  /// ni perder su posición. Se usa al volver de una ficha editada: los datos
+  /// deben cambiar, pero el usuario debe continuar donde estaba trabajando.
+  Future<void> refrescarConservandoPosicion() async {
+    if (_cargando) return;
+
+    final posicion = _scroll.hasClients ? _scroll.offset : 0.0;
+    final paginasCargadas = (_ultima?.numero ?? 0) + 1;
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+
+    try {
+      final paginas = await Future.wait([
+        for (var numero = 0; numero < paginasCargadas; numero++)
+          widget.cargar(
+            Paginacion(pagina: numero, tamano: widget.tamanoPagina),
+          ),
+      ]);
+      if (!mounted) return;
+
+      setState(() {
+        _elementos
+          ..clear()
+          ..addAll(paginas.expand((pagina) => pagina.contenido));
+        _ultima = paginas.last;
+        _cargando = false;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scroll.hasClients) return;
+        final destino = posicion.clamp(
+          _scroll.position.minScrollExtent,
+          _scroll.position.maxScrollExtent,
+        );
+        _scroll.jumpTo(destino);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e;
+        _cargando = false;
+      });
+    }
+  }
+
   void _cargarMas() {
     final ultima = _ultima;
     if (_cargando || ultima == null || ultima.esUltima) return;
@@ -135,7 +182,8 @@ class ListaPaginadaState<T> extends State<ListaPaginada<T>> {
             physics: const AlwaysScrollableScrollPhysics(),
             child: SizedBox(
               height: restricciones.maxHeight,
-              child: widget.vacio ??
+              child:
+                  widget.vacio ??
                   const SinResultados(mensaje: 'No hay registros que mostrar.'),
             ),
           ),
@@ -183,10 +231,7 @@ class ListaPaginadaState<T> extends State<ListaPaginada<T>> {
                 style: tema.textTheme.bodySmall,
               ),
             ),
-            TextButton(
-              onPressed: _cargarMas,
-              child: const Text('Reintentar'),
-            ),
+            TextButton(onPressed: _cargarMas, child: const Text('Reintentar')),
           ],
         ),
       );

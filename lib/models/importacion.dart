@@ -18,11 +18,11 @@ class ErrorFila {
   final String mensaje;
 
   factory ErrorFila.desdeJson(Map<String, dynamic> json) => ErrorFila(
-        fila: (json['fila'] as num?)?.toInt() ?? 0,
-        columna: json['columna'] as String?,
-        valor: json['valor'] as String?,
-        mensaje: json['mensaje'] as String? ?? '',
-      );
+    fila: (json['fila'] as num?)?.toInt() ?? 0,
+    columna: json['columna'] as String?,
+    valor: json['valor'] as String?,
+    mensaje: json['mensaje'] as String? ?? '',
+  );
 }
 
 /// Sindicato que la planilla menciona y todavía no existe.
@@ -36,9 +36,9 @@ class SindicatoNuevo {
   final String sindicato;
 
   factory SindicatoNuevo.desdeJson(Map<String, dynamic> json) => SindicatoNuevo(
-        central: json['central'] as String? ?? '',
-        sindicato: json['sindicato'] as String? ?? '',
-      );
+    central: json['central'] as String? ?? '',
+    sindicato: json['sindicato'] as String? ?? '',
+  );
 }
 
 /// Informe de una importación, simulada o real.
@@ -91,13 +91,14 @@ class ImportacionResultado {
   bool get hayRechazos => filasRechazadas > 0;
   bool get tocaLaJerarquia =>
       centralesNuevas.isNotEmpty || sindicatosNuevos.isNotEmpty;
+  List<String> get centralesFaltantes => centralesNuevas;
   bool get hayAlgoQueImportar => filasValidas > 0;
 
   factory ImportacionResultado.desdeJson(Map<String, dynamic> json) {
     List<T> lista<T>(Object? crudo, T Function(Map<String, dynamic>) mapear) =>
         crudo is List
-            ? crudo.whereType<Map<String, dynamic>>().map(mapear).toList()
-            : const [];
+        ? crudo.whereType<Map<String, dynamic>>().map(mapear).toList()
+        : const [];
 
     return ImportacionResultado(
       simulacion: json['simulacion'] as bool? ?? true,
@@ -113,8 +114,10 @@ class ImportacionResultado {
         final List<dynamic> l => l.map((e) => '$e').toList(growable: false),
         _ => const [],
       },
-      sindicatosNuevos:
-          lista(json['sindicatosNuevos'], SindicatoNuevo.desdeJson),
+      sindicatosNuevos: lista(
+        json['sindicatosNuevos'],
+        SindicatoNuevo.desdeJson,
+      ),
       posiblesDuplicados: (json['posiblesDuplicados'] as num?)?.toInt() ?? 0,
       errores: lista(json['errores'], ErrorFila.desdeJson),
       erroresOmitidos: (json['erroresOmitidos'] as num?)?.toInt() ?? 0,
