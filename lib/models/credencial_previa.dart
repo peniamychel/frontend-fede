@@ -256,6 +256,7 @@ class PanelImpresionSindicato {
     required this.listosParaImprimir,
     required this.faltantesDelSindicato,
     required this.candidatos,
+    this.ultimoGrupo,
   });
 
   final int sindicatoId;
@@ -267,6 +268,7 @@ class PanelImpresionSindicato {
   final int listosParaImprimir;
   final List<Faltante> faltantesDelSindicato;
   final List<CandidatoImpresionCredencial> candidatos;
+  final UltimoGrupoImpresionCredencial? ultimoGrupo;
 
   factory PanelImpresionSindicato.desdeJson(Map<String, dynamic> json) =>
       PanelImpresionSindicato(
@@ -278,6 +280,44 @@ class PanelImpresionSindicato {
         sinFoto: (json['sinFoto'] as num?)?.toInt() ?? 0,
         listosParaImprimir: (json['listosParaImprimir'] as num?)?.toInt() ?? 0,
         faltantesDelSindicato: Faltante.lista(json['faltantesDelSindicato']),
+        candidatos: ((json['candidatos'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(CandidatoImpresionCredencial.desdeJson)
+            .toList(),
+        ultimoGrupo: json['ultimoGrupo'] is Map<String, dynamic>
+            ? UltimoGrupoImpresionCredencial.desdeJson(
+                json['ultimoGrupo'] as Map<String, dynamic>,
+              )
+            : null,
+      );
+}
+
+/// Último trabajo masivo enviado a Windows y su resultado contabilizado.
+class UltimoGrupoImpresionCredencial {
+  const UltimoGrupoImpresionCredencial({
+    required this.id,
+    required this.enviadoEn,
+    required this.total,
+    required this.productorIdsContabilizados,
+    required this.candidatos,
+  });
+
+  final int id;
+  final DateTime? enviadoEn;
+  final int total;
+  final List<int> productorIdsContabilizados;
+  final List<CandidatoImpresionCredencial> candidatos;
+
+  factory UltimoGrupoImpresionCredencial.desdeJson(Map<String, dynamic> json) =>
+      UltimoGrupoImpresionCredencial(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        enviadoEn: DateTime.tryParse(json['enviadoEn'] as String? ?? ''),
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        productorIdsContabilizados:
+            ((json['productorIdsContabilizados'] as List?) ?? const [])
+                .whereType<num>()
+                .map((id) => id.toInt())
+                .toList(),
         candidatos: ((json['candidatos'] as List?) ?? const [])
             .whereType<Map<String, dynamic>>()
             .map(CandidatoImpresionCredencial.desdeJson)

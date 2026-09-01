@@ -34,6 +34,7 @@ void main() {
     expect(find.text('Productores'), findsOneWidget);
     expect(find.text('Impresos'), findsOneWidget);
     expect(find.text('No impresos'), findsOneWidget);
+    expect(find.text('Generar informe PDF'), findsOneWidget);
     expect(find.text('60%'), findsWidgets);
     expect(find.text('Sindicatos sin sello'), findsNothing);
 

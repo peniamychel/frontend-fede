@@ -92,9 +92,11 @@ class SindicatoRepository {
 
   Future<DescargaBinaria> descargarAnversosSeleccionados(
     int id,
-    List<int> productorIds,
-  ) => _api.crearBytes('$_ruta/$id/credenciales/impresion/anversos.pdf', {
+    List<int> productorIds, {
+    bool permitirReimpresion = false,
+  }) => _api.crearBytes('$_ruta/$id/credenciales/impresion/anversos.pdf', {
     'productorIds': productorIds,
+    'permitirReimpresion': permitirReimpresion,
   });
 
   Future<PanelImpresionSindicato> confirmarAnversosImpresos(
@@ -104,6 +106,21 @@ class SindicatoRepository {
     final datos = await _api.crear(
       '$_ruta/$id/credenciales/impresion/confirmar',
       {'productorIds': productorIds},
+    );
+    return PanelImpresionSindicato.desdeJson(datos.comoObjeto);
+  }
+
+  Future<PanelImpresionSindicato> revisarUltimoGrupo(
+    int id,
+    int grupoId,
+    List<int> productorIdsImpresos,
+  ) async {
+    final datos = await _api.parchear(
+      '$_ruta/$id/credenciales/impresion/ultimo-grupo',
+      cuerpo: {
+        'grupoId': grupoId,
+        'productorIdsImpresos': productorIdsImpresos,
+      },
     );
     return PanelImpresionSindicato.desdeJson(datos.comoObjeto);
   }

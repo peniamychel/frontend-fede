@@ -36,6 +36,20 @@ Future<void> descargarInformeImpresionCentral(
   );
 }
 
+/// Informe consolidado del avance de impresión de toda la federación.
+Future<void> descargarInformeImpresionFederacion(
+  BuildContext context,
+  Federacion federacion,
+) {
+  return _abrir(
+    context,
+    PadronScope.of(
+      context,
+    ).centrales.urlInformeImpresionFederacion(federacion.id),
+    'Generando el avance general de «${federacion.nombre}»…',
+  );
+}
+
 /// Planilla para estampar y luego digitalizar sellos, firma y pie de firma.
 Future<void> descargarPlanillaRecoleccionDirectorio(
   BuildContext context,

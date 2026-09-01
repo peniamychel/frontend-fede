@@ -1,0 +1,16 @@
+.git
+.idea
+.dart_tool
+.pub
+.pub-cache
+build
+coverage
+android
+windows
+docs
+test
+tool
+*.log
+*.iml
+Dockerfile*
+README.md

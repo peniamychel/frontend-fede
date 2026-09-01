@@ -48,6 +48,11 @@ class CentralRepository {
     return InformeImpresionFederacion.desdeJson(datos.comoObjeto);
   }
 
+  /// PDF del avance consolidado de todas las centrales y sus sindicatos.
+  Uri urlInformeImpresionFederacion(int federacionId) => ApiConfig.uri(
+    '/federaciones/$federacionId/credenciales/impresion/informe.pdf',
+  );
+
   /// PDF con el mismo resumen y el desglose por sindicato.
   Uri urlInformeImpresion(int id) =>
       ApiConfig.uri('$_ruta/$id/credenciales/impresion/informe.pdf');

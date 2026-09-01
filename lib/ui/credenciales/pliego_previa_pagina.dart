@@ -166,6 +166,20 @@ class _Panel extends StatelessWidget {
                   'Impresiones faltantes (${panel.listosParaImprimir})',
                 ),
               ),
+              FilledButton.tonalIcon(
+                onPressed: panel.candidatos.any((c) => c.seleccionable)
+                    ? () => _abrirSelectiva(context)
+                    : null,
+                icon: const Icon(Icons.checklist_outlined),
+                label: const Text('Impresión selectiva'),
+              ),
+              OutlinedButton.icon(
+                onPressed: panel.ultimoGrupo == null
+                    ? null
+                    : () => _revisarUltimoGrupo(context),
+                icon: const Icon(Icons.fact_check_outlined),
+                label: const Text('Revisar última impresión'),
+              ),
               OutlinedButton.icon(
                 onPressed: () => _imprimirReversos(context),
                 icon: const Icon(Icons.flip_outlined),
@@ -219,7 +233,7 @@ class _Panel extends StatelessWidget {
     if (cantidad == null || !context.mounted) return;
 
     final candidatos = panel.candidatos
-        .where((c) => c.seleccionable)
+        .where((c) => c.impresiones == 0 && c.seleccionable)
         .take(cantidad)
         .toList(growable: false);
     final impresos = await Navigator.of(context).push<int>(
@@ -228,36 +242,71 @@ class _Panel extends StatelessWidget {
           sindicato: sindicato,
           candidatos: candidatos,
           editor: editor,
+          titulo: 'Revisar caras antes de imprimir',
+          seleccionarTodosAlAbrir: true,
+          permitirReimpresion: false,
         ),
       ),
     );
     if (impresos == null || impresos == 0 || !context.mounted) return;
     alCambiar();
-    final imprimirReverso = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.flip_outlined),
-        title: const Text('¿Imprimir ahora los reversos?'),
-        content: Text(
-          'Se imprimieron $impresos caras. Podés generar ahora exactamente '
-          '$impresos reversos después de dar vuelta las tarjetas.',
+    await _avisarImpresionEnCurso(context, impresos);
+  }
+
+  Future<void> _abrirSelectiva(BuildContext context) async {
+    final impresos = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => _SeleccionAnversosPagina(
+          sindicato: sindicato,
+          candidatos: panel.candidatos,
+          editor: editor,
+          titulo: 'Impresión selectiva',
+          seleccionarTodosAlAbrir: false,
+          permitirReimpresion: true,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Más tarde'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Preparar reversos'),
-          ),
-        ],
       ),
     );
-    if (imprimirReverso == true && context.mounted) {
-      await _enviarReversos(context, impresos);
-    }
+    if (impresos == null || impresos == 0 || !context.mounted) return;
+    alCambiar();
+    await _avisarImpresionEnCurso(context, impresos);
   }
+
+  Future<void> _revisarUltimoGrupo(BuildContext context) async {
+    final grupo = panel.ultimoGrupo;
+    if (grupo == null) return;
+    final cambio = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _RevisionUltimoGrupoPagina(
+          sindicato: sindicato,
+          grupo: grupo,
+          editor: editor,
+        ),
+      ),
+    );
+    if (cambio == true) alCambiar();
+  }
+
+  Future<void> _avisarImpresionEnCurso(
+    BuildContext context,
+    int cantidad,
+  ) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      icon: const Icon(Icons.warning_amber_rounded),
+      title: const Text('La impresión ya comenzó'),
+      content: Text(
+        'Windows envió $cantidad caras a la Zebra. No canceles el trabajo ni '
+        'apagues la impresora. Si se interrumpe, usá “Revisar última impresión” '
+        'para marcar solamente las tarjetas que sí salieron o cancelar todo el grupo.',
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Entendido'),
+        ),
+      ],
+    ),
+  );
 
   Future<void> _imprimirReversos(BuildContext context) async {
     final cantidad = await _pedirCantidad(
@@ -360,11 +409,17 @@ class _SeleccionAnversosPagina extends StatefulWidget {
     required this.sindicato,
     required this.candidatos,
     required this.editor,
+    required this.titulo,
+    required this.seleccionarTodosAlAbrir,
+    required this.permitirReimpresion,
   });
 
   final Sindicato sindicato;
   final List<CandidatoImpresionCredencial> candidatos;
   final EditorDisenoCredencial editor;
+  final String titulo;
+  final bool seleccionarTodosAlAbrir;
+  final bool permitirReimpresion;
 
   @override
   State<_SeleccionAnversosPagina> createState() =>
@@ -379,7 +434,12 @@ class _SeleccionAnversosPaginaState extends State<_SeleccionAnversosPagina> {
   @override
   void initState() {
     super.initState();
-    _seleccionados = widget.candidatos.map((c) => c.productorId).toSet();
+    _seleccionados = widget.seleccionarTodosAlAbrir
+        ? widget.candidatos
+              .where((candidato) => candidato.seleccionable)
+              .map((candidato) => candidato.productorId)
+              .toSet()
+        : <int>{};
   }
 
   @override
@@ -387,22 +447,28 @@ class _SeleccionAnversosPaginaState extends State<_SeleccionAnversosPagina> {
     final cantidad = _seleccionados.length;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Revisar caras antes de imprimir'),
+        title: Text(widget.titulo),
         actions: [
           TextButton(
             onPressed: _procesando
                 ? null
                 : () => setState(() {
-                    if (_seleccionados.length == widget.candidatos.length) {
+                    final seleccionables = widget.candidatos
+                        .where((candidato) => candidato.seleccionable)
+                        .map((candidato) => candidato.productorId)
+                        .toSet();
+                    if (_seleccionados.containsAll(seleccionables)) {
                       _seleccionados.clear();
                     } else {
-                      _seleccionados.addAll(
-                        widget.candidatos.map((c) => c.productorId),
-                      );
+                      _seleccionados.addAll(seleccionables);
                     }
                   }),
             child: Text(
-              _seleccionados.length == widget.candidatos.length
+              _seleccionados.containsAll(
+                    widget.candidatos
+                        .where((candidato) => candidato.seleccionable)
+                        .map((candidato) => candidato.productorId),
+                  )
                   ? 'Desmarcar todas'
                   : 'Marcar todas',
             ),
@@ -440,7 +506,7 @@ class _SeleccionAnversosPaginaState extends State<_SeleccionAnversosPagina> {
               padding: const EdgeInsets.all(24),
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 390,
-                mainAxisExtent: 285,
+                mainAxisExtent: 315,
                 crossAxisSpacing: 18,
                 mainAxisSpacing: 18,
               ),
@@ -452,7 +518,7 @@ class _SeleccionAnversosPaginaState extends State<_SeleccionAnversosPagina> {
                   candidato: candidato,
                   marcado: marcado,
                   editor: widget.editor,
-                  alCambiar: _procesando
+                  alCambiar: _procesando || !candidato.seleccionable
                       ? null
                       : (valor) => setState(() {
                           if (valor) {
@@ -526,6 +592,7 @@ class _SeleccionAnversosPaginaState extends State<_SeleccionAnversosPagina> {
         final descarga = await repositorio.descargarAnversosSeleccionados(
           widget.sindicato.id,
           ids,
+          permitirReimpresion: widget.permitirReimpresion,
         );
         if (!mounted) return;
         final enviado = await imprimirTrabajoCredencialesWindows(
@@ -543,6 +610,174 @@ class _SeleccionAnversosPaginaState extends State<_SeleccionAnversosPagina> {
       if (mounted) mostrarError(context, error);
     } finally {
       if (mounted) setState(() => _procesando = false);
+    }
+  }
+}
+
+class _RevisionUltimoGrupoPagina extends StatefulWidget {
+  const _RevisionUltimoGrupoPagina({
+    required this.sindicato,
+    required this.grupo,
+    required this.editor,
+  });
+
+  final Sindicato sindicato;
+  final UltimoGrupoImpresionCredencial grupo;
+  final EditorDisenoCredencial editor;
+
+  @override
+  State<_RevisionUltimoGrupoPagina> createState() =>
+      _RevisionUltimoGrupoPaginaState();
+}
+
+class _RevisionUltimoGrupoPaginaState
+    extends State<_RevisionUltimoGrupoPagina> {
+  late final Set<int> _impresos;
+  bool _guardando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _impresos = widget.grupo.productorIdsContabilizados.toSet();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Revisar última impresión')),
+      body: Column(
+        children: [
+          Material(
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.warning_amber_rounded),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Marcá únicamente las tarjetas que salieron físicamente de '
+                      'la Zebra. Las desmarcadas dejarán de contarse como impresas. '
+                      'Este control corresponde al último grupo de '
+                      '${widget.grupo.total} caras enviado.',
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text('${_impresos.length} impresas'),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(24),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 390,
+                mainAxisExtent: 315,
+                crossAxisSpacing: 18,
+                mainAxisSpacing: 18,
+              ),
+              itemCount: widget.grupo.candidatos.length,
+              itemBuilder: (context, indice) {
+                final candidato = widget.grupo.candidatos[indice];
+                final marcado = _impresos.contains(candidato.productorId);
+                return _CredencialSeleccionable(
+                  candidato: candidato,
+                  marcado: marcado,
+                  editor: widget.editor,
+                  alCambiar: _guardando
+                      ? null
+                      : (valor) => setState(() {
+                          if (valor) {
+                            _impresos.add(candidato.productorId);
+                          } else {
+                            _impresos.remove(candidato.productorId);
+                          }
+                        }),
+                );
+              },
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 18),
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  TextButton(
+                    onPressed: _guardando
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: const Text('Cerrar sin cambios'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _guardando ? null : _cancelarTodo,
+                    icon: const Icon(Icons.undo_outlined),
+                    label: const Text('Cancelar todo el grupo'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _guardando ? null : () => _guardar(_impresos),
+                    icon: _guardando
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined),
+                    label: Text('Guardar revisión (${_impresos.length})'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _cancelarTodo() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded),
+        title: const Text('¿Cancelar todo el grupo?'),
+        content: const Text(
+          'Ninguna credencial de este último trabajo quedará contabilizada como '
+          'impresa. Usá esta opción solo si la Zebra no imprimió ninguna tarjeta.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Volver'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cancelar todo'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar == true && mounted) await _guardar(const <int>{});
+  }
+
+  Future<void> _guardar(Set<int> productorIds) async {
+    setState(() => _guardando = true);
+    try {
+      await PadronScope.of(context).sindicatos.revisarUltimoGrupo(
+        widget.sindicato.id,
+        widget.grupo.id,
+        productorIds.toList(growable: false),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) mostrarError(context, error);
+    } finally {
+      if (mounted) setState(() => _guardando = false);
     }
   }
 }
@@ -622,55 +857,83 @@ class _CredencialSeleccionable extends StatelessWidget {
   final ValueChanged<bool>? alCambiar;
 
   @override
-  Widget build(BuildContext context) => Card(
-    clipBehavior: Clip.antiAlias,
-    color: marcado
-        ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: .35)
-        : null,
-    child: InkWell(
-      onTap: alCambiar == null ? null : () => alCambiar!(!marcado),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Checkbox(
-                  value: marcado,
-                  onChanged: alCambiar == null
-                      ? null
-                      : (valor) => alCambiar!(valor ?? false),
-                ),
-                Expanded(
-                  child: Text(
-                    candidato.credencial.nombreCompleto,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+  Widget build(BuildContext context) {
+    final yaImpreso = candidato.impresiones > 0;
+    final colorEstado = !candidato.seleccionable
+        ? Theme.of(context).colorScheme.error
+        : yaImpreso
+        ? Colors.green
+        : Colors.amber.shade800;
+    final textoEstado = !candidato.seleccionable
+        ? 'Datos incompletos'
+        : yaImpreso
+        ? 'Impreso · ${candidato.impresiones} ${candidato.impresiones == 1 ? 'vez' : 'veces'}'
+        : 'No impreso';
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      color: marcado
+          ? Theme.of(
+              context,
+            ).colorScheme.primaryContainer.withValues(alpha: .35)
+          : null,
+      child: InkWell(
+        onTap: alCambiar == null ? null : () => alCambiar!(!marcado),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Checkbox(
+                    value: marcado,
+                    onChanged: alCambiar == null
+                        ? null
+                        : (valor) => alCambiar!(valor ?? false),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Expanded(
-              child: Center(
-                child: FittedBox(
-                  fit: BoxFit.contain,
-                  child: TarjetaPrevia(
-                    previa: candidato.credencial,
-                    reverso: false,
-                    ancho: 330,
-                    diseno: editor.diseno,
-                    plantillaUrl: editor.plantillaCaraUrl,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          candidato.credencial.nombreCompleto,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          textoEstado,
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: colorEstado,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: TarjetaPrevia(
+                      previa: candidato.credencial,
+                      reverso: false,
+                      ancho: 330,
+                      diseno: editor.diseno,
+                      plantillaUrl: editor.plantillaCaraUrl,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 Future<int?> _pedirCantidad(

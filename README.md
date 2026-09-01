@@ -65,6 +65,38 @@ equipo:
 flutter run --dart-define=API_HOST=192.168.1.X
 ```
 
+## Probar contra el entorno Docker
+
+El entorno de integración se levanta desde el repositorio del backend y
+publica web y API juntas en el puerto 80. La base de Docker es independiente de
+la MariaDB usada en desarrollo.
+
+Flutter Web no necesita una IP compilada: usa el mismo origen con el que se
+abre en el navegador. Entradas habituales:
+
+```text
+http://localhost/
+http://192.168.1.X/
+```
+
+Para ejecutar pruebas de integración contra Docker:
+
+```bash
+flutter test --dart-define=API_HOST=localhost --dart-define=API_PUERTO=80
+```
+
+Android y Windows nativos pueden apuntar al mismo entorno:
+
+```bash
+flutter run -d android --dart-define=API_HOST=192.168.1.X --dart-define=API_PUERTO=80
+flutter run -d windows --dart-define=API_HOST=localhost --dart-define=API_PUERTO=80
+```
+
+El build web de Docker incluye CanvasKit y el modelo de segmentación localmente,
+por lo que sigue cargando si la intranet pierde la salida a Internet. Por ahora
+se sirve por HTTP: el lector QR del navegador no está disponible desde otra
+máquina, pero la carga manual y el resto de la aplicación sí funcionan.
+
 ## Aplicación para Windows
 
 El target `windows/` está activo. Para compilarlo hacen falta Visual Studio

@@ -32,11 +32,22 @@ class ApiConfig {
     return 'localhost';
   }
 
-  static int get puerto => _puerto;
+  /// En web la API se publica detrás del mismo servidor que entrega Flutter.
+  /// Reutilizar esquema y puerto permite que Nginx haga el proxy en Docker sin
+  /// dejar una IP ni un puerto de producción escritos dentro del build.
+  static String get esquema {
+    if (kIsWeb && _hostForzado.isEmpty) return Uri.base.scheme;
+    return 'http';
+  }
+
+  static int get puerto {
+    if (kIsWeb && _hostForzado.isEmpty) return Uri.base.port;
+    return _puerto;
+  }
 
   /// Cómo se está apuntando al backend. Útil para mostrarlo en una pantalla de
   /// diagnóstico cuando algo no conecta.
-  static String get descripcion => 'http://$host:$puerto$prefijo';
+  static String get descripcion => '$esquema://$host:$puerto$prefijo';
 
   /// Convierte una ruta relativa devuelta por la API —como la URL de una
   /// imagen— en una dirección completa.
@@ -52,14 +63,14 @@ class ApiConfig {
     final camino = rutaRelativa.startsWith('/')
         ? rutaRelativa
         : '/$rutaRelativa';
-    return 'http://$host:$puerto$camino';
+    return '$esquema://$host:$puerto$camino';
   }
 
   /// Construye la URI de un recurso. Las claves de [query] con valor nulo se
   /// descartan, para poder pasar filtros opcionales sin condicionales.
   static Uri uri(String ruta, [Map<String, dynamic>? query]) {
     return Uri(
-      scheme: 'http',
+      scheme: esquema,
       host: host,
       port: puerto,
       path: '$prefijo$ruta',

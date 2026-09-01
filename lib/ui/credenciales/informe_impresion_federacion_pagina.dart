@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../widgets/descargas.dart';
 import '../widgets/estados.dart';
 import 'informe_impresion_central_pagina.dart';
 
@@ -94,6 +95,16 @@ class _ContenidoFederacion extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           _AvanceFederacion(informe: informe),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonalIcon(
+              onPressed: () =>
+                  descargarInformeImpresionFederacion(context, federacion),
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: const Text('Generar informe PDF'),
+            ),
+          ),
           const SizedBox(height: 18),
           Text('Resumen por central', style: tema.textTheme.titleLarge),
           const SizedBox(height: 4),
