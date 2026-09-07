@@ -29,6 +29,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Hay dos parcelas, pero el botón solo aparece en la que está libre.
+    expect(find.text('en el mapa'), findsNothing);
     expect(find.text('12'), findsOneWidget);
     expect(find.text('13'), findsOneWidget);
     expect(find.byTooltip('Eliminar parcela'), findsOneWidget);

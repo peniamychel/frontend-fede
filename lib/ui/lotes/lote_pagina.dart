@@ -5,7 +5,7 @@ import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../productores/asignar_parcela.dart';
 import '../widgets/estados.dart';
-import '../widgets/ubicacion_pagina.dart';
+import 'participantes_parcela.dart';
 
 /// Ficha de una parcela: dónde está, cuánto mide, quién la tiene y su historial.
 class LotePagina extends StatefulWidget {
@@ -68,7 +68,6 @@ class _LotePaginaState extends State<LotePagina> {
                     children: [
                       _Encabezado(
                         lote: datos.lote,
-                        alUbicar: () => _ubicar(datos.lote),
                         alMedir: () => _medir(datos.lote),
                         alTraspasar: () => _traspasar(datos.lote),
                         alCambiarNumero: () => _cambiarNumero(datos.lote),
@@ -76,6 +75,32 @@ class _LotePaginaState extends State<LotePagina> {
                             _cambiarClasificacion(datos.lote),
                       ),
                       const SizedBox(height: 20),
+                      if (datos.participaciones.length > 1) ...[
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  'Productores del lote ${datos.lote.numero?.trim()} '
+                                  '(${datos.participaciones.length})',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                                const Text(
+                                  'Comparten el mismo número de lote en este sindicato.',
+                                ),
+                                ParticipantesParcela(
+                                  participaciones: datos.participaciones,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                       _Historial(
                         titulo: 'Quiénes la tuvieron',
                         detalle:
@@ -98,28 +123,6 @@ class _LotePaginaState extends State<LotePagina> {
   }
 
   // ---------- Acciones ----------
-
-  Future<void> _ubicar(Lote lote) async {
-    final repo = PadronScope.of(context).lotes;
-    final cambio = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => UbicacionPagina(
-          titulo: 'lote ${lote.codigo}',
-          subtitulo: 'Sindicato ${lote.sindicatoNombre}',
-          queEs: 'la parcela',
-          latitud: lote.latitud,
-          longitud: lote.longitud,
-          ubicacionActualizadaEn: lote.ubicacionActualizadaEn,
-          alGuardar: (lat, lon) => repo.marcarUbicacion(lote.id, lat, lon),
-          alBorrar: () => repo.borrarUbicacion(lote.id),
-        ),
-      ),
-    );
-    if (cambio == true && mounted) {
-      _huboCambios = true;
-      _recargar();
-    }
-  }
 
   /// Vende, hereda o cede la parcela: cambia de manos con fecha y motivo.
   Future<void> _traspasar(Lote lote) async {
@@ -222,24 +225,31 @@ class _LotePaginaState extends State<LotePagina> {
 
 /// Las consultas de la pantalla, pedidas juntas.
 class _Datos {
-  const _Datos(this.lote, this.tenencias);
+  const _Datos(this.lote, this.tenencias, this.participaciones);
 
   final Lote lote;
   final List<Tenencia> tenencias;
+  final List<Lote> participaciones;
 
   static Future<_Datos> cargar(LoteRepository repo, int id) async {
     final resultados = await Future.wait([
       repo.obtener(id),
       repo.historial(id),
     ]);
-    return _Datos(resultados[0] as Lote, resultados[1] as List<Tenencia>);
+    final lote = resultados[0] as Lote;
+    final clave = lote.grupoNumero;
+    final delSindicato = clave == null
+        ? const <Lote>[]
+        : await repo.listar(sindicatoId: lote.sindicatoId);
+    final participantes =
+        Lote.participacionesPorNumero(delSindicato)[clave] ?? const <Lote>[];
+    return _Datos(lote, resultados[1] as List<Tenencia>, participantes);
   }
 }
 
 class _Encabezado extends StatelessWidget {
   const _Encabezado({
     required this.lote,
-    required this.alUbicar,
     required this.alMedir,
     required this.alTraspasar,
     required this.alCambiarNumero,
@@ -247,7 +257,6 @@ class _Encabezado extends StatelessWidget {
   });
 
   final Lote lote;
-  final VoidCallback alUbicar;
   final VoidCallback alMedir;
   final VoidCallback alTraspasar;
   final VoidCallback alCambiarNumero;
@@ -300,27 +309,6 @@ class _Encabezado extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Icon(
-                  lote.tieneUbicacion
-                      ? Icons.location_on
-                      : Icons.location_off_outlined,
-                  size: 16,
-                  color: lote.tieneUbicacion
-                      ? tema.colorScheme.primary
-                      : tema.colorScheme.outline,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    lote.coordenadas,
-                    style: tema.textTheme.bodySmall,
-                  ),
-                ),
-              ],
-            ),
             const SizedBox(height: 14),
             Wrap(
               spacing: 8,
@@ -335,15 +323,6 @@ class _Encabezado extends StatelessWidget {
                     lote.tieneTenedor
                         ? 'Vender o traspasar'
                         : 'Asignar tenedor',
-                  ),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: alUbicar,
-                  icon: const Icon(Icons.map_outlined, size: 18),
-                  label: Text(
-                    lote.tieneUbicacion
-                        ? 'Mover en el mapa'
-                        : 'Ubicar en el mapa',
                   ),
                 ),
                 OutlinedButton.icon(
@@ -437,7 +416,7 @@ class _Historial extends StatelessWidget {
           children: [
             Icon(icono, size: 18, color: tema.colorScheme.outline),
             const SizedBox(width: 8),
-            Text(titulo, style: tema.textTheme.titleMedium),
+            Expanded(child: Text(titulo, style: tema.textTheme.titleMedium)),
           ],
         ),
         const SizedBox(height: 4),

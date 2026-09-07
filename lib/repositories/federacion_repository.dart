@@ -14,6 +14,25 @@ class FederacionRepository {
     return datos.comoLista.map(Federacion.desdeJson).toList(growable: false);
   }
 
+  /// Destino único de trabajo. Nunca toma la primera fila ni un ID fijo,
+  /// porque las bases de desarrollo y producción pueden tener IDs distintos.
+  Future<Federacion> deTrabajo() async {
+    final candidatas = (await listar())
+        .where(
+          (f) =>
+              f.nombre.trim().toUpperCase().replaceAll(RegExp(r'\s+'), ' ') ==
+              'CARRASCO TROPICAL',
+        )
+        .toList();
+    if (candidatas.length != 1) {
+      throw StateError(
+        'No se encontró una única federación llamada CARRASCO TROPICAL. '
+        'Revisá su registro antes de continuar.',
+      );
+    }
+    return candidatas.single;
+  }
+
   Future<Federacion> obtener(int id) async {
     final datos = await _api.obtener('$_ruta/$id');
     return Federacion.desdeJson(datos.comoObjeto);
@@ -36,8 +55,10 @@ class FederacionRepository {
   /// habilitar. Es la salida para lo que el backend no deja eliminar por
   /// tener registros dependientes.
   Future<Federacion> cambiarEstado(int id, bool estado) async {
-    final datos = await _api
-        .parchear('$_ruta/$id/estado', cuerpo: {'estado': estado});
+    final datos = await _api.parchear(
+      '$_ruta/$id/estado',
+      cuerpo: {'estado': estado},
+    );
     return Federacion.desdeJson(datos.comoObjeto);
   }
 

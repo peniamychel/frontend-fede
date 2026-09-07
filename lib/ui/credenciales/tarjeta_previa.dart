@@ -52,27 +52,39 @@ class TarjetaPrevia extends StatelessWidget {
     final cara = reverso ? CaraCredencial.reverso : CaraCredencial.cara;
     final elementos = actual.elementos.where((e) => e.cara == cara);
 
-    return Container(
-      width: ancho,
-      height: _p(altoPt),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: grisLinea),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x22000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+    // Dibujar primero en el lienzo completo y reducirlo como una sola pieza.
+    // Reducir solo el Container deformaba la plantilla y recortaba los objetos,
+    // que seguían posicionados según `ancho` (420 por defecto).
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.topLeft,
+      child: MediaQuery.withNoTextScaling(
+        // El tamaño de letra pertenece al diseño impreso, no al ajuste del móvil.
+        child: Container(
+          width: ancho,
+          height: _p(altoPt),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: grisLinea),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x22000000),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          if (!elementos.any((e) => e.tipo == TipoElementoCredencial.plantilla))
-            _plantilla(),
-          for (final elemento in elementos) ..._dibujar(elemento),
-        ],
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              if (!elementos.any(
+                (e) => e.tipo == TipoElementoCredencial.plantilla,
+              ))
+                _plantilla(),
+              for (final elemento in elementos) ..._dibujar(elemento),
+            ],
+          ),
+        ),
       ),
     );
   }

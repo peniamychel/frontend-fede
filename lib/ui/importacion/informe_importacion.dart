@@ -16,6 +16,20 @@ class InformeImportacion extends StatelessWidget {
         _cabecera(context),
         const SizedBox(height: 12),
         _contadores(context),
+        if (informe.productores > informe.lotes) ...[
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                '${informe.productores - informe.lotes} productores sin número '
+                'de lote: quedan pendientes de revisión. Se conserva la '
+                'clasificación declarada; completá el lote en su ficha antes '
+                'de imprimir el carnet.',
+              ),
+            ),
+          ),
+        ],
         if (informe.tocaLaJerarquia) ...[
           const SizedBox(height: 12),
           _jerarquiaNueva(context),

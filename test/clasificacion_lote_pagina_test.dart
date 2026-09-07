@@ -7,6 +7,30 @@ import 'package:fede/ui/lotes/lote_pagina.dart';
 import 'package:fede/ui/padron_scope.dart';
 
 void main() {
+  for (final ubicado in [false, true]) {
+    testWidgets('no ofrece mapa para lote con ubicación: $ubicado', (
+      tester,
+    ) async {
+      final api = _ApiLote(ubicado: ubicado);
+      await tester.pumpWidget(
+        PadronScope(
+          padron: Padron(api: api),
+          child: const MaterialApp(home: LotePagina(loteId: 66)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Ubicar en el mapa'), findsNothing);
+      expect(find.text('Mover en el mapa'), findsNothing);
+      expect(find.text('Sin ubicación'), findsNothing);
+      expect(find.byIcon(Icons.map_outlined), findsNothing);
+      expect(find.text('Cambiar número'), findsOneWidget);
+      expect(find.text('Cambiar clasificación'), findsOneWidget);
+      expect(find.text('Poner medida'), findsOneWidget);
+      expect(find.text('Vender o traspasar'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('elegir Sistema solo cambia la clasificación del lote', (
     tester,
   ) async {
@@ -79,6 +103,8 @@ void main() {
 }
 
 class _ApiLote extends ApiClient {
+  _ApiLote({this.ubicado = false});
+  final bool ubicado;
   bool consultoSistemas = false;
   String numero = '66';
   String estado = 'SIN_SISTEMA';
@@ -92,6 +118,7 @@ class _ApiLote extends ApiClient {
     'estado': estado,
     'sindicatoId': 7,
     'sindicatoNombre': '1RO DE MAYO',
+    if (ubicado) ...{'latitud': -17.2, 'longitud': -65.1},
     'tenedor': {
       'productorId': 5,
       'nombre': 'FABIAN ALEGRE SANCHEZ',

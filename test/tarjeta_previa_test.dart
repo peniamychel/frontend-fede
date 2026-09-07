@@ -104,6 +104,107 @@ void main() {
     expect(caja.width / caja.height, closeTo(1.586, 0.005));
   });
 
+  for (final reverso in [false, true]) {
+    for (final anchoPantalla in [320.0, 390.0, 740.0]) {
+      testWidgets(
+        'escala toda la tarjeta en pantalla $anchoPantalla, reverso $reverso',
+        (tester) async {
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+
+          Future<List<Rect>> dibujar(
+            double anchoPantalla,
+            double escalaTexto,
+          ) async {
+            tester.view.physicalSize = Size(anchoPantalla, 1000);
+            await tester.pumpWidget(
+              MaterialApp(
+                home: Scaffold(
+                  body: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        MediaQuery(
+                          data: MediaQueryData(
+                            textScaler: TextScaler.linear(escalaTexto),
+                          ),
+                          child: TarjetaPrevia(
+                            previa: previa(),
+                            reverso: reverso,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            final tarjetaFinder = find.byType(TarjetaPrevia);
+            final tarjeta = tester.getRect(tarjetaFinder);
+            final esperado = (anchoPantalla - 48).clamp(0.0, 420.0);
+            expect(tarjeta.width, closeTo(esperado, .01));
+            expect(
+              tarjeta.height,
+              closeTo(
+                esperado * TarjetaPrevia.altoPt / TarjetaPrevia.anchoPt,
+                .01,
+              ),
+            );
+
+            // Medidas proyectadas en pantalla de todos los objetos del diseño:
+            // foto, textos, QR, sellos, firmas y plantilla. Cada uno debe mantener
+            // las mismas coordenadas relativas, no solo el fondo de la tarjeta.
+            final rectangulos = <Rect>[];
+            for (final elemento
+                in find
+                    .descendant(
+                      of: tarjetaFinder,
+                      matching: find.byType(Positioned),
+                    )
+                    .evaluate()) {
+              final caja = elemento.findRenderObject()! as RenderBox;
+              final inicio = caja.localToGlobal(Offset.zero) - tarjeta.topLeft;
+              final fin =
+                  caja.localToGlobal(
+                    Offset(caja.size.width, caja.size.height),
+                  ) -
+                  tarjeta.topLeft;
+              rectangulos.add(
+                Rect.fromLTRB(
+                  inicio.dx / tarjeta.width,
+                  inicio.dy / tarjeta.height,
+                  fin.dx / tarjeta.width,
+                  fin.dy / tarjeta.height,
+                ),
+              );
+            }
+            for (final elemento
+                in find
+                    .descendant(of: tarjetaFinder, matching: find.byType(Text))
+                    .evaluate()) {
+              expect(MediaQuery.textScalerOf(elemento), TextScaler.noScaling);
+            }
+            expect(tester.takeException(), isNull);
+            return rectangulos;
+          }
+
+          final grande = await dibujar(1000, 1);
+          final movil = await dibujar(anchoPantalla, 1.6);
+          expect(movil.length, grande.length);
+          expect(movil, isNotEmpty);
+          for (var i = 0; i < grande.length; i++) {
+            expect(movil[i].left, closeTo(grande[i].left, .0001));
+            expect(movil[i].top, closeTo(grande[i].top, .0001));
+            expect(movil[i].width, closeTo(grande[i].width, .0001));
+            expect(movil[i].height, closeTo(grande[i].height, .0001));
+          }
+        },
+      );
+    }
+  }
+
   testWidgets('ningún texto del anverso usa un cuerpo inventado', (
     tester,
   ) async {

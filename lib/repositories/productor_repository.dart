@@ -113,6 +113,19 @@ class ProductorRepository {
     return RevisionSieProductor.desdeJson(datos.comoObjeto);
   }
 
+  Future<RevisionSieProductor> confirmarRevisionSie(
+    int id,
+    RevisionSieProductor propuesta, {
+    required bool aceptar,
+  }) async {
+    final datos = await _api.crear('$_ruta/$id/revision-sie/confirmacion', {
+      'aceptar': aceptar,
+      'actuales': propuesta.actuales,
+      'propuestos': propuesta.propuestos,
+    });
+    return RevisionSieProductor.desdeJson(datos.comoObjeto);
+  }
+
   /// Productores sin rótulo de fotografía. En el padrón original son 3.113 de
   /// 4.051, así que este listado viene paginado.
   Future<Pagina<Productor>> sinFoto({
@@ -159,6 +172,21 @@ class ProductorRepository {
       '$_ruta/$id/estado',
       cuerpo: {'estado': estado},
     );
+    return Productor.desdeJson(datos.comoObjeto);
+  }
+
+  /// Marca manualmente al productor como observado y fuera de impresión.
+  Future<Productor> observar(int id, String texto) async {
+    final datos = await _api.parchear(
+      '$_ruta/$id/observacion',
+      cuerpo: {'texto': texto},
+    );
+    return Productor.desdeJson(datos.comoObjeto);
+  }
+
+  /// Quita la observación manual. Los demás requisitos siguen vigentes.
+  Future<Productor> quitarObservacion(int id) async {
+    final datos = await _api.eliminarConRespuesta('$_ruta/$id/observacion');
     return Productor.desdeJson(datos.comoObjeto);
   }
 

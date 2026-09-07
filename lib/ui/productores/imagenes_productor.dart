@@ -47,7 +47,6 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
   }
 
   Imagen? get _original => _buscar(TipoImagen.original);
-  Imagen? get _miniatura => _buscar(TipoImagen.miniatura);
 
   Imagen? _buscar(TipoImagen tipo) {
     for (final i in widget.imagenes) {
@@ -96,7 +95,6 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
 
   Widget _detalle(BuildContext context, Imagen? foto) {
     final tema = Theme.of(context);
-    final mini = _miniatura;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -105,8 +103,7 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
           Text('Sin fotografía', style: tema.textTheme.titleSmall),
           const SizedBox(height: 4),
           Text(
-            'Subí una imagen del tamaño que sea. El servidor la reduce y '
-            'genera la miniatura para los listados.',
+            'Subí una imagen del tamaño que sea. El servidor prepara la fotografía.',
             style: tema.textTheme.bodySmall?.copyWith(
               color: tema.colorScheme.outline,
             ),
@@ -115,12 +112,6 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
           Text('Fotografía cargada', style: tema.textTheme.titleSmall),
           const SizedBox(height: 6),
           _dato(context, 'Foto', '${foto.dimensiones} · ${foto.tamanoLegible}'),
-          if (mini != null)
-            _dato(
-              context,
-              'Miniatura',
-              '${mini.dimensiones} · ${mini.tamanoLegible}',
-            ),
           if (foto.nombreOriginal != null)
             _dato(context, 'Archivo', foto.nombreOriginal!),
         ],
@@ -337,8 +328,7 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
         detalle: resultado.huboReduccion
             ? 'De ${pesoLegible(resultado.tamanoSubidoBytes)} a '
                   '${pesoLegible(resultado.original.tamanoBytes)}, '
-                  '${resultado.porcentajeReduccion} % menos. '
-                  'Miniatura de ${pesoLegible(resultado.miniatura.tamanoBytes)}.'
+                  '${resultado.porcentajeReduccion} % menos.'
             : null,
       );
       widget.alCambiar();

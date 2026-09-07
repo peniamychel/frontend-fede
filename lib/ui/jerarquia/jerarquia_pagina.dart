@@ -82,17 +82,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
 
   Future<Federacion> _cargarFederacionFija() async {
     final padron = PadronScope.of(context);
-    final federaciones = await padron.federaciones.listar();
-    final candidatas = federaciones.where(
-      (federacion) =>
-          federacion.nombre.trim().toUpperCase() == 'CARRASCO TROPICAL',
-    );
-    if (candidatas.length != 1) {
-      throw StateError(
-        'No se encontró una única federación llamada CARRASCO TROPICAL.',
-      );
-    }
-    final federacion = candidatas.single;
+    final federacion = await padron.federaciones.deTrabajo();
     _federacion = federacion;
     _centrales = padron.federaciones.centrales(federacion.id);
     return federacion;

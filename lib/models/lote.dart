@@ -167,6 +167,35 @@ class Lote {
   bool get tieneTenedor => tenedor != null;
   bool get tieneSistema => sistema != null;
 
+  /// El grupo se define por sindicato y número, nunca por la letra ni la central.
+  (int, String)? get grupoNumero {
+    final n = numero?.trim().toUpperCase();
+    return n == null || n.isEmpty ? null : (sindicatoId, n);
+  }
+
+  /// Letra vigente calculada por el backend; la subdivisión antigua es respaldo.
+  String? get letraParticipacion => tenedor?.letra ?? extension?.valor;
+
+  static Map<(int, String), List<Lote>> participacionesPorNumero(
+    Iterable<Lote> lotes,
+  ) {
+    final grupos = <(int, String), List<Lote>>{};
+    for (final lote in lotes) {
+      final clave = lote.grupoNumero;
+      if (clave == null || !lote.tieneTenedor) continue;
+      (grupos[clave] ??= []).add(lote);
+    }
+    for (final grupo in grupos.values) {
+      grupo.sort((a, b) {
+        final orden = (a.letraParticipacion ?? '').compareTo(
+          b.letraParticipacion ?? '',
+        );
+        return orden != 0 ? orden : a.id.compareTo(b.id);
+      });
+    }
+    return grupos;
+  }
+
   /// El estado no se pudo interpretar y conviene revisarlo a mano.
   bool get necesitaRevision => estado == EstadoLote.desconocido;
 

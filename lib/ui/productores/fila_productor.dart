@@ -34,6 +34,10 @@ class FilaProductor extends StatelessWidget {
     final subtitulos = [
       if (documentos.isNotEmpty) documentos,
       if (mostrarRuta) productor.ruta,
+      if (productor.revisionLotePendiente) productor.resumenRevisionLote,
+      if (productor.observado)
+        'Observado: ${productor.observacion ?? 'Sin detalle'}',
+      if (productor.revisionSieBloqueaImpresion) 'Revisión SIE pendiente',
     ];
 
     return ListTile(
@@ -53,10 +57,22 @@ class FilaProductor extends StatelessWidget {
                 for (final (i, texto) in subtitulos.indexed)
                   Text(
                     texto,
-                    maxLines: 1,
+                    maxLines:
+                        (productor.revisionLotePendiente &&
+                                texto == productor.resumenRevisionLote) ||
+                            (productor.observado &&
+                                texto.startsWith('Observado:'))
+                        ? 2
+                        : 1,
                     overflow: TextOverflow.ellipsis,
                     style: tema.textTheme.bodySmall?.copyWith(
-                      color: i == subtitulos.length - 1 && mostrarRuta
+                      color:
+                          (productor.revisionLotePendiente &&
+                                  texto == productor.resumenRevisionLote) ||
+                              (productor.observado &&
+                                  texto.startsWith('Observado:'))
+                          ? tema.colorScheme.error
+                          : i == subtitulos.length - 1 && mostrarRuta
                           ? tema.colorScheme.outline
                           : null,
                     ),
@@ -67,7 +83,9 @@ class FilaProductor extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _EstadoImpresion(productor: productor),
-          const SizedBox(width: 6),
+          const SizedBox(width: 5),
+          _ClasificacionProductor(productor: productor),
+          const SizedBox(width: 5),
           if (productor.marcado)
             Tooltip(
               message: 'Marcado en la revisión',
@@ -126,6 +144,64 @@ class FilaProductor extends StatelessWidget {
   }
 }
 
+/// Identifica la clasificación sin ocupar el espacio de una etiqueta completa.
+///
+/// `SIN_SISTEMA` usa N para no confundirse con la S de `CON_SISTEMA`. Los
+/// estados que no representan una clasificación válida se muestran igual que
+/// la ausencia de clasificación: un círculo gris vacío.
+class _ClasificacionProductor extends StatelessWidget {
+  const _ClasificacionProductor({required this.productor});
+
+  final Productor productor;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final clasificacion = productor.clasificacion;
+    final (letra, etiqueta) = switch (clasificacion) {
+      EstadoLote.conSistema => ('S', 'Sistema'),
+      EstadoLote.sinSistema => ('N', 'Sin sistema'),
+      EstadoLote.blanco => ('B', 'Blanco'),
+      EstadoLote.fraccionado => ('F', 'Fraccionado'),
+      EstadoLote.detallista => ('D', 'Detallista'),
+      EstadoLote.comunitario => ('C', 'Comunitario'),
+      _ => ('', 'Sin clasificación'),
+    };
+    final tieneClasificacion = letra.isNotEmpty;
+    final color = tieneClasificacion
+        ? tema.colorScheme.primary
+        : tema.colorScheme.outline;
+
+    return Tooltip(
+      message: 'Clasificación: $etiqueta',
+      child: Semantics(
+        label: 'Clasificación: $etiqueta',
+        child: Container(
+          key: ValueKey('clasificacion-productor-${productor.id}'),
+          width: 21,
+          height: 21,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: 1.5),
+          ),
+          child: tieneClasificacion
+              ? Text(
+                  letra,
+                  style: tema.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+}
+
 class _EstadoImpresion extends StatelessWidget {
   const _EstadoImpresion({required this.productor});
 
@@ -134,7 +210,15 @@ class _EstadoImpresion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    final (mensaje, color) = !productor.credencialLista
+    final (mensaje, color) = !productor.habilitado
+        ? ('Deshabilitado: excluido de impresión', tema.colorScheme.outline)
+        : productor.observado
+        ? ('Observado: excluido de impresión', tema.colorScheme.error)
+        : productor.revisionSieBloqueaImpresion
+        ? ('Revisión SIE pendiente: excluido de impresión', Colors.orange)
+        : productor.revisionLotePendiente
+        ? ('En revisión: falta número de lote', tema.colorScheme.outline)
+        : !productor.credencialLista
         ? ('Credencial incompleta o sin fotografía', tema.colorScheme.outline)
         : productor.credencialImpresa
         ? ('Credencial impresa', Colors.green)

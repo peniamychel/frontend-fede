@@ -145,6 +145,23 @@ flutter run -d web-server --web-port=5173 --dart-define=GOOGLE_MAPS_API_KEY=TU_C
 Las coordenadas se guardan como `DECIMAL(10,7)`: un `double` redondea, y en
 coordenadas ese redondeo son metros de error.
 
+## Productores pendientes de lote
+
+La importación del padrón usa automáticamente CARRASCO TROPICAL, sin selector
+de federación. Comparte la resolución del destino con Jerarquía y usa el ID
+devuelto por la API, no un ID fijo. Si falta esa federación o hay más de una con
+el mismo nombre, se bloquea la pantalla hasta corregirlo; no se elige otra.
+
+La lista general y la del sindicato muestran la clasificación y «Falta número
+de lote» cuando `revisionLotePendiente` llega activo desde el backend. En la ficha,
+«Completar número de lote» asigna una parcela o corrige la existente. La
+clasificación importada queda preseleccionada al asignar una parcela nueva.
+
+La revisión se cierra al guardar el número y recargar la ficha, sin un botón de
+aprobación que pueda saltarse el requisito. Esto aplica a Android, web y Windows.
+La ausencia de foto u otros datos puede seguir impidiendo imprimir después.
+El informe de importación también indica cuántos productores quedan sin lote.
+
 ## Pruebas
 
 ```bash

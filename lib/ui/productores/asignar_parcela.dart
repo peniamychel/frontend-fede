@@ -403,7 +403,10 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
   Lote? _elegida;
   List<Lote> _libres = const [];
   List<Lote> _todas = const [];
-  EstadoLote _estado = EstadoLote.sinSistema;
+  late EstadoLote _estado =
+      clasificacionesParcela.contains(widget.productor.clasificacion)
+      ? widget.productor.clasificacion!
+      : EstadoLote.sinSistema;
   bool _cargando = true;
 
   @override
@@ -465,6 +468,14 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (widget.productor.revisionLotePendiente) ...[
+                  Text(widget.productor.resumenRevisionLote),
+                  const Text(
+                    'Completá el número de lote para salir de la revisión. '
+                    'La clasificación del Excel queda preseleccionada si existe.',
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 SegmentedButton<bool>(
                   segments: const [
                     ButtonSegment(value: true, label: Text('Nueva')),

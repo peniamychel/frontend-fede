@@ -5,6 +5,7 @@ import '../padron_scope.dart';
 import '../widgets/estados.dart';
 import 'lote_formulario.dart';
 import 'lote_pagina.dart';
+import 'participantes_parcela.dart';
 
 /// Las parcelas de un sindicato.
 ///
@@ -75,8 +76,7 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
               icono: Icons.crop_landscape,
               mensaje: 'Este sindicato no tiene parcelas cargadas.',
               detalle:
-                  'Cargá la primera y después vas a poder ubicarla en el '
-                  'mapa, medirla y traspasarla.',
+                  'Cargá la primera y después vas a poder medirla y traspasarla.',
               accion: FilledButton.icon(
                 onPressed: _crear,
                 icon: const Icon(Icons.add),
@@ -88,6 +88,7 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
           final visibles = _soloSinTenedor
               ? todos.where((l) => !l.tieneTenedor).toList()
               : todos;
+          final participaciones = Lote.participacionesPorNumero(todos);
 
           return Column(
             children: [
@@ -108,6 +109,9 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
                         itemCount: visibles.length,
                         itemBuilder: (context, i) => _Fila(
                           lote: visibles[i],
+                          compartidas:
+                              participaciones[visibles[i].grupoNumero] ??
+                              const [],
                           alAbrir: () => _abrir(visibles[i]),
                           alEliminar: visibles[i].tieneTenedor
                               ? null
@@ -202,7 +206,6 @@ class _Resumen extends StatelessWidget {
       0,
       (suma, l) => suma + (l.superficie ?? 0),
     );
-    final ubicadas = lotes.where((l) => l.tieneUbicacion).length;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -222,7 +225,6 @@ class _Resumen extends StatelessWidget {
                     ? 'hectáreas'
                     : 'ha (${medidas.length} de ${lotes.length} medidas)',
               ),
-              _Cifra(valor: '$ubicadas', etiqueta: 'en el mapa'),
               _Cifra(valor: '$sinTenedor', etiqueta: 'sin tenedor'),
             ],
           ),
@@ -282,9 +284,11 @@ class _Fila extends StatelessWidget {
     required this.lote,
     required this.alAbrir,
     required this.alEliminar,
+    required this.compartidas,
   });
 
   final Lote lote;
+  final List<Lote> compartidas;
   final VoidCallback alAbrir;
   final VoidCallback? alEliminar;
 
@@ -292,48 +296,60 @@ class _Fila extends StatelessWidget {
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
 
-    return ListTile(
-      leading: Icon(
-        lote.tieneUbicacion ? Icons.location_on : Icons.crop_landscape,
-        color: lote.tieneUbicacion
-            ? tema.colorScheme.primary
-            : tema.colorScheme.outline,
-      ),
-      title: Text(lote.codigo.isEmpty ? 'Parcela ${lote.id}' : lote.codigo),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            lote.tenedor?.nombre ?? 'Sin tenedor',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: lote.tieneTenedor ? null : tema.colorScheme.outline,
-              fontStyle: lote.tieneTenedor ? null : FontStyle.italic,
-            ),
+    return Column(
+      children: [
+        ListTile(
+          leading: Icon(Icons.crop_landscape, color: tema.colorScheme.outline),
+          title: Text(lote.codigo.isEmpty ? 'Parcela ${lote.id}' : lote.codigo),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                lote.tenedor?.nombre ?? 'Sin tenedor',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: lote.tieneTenedor ? null : tema.colorScheme.outline,
+                  fontStyle: lote.tieneTenedor ? null : FontStyle.italic,
+                ),
+              ),
+              Text(
+                [lote.superficieTexto, lote.estado.etiqueta].join(' · '),
+                style: tema.textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
-          Text(
-            [lote.superficieTexto, lote.estado.etiqueta].join(' · '),
-            style: tema.textTheme.bodySmall,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          isThreeLine: true,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (alEliminar != null)
+                IconButton(
+                  tooltip: 'Eliminar parcela',
+                  onPressed: alEliminar,
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: tema.colorScheme.error,
+                  ),
+                ),
+              const Icon(Icons.chevron_right, size: 20),
+            ],
           ),
-        ],
-      ),
-      isThreeLine: true,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (alEliminar != null)
-            IconButton(
-              tooltip: 'Eliminar parcela',
-              onPressed: alEliminar,
-              icon: Icon(Icons.delete_outline, color: tema.colorScheme.error),
+          onTap: alAbrir,
+        ),
+        if (compartidas.length > 1)
+          ExpansionTile(
+            key: PageStorageKey('compartidos-${lote.id}'),
+            leading: const Icon(Icons.people_outline),
+            title: Text(
+              'Ver los ${compartidas.length} productores del lote ${lote.numero?.trim()}',
             ),
-          const Icon(Icons.chevron_right, size: 20),
-        ],
-      ),
-      onTap: alAbrir,
+            childrenPadding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            children: [ParticipantesParcela(participaciones: compartidas)],
+          ),
+      ],
     );
   }
 }

@@ -4,6 +4,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('avisa cuántos productores quedan pendientes de lote', (
+    tester,
+  ) async {
+    final informe = ImportacionResultado.desdeJson({
+      'simulacion': true,
+      'productores': 5,
+      'lotes': 2,
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: InformeImportacion(informe: informe),
+          ),
+        ),
+      ),
+    );
+    expect(
+      find.textContaining('3 productores sin número de lote'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('separa centrales faltantes de sindicatos por aprobar', (
     tester,
   ) async {

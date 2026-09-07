@@ -22,7 +22,7 @@ class ImportacionPagina extends StatefulWidget {
 }
 
 class _ImportacionPaginaState extends State<ImportacionPagina> {
-  late Future<List<Federacion>> _federaciones;
+  late Future<Federacion> _destino;
 
   Federacion? _federacion;
   PlatformFile? _archivo;
@@ -39,20 +39,21 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
   @override
   void initState() {
     super.initState();
-    _federaciones = PadronScope.of(context).federaciones.listar();
+    _destino = PadronScope.of(context).federaciones.deTrabajo();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Importar padrón')),
-      body: CargaAsync<List<Federacion>>(
-        futuro: _federaciones,
+      body: CargaAsync<Federacion>(
+        futuro: _destino,
         alReintentar: () => setState(() {
-          _federaciones = PadronScope.of(context).federaciones.listar();
+          _federacion = null;
+          _destino = PadronScope.of(context).federaciones.deTrabajo();
         }),
-        constructor: (context, federaciones) {
-          _federacion ??= federaciones.length == 1 ? federaciones.first : null;
+        constructor: (context, federacion) {
+          _federacion = federacion;
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -62,7 +63,7 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _paso1(context, federaciones),
+                      _paso1(context),
                       const SizedBox(height: 16),
                       if (_informe != null) ...[
                         InformeImportacion(informe: _informe!),
@@ -83,7 +84,7 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
 
   // ---------- Paso 1: elegir y analizar ----------
 
-  Widget _paso1(BuildContext context, List<Federacion> federaciones) {
+  Widget _paso1(BuildContext context) {
     final tema = Theme.of(context);
     final listo = _federacion != null && _archivo != null;
 
@@ -93,30 +94,11 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '1. Elegí el destino y la planilla',
-              style: tema.textTheme.titleMedium,
-            ),
+            Text('1. Elegí la planilla', style: tema.textTheme.titleMedium),
             const SizedBox(height: 16),
-            DropdownButtonFormField<Federacion>(
-              initialValue: _federacion,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Federación destino',
-                helperText:
-                    'La planilla trae la central, pero no la federación.',
-              ),
-              items: [
-                for (final f in federaciones)
-                  DropdownMenuItem(value: f, child: Text(f.nombre)),
-              ],
-              onChanged: _trabajando
-                  ? null
-                  : (f) => setState(() {
-                      _federacion = f;
-                      _informe = null;
-                      _sindicatosAprobados = false;
-                    }),
+            const Text(
+              'Destino: CARRASCO TROPICAL. '
+              'Las centrales y los sindicatos se toman de la planilla.',
             ),
             const SizedBox(height: 16),
             _selectorArchivo(context),

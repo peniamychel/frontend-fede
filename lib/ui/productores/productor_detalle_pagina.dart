@@ -191,9 +191,10 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     var detalle = await padron.productores.obtener(widget.productorId);
     if (!detalle.productor.revisionSiePendiente) return detalle;
 
-    final resultado = await padron.productores.revisarImportadoConSie(
+    var resultado = await padron.productores.revisarImportadoConSie(
       widget.productorId,
     );
+    resultado = await _confirmarDiferenciasSie(padron, resultado);
     _revisionSie = resultado;
     if (resultado.datosModificados) _huboCambios = true;
 
@@ -203,6 +204,66 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
       detalle = await padron.productores.obtener(widget.productorId);
     }
     return detalle;
+  }
+
+  Future<RevisionSieProductor> _confirmarDiferenciasSie(
+    Padron padron,
+    RevisionSieProductor propuesta,
+  ) async {
+    if (!mounted ||
+        propuesta.estado != EstadoRevisionSie.requiereConfirmacion) {
+      return propuesta;
+    }
+    String nombre(Map<String, dynamic>? datos) => [
+      datos?['nombres'],
+      datos?['apellidos'],
+    ].where((v) => v != null && v.toString().trim().isNotEmpty).join(' ');
+    final aceptar = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('El nombre no coincide con SIE'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Para la cédula ${propuesta.actuales?['ci'] ?? ''}, '
+                'SIE devuelve un nombre diferente al registrado.',
+              ),
+              const SizedBox(height: 16),
+              const Text('Datos actuales:'),
+              Text(nombre(propuesta.actuales)),
+              const SizedBox(height: 12),
+              const Text('Datos encontrados en SIE:'),
+              Text(nombre(propuesta.propuestos)),
+              const SizedBox(height: 16),
+              const Text(
+                '¿Querés reemplazar los nombres y apellidos por los de SIE?',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('No, conservar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sí, reemplazar'),
+          ),
+        ],
+      ),
+    );
+    // Volver atrás o cerrar la ficha no equivale a aprobar ni a rechazar.
+    if (aceptar == null || !mounted) return propuesta;
+    return padron.productores.confirmarRevisionSie(
+      widget.productorId,
+      propuesta,
+      aceptar: aceptar,
+    );
   }
 
   Future<void> _verificarConSie(Productor productor) async {
@@ -237,7 +298,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
         title: const Text('¿Verificar con SIE?'),
         content: Text(
           'Se consultará la cédula $ci. Si SIE devuelve nombres o apellidos '
-          'diferentes, se corregirán automáticamente en la ficha.',
+          'diferentes, podrás revisarlos y decidir si querés reemplazarlos.',
         ),
         actions: [
           TextButton(
@@ -257,9 +318,10 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     setState(() => _verificandoSie = true);
     try {
       final padron = PadronScope.of(context);
-      final resultado = await padron.productores.verificarManualmenteConSie(
+      var resultado = await padron.productores.verificarManualmenteConSie(
         productor.id,
       );
+      resultado = await _confirmarDiferenciasSie(padron, resultado);
       if (!mounted) return;
       if (resultado.datosModificados) _huboCambios = true;
       setState(() {
@@ -273,6 +335,143 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
       if (!mounted) return;
       setState(() => _verificandoSie = false);
       mostrarError(context, e);
+    }
+  }
+
+  Future<void> _editarObservacion(Productor productor) async {
+    var texto = productor.observacion ?? '';
+    final formulario = GlobalKey<FormState>();
+    final accion = await showDialog<_AccionObservacion>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          Icons.report_problem_outlined,
+          color: Theme.of(context).colorScheme.error,
+        ),
+        title: Text(
+          productor.observado ? 'Editar observación' : 'Marcar como observado',
+        ),
+        content: Form(
+          key: formulario,
+          child: TextFormField(
+            initialValue: texto,
+            onChanged: (valor) => texto = valor,
+            autofocus: true,
+            minLines: 3,
+            maxLines: 6,
+            maxLength: 500,
+            decoration: const InputDecoration(
+              labelText: 'Motivo de la observación',
+              hintText: 'Escribí qué se debe revisar o corregir',
+              alignLabelWithHint: true,
+            ),
+            validator: (valor) => valor == null || valor.trim().isEmpty
+                ? 'Escribí el motivo de la observación'
+                : null,
+          ),
+        ),
+        actions: [
+          if (productor.observado)
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_AccionObservacion.quitar),
+              child: const Text('Quitar observación'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formulario.currentState?.validate() != true) return;
+              Navigator.of(context).pop(_AccionObservacion.guardar);
+            },
+            child: const Text('Guardar observación'),
+          ),
+        ],
+      ),
+    );
+    texto = texto.trim();
+    if (accion == null || !mounted) return;
+
+    try {
+      final repositorio = PadronScope.of(context).productores;
+      if (accion == _AccionObservacion.quitar) {
+        await repositorio.quitarObservacion(productor.id);
+      } else {
+        await repositorio.observar(productor.id, texto);
+      }
+      if (!mounted) return;
+      _huboCambios = true;
+      mostrarExito(
+        context,
+        accion == _AccionObservacion.quitar
+            ? 'Observación quitada'
+            : 'Productor marcado como observado',
+      );
+      _recargar();
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    }
+  }
+
+  Future<void> _aceptarSugerenciaSie(Productor productor) async {
+    if (!productor.tieneSugerenciaSie) return;
+    final nombreSugerido = [
+      productor.sieNombresSugeridos,
+      productor.sieApellidosSugeridos,
+    ].whereType<String>().where((v) => v.isNotEmpty).join(' ');
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.fact_check_outlined),
+        title: const Text('¿Aceptar la sugerencia guardada?'),
+        content: Text(
+          'Se reemplazarán los nombres y apellidos actuales por '
+          '«$nombreSugerido». No se volverá a consultar el servicio SIE.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Aceptar corrección'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+
+    final propuesta = RevisionSieProductor(
+      estado: EstadoRevisionSie.requiereConfirmacion,
+      completada: false,
+      datosModificados: false,
+      mensaje: productor.revisionSieMensaje ?? '',
+      actuales: {
+        'ci': productor.ci,
+        'nombres': productor.nombresCorregidos ?? productor.nombres,
+        'apellidos': productor.apellidosCorregidos ?? productor.apellidos,
+      },
+      propuestos: {
+        'ci': productor.ci,
+        'nombres': productor.sieNombresSugeridos,
+        'apellidos': productor.sieApellidosSugeridos,
+      },
+    );
+    try {
+      await PadronScope.of(context).productores.confirmarRevisionSie(
+        productor.id,
+        propuesta,
+        aceptar: true,
+      );
+      if (!mounted) return;
+      _huboCambios = true;
+      mostrarExito(context, 'Corrección SIE aceptada');
+      _recargar();
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
     }
   }
 
@@ -433,14 +632,66 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
           productor: p,
           tieneFotografia: tieneFotografia,
           verificandoSie: _verificandoSie,
-          alVerificarConSie: () => _verificarConSie(p),
+          alVerificarConSie: p.tieneSugerenciaSie
+              ? () => _aceptarSugerenciaSie(p)
+              : () => _verificarConSie(p),
+          alEditarObservacion: () => _editarObservacion(p),
           alEditar: () => _editar(p),
           alCambiarEstado: () => _cambiarEstado(p, detalle.lotes.isNotEmpty),
           alEliminar: () => _eliminar(detalle),
         ),
-        if (_revisionSie case final revision?) ...[
+        if (p.observado) ...[
+          const SizedBox(height: 16),
+          _AvisoObservacionManual(
+            texto: p.observacion ?? 'Sin detalle',
+            alEditar: () => _editarObservacion(p),
+          ),
+        ],
+        if (p.revisionLotePendiente) ...[
+          const SizedBox(height: 16),
+          Card(
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Revisión pendiente: número de lote',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(p.resumenRevisionLote),
+                  const Text(
+                    'No se puede imprimir el carnet hasta completar el número '
+                    'de lote. Al guardarlo se cierra esta revisión; los demás '
+                    'requisitos de impresión siguen vigentes.',
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    onPressed: () => detalle.lotes.isEmpty
+                        ? _asignarParcela(p)
+                        : _cambiarNumero(detalle.lotes.first),
+                    icon: const Icon(Icons.edit_location_alt_outlined),
+                    label: const Text('Completar número de lote'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        if (_revisionSie case final revision?
+            when revision.estado == EstadoRevisionSie.noDisponible) ...[
           const SizedBox(height: 16),
           _AvisoRevisionSie(revision: revision),
+        ],
+        if (p.revisionSieEstado case final estado?) ...[
+          const SizedBox(height: 16),
+          _AvisoEstadoSie(
+            productor: p,
+            estado: estado,
+            alAceptar: () => _aceptarSugerenciaSie(p),
+          ),
         ],
         _avisoDeVeto(context),
         if (p.tieneCorreccionPendiente) ...[
@@ -454,8 +705,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
         _cargosDirectorio(context),
         const SizedBox(height: 24),
         _Seccion(
-          titulo: 'Fotografías',
-          cantidad: detalle.imagenes.length,
+          titulo: 'Fotografía',
           hijo: Padding(
             padding: const EdgeInsets.all(8),
             child: ImagenesProductor(
@@ -629,6 +879,7 @@ class _Encabezado extends StatelessWidget {
     required this.tieneFotografia,
     required this.verificandoSie,
     required this.alVerificarConSie,
+    required this.alEditarObservacion,
     required this.alEditar,
     required this.alCambiarEstado,
     required this.alEliminar,
@@ -638,6 +889,7 @@ class _Encabezado extends StatelessWidget {
   final bool tieneFotografia;
   final bool verificandoSie;
   final VoidCallback alVerificarConSie;
+  final VoidCallback alEditarObservacion;
   final VoidCallback alEditar;
   final VoidCallback alCambiarEstado;
   final VoidCallback alEliminar;
@@ -652,78 +904,103 @@ class _Encabezado extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        productor.nombreCompleto.isEmpty
-                            ? productor.nombres
-                            : productor.nombreCompleto,
-                        style: tema.textTheme.headlineSmall?.copyWith(
-                          color: productor.habilitado
-                              ? null
-                              : tema.colorScheme.outline,
-                        ),
+            LayoutBuilder(
+              builder: (context, restricciones) {
+                final nombre = Text(
+                  productor.nombreCompleto.isEmpty
+                      ? productor.nombres
+                      : productor.nombreCompleto,
+                  style: tema.textTheme.headlineSmall?.copyWith(
+                    color: productor.habilitado
+                        ? null
+                        : tema.colorScheme.outline,
+                  ),
+                );
+                final acciones = Wrap(
+                  children: [
+                    IconButton(
+                      tooltip: productor.habilitado
+                          ? 'Deshabilitar'
+                          : 'Habilitar',
+                      onPressed: alCambiarEstado,
+                      icon: Icon(
+                        productor.habilitado
+                            ? Icons.block
+                            : Icons.check_circle_outline,
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          if (!productor.habilitado) ...[
-                            const EtiquetaDeshabilitado(),
-                            const SizedBox(width: 8),
-                          ],
-                          Flexible(
-                            child: Text(
-                              productor.ruta,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: tema.textTheme.bodyMedium?.copyWith(
-                                color: tema.colorScheme.outline,
-                              ),
-                            ),
-                          ),
-                        ],
+                    ),
+                    IconButton(
+                      tooltip: productor.tieneSugerenciaSie
+                          ? 'Aceptar sugerencia SIE'
+                          : 'Verificar con SIE',
+                      onPressed: verificandoSie ? null : alVerificarConSie,
+                      icon: verificandoSie
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.fact_check_outlined),
+                    ),
+                    IconButton(
+                      tooltip: productor.observado
+                          ? 'Editar observación'
+                          : 'Marcar como observado',
+                      onPressed: alEditarObservacion,
+                      icon: Icon(
+                        Icons.report_problem_outlined,
+                        color: productor.observado
+                            ? tema.colorScheme.error
+                            : null,
                       ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: productor.habilitado ? 'Deshabilitar' : 'Habilitar',
-                  onPressed: alCambiarEstado,
-                  icon: Icon(
-                    productor.habilitado
-                        ? Icons.block
-                        : Icons.check_circle_outline,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Verificar con SIE',
-                  onPressed: verificandoSie ? null : alVerificarConSie,
-                  icon: verificandoSie
-                      ? const SizedBox.square(
-                          dimension: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.fact_check_outlined),
-                ),
-                IconButton(
-                  tooltip: 'Editar',
-                  onPressed: alEditar,
-                  icon: const Icon(Icons.edit_outlined),
-                ),
-                IconButton(
-                  tooltip: 'Eliminar productor',
-                  onPressed: alEliminar,
-                  icon: Icon(
-                    Icons.delete_outline,
-                    color: tema.colorScheme.error,
-                  ),
-                ),
-              ],
+                    ),
+                    IconButton(
+                      tooltip: 'Editar',
+                      onPressed: alEditar,
+                      icon: const Icon(Icons.edit_outlined),
+                    ),
+                    IconButton(
+                      tooltip: 'Eliminar productor',
+                      onPressed: alEliminar,
+                      icon: Icon(
+                        Icons.delete_outline,
+                        color: tema.colorScheme.error,
+                      ),
+                    ),
+                  ],
+                );
+                // En móvil los botones no compiten con el nombre por el ancho.
+                if (restricciones.maxWidth < 600) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [nombre, acciones],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: nombre),
+                    acciones,
+                  ],
+                );
+              },
+            ),
+            if (!productor.habilitado) ...[
+              const SizedBox(height: 4),
+              const EtiquetaDeshabilitado(),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              'Central: ${productor.centralNombre}',
+              softWrap: true,
+              overflow: TextOverflow.visible,
+              style: tema.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Sindicato: ${productor.sindicatoNombre}',
+              softWrap: true,
+              overflow: TextOverflow.visible,
+              style: tema.textTheme.bodyMedium,
             ),
             const SizedBox(height: 20),
             Wrap(
@@ -763,7 +1040,13 @@ class _EstadoImpresionCredencial extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    final (estado, color) = !productor.credencialLista
+    final (estado, color) = !productor.habilitado
+        ? ('Deshabilitado, excluido de impresión', tema.colorScheme.outline)
+        : productor.observado
+        ? ('Observado, excluido de impresión', tema.colorScheme.error)
+        : productor.revisionSieBloqueaImpresion
+        ? ('Revisión SIE pendiente', Colors.orange)
+        : !productor.credencialLista
         ? ('Incompleta o sin fotografía', tema.colorScheme.outline)
         : productor.credencialImpresa
         ? ('Impresa', Colors.green)
@@ -786,7 +1069,7 @@ class _EstadoImpresionCredencial extends StatelessWidget {
           children: [
             Icon(Icons.print, size: 18, color: color),
             const SizedBox(width: 6),
-            Text(estado, style: tema.textTheme.bodyLarge),
+            Flexible(child: Text(estado, style: tema.textTheme.bodyLarge)),
           ],
         ),
         if (productor.credencialImpresiones > 0)
@@ -798,6 +1081,156 @@ class _EstadoImpresionCredencial extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+enum _AccionObservacion { guardar, quitar }
+
+class _AvisoObservacionManual extends StatelessWidget {
+  const _AvisoObservacionManual({required this.texto, required this.alEditar});
+
+  final String texto;
+  final VoidCallback alEditar;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      color: tema.colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.report_problem_outlined,
+                  color: tema.colorScheme.onErrorContainer,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Observación manual',
+                    style: tema.textTheme.titleMedium?.copyWith(
+                      color: tema.colorScheme.onErrorContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                TextButton(onPressed: alEditar, child: const Text('Editar')),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(texto),
+            const SizedBox(height: 6),
+            const Text(
+              'Este productor está excluido de la impresión de carnets hasta '
+              'que se quite la observación.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AvisoEstadoSie extends StatelessWidget {
+  const _AvisoEstadoSie({
+    required this.productor,
+    required this.estado,
+    required this.alAceptar,
+  });
+
+  final Productor productor;
+  final EstadoRevisionSiePersistida estado;
+  final VoidCallback alAceptar;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final advertencia = estado.esAdvertencia;
+    final oscuro = tema.brightness == Brightness.dark;
+    final color = advertencia
+        ? (oscuro ? Colors.orange.shade900 : Colors.orange.shade100)
+        : (oscuro ? Colors.green.shade900 : Colors.green.shade100);
+    final sobreColor = advertencia
+        ? (oscuro ? Colors.orange.shade100 : Colors.orange.shade900)
+        : (oscuro ? Colors.green.shade100 : Colors.green.shade900);
+    final titulo = switch (estado) {
+      EstadoRevisionSiePersistida.verificado => 'Datos verificados con SIE',
+      EstadoRevisionSiePersistida.corregidoSie => 'Corrección SIE aceptada',
+      EstadoRevisionSiePersistida.corregidoManual =>
+        'Datos corregidos manualmente',
+      EstadoRevisionSiePersistida.diferenciaPendiente =>
+        'Corrección SIE pendiente',
+      EstadoRevisionSiePersistida.noEncontrado => 'No encontrado en SIE',
+      EstadoRevisionSiePersistida.sinCedula => 'SIE pendiente: falta cédula',
+    };
+    final sugerido = [
+      productor.sieNombresSugeridos,
+      productor.sieApellidosSugeridos,
+    ].whereType<String>().where((v) => v.isNotEmpty).join(' ');
+
+    return Card(
+      margin: EdgeInsets.zero,
+      color: color,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  advertencia
+                      ? Icons.warning_amber_rounded
+                      : Icons.verified_outlined,
+                  color: sobreColor,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    titulo,
+                    style: tema.textTheme.titleMedium?.copyWith(
+                      color: sobreColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              productor.revisionSieMensaje ?? titulo,
+              style: TextStyle(color: sobreColor),
+            ),
+            if (sugerido.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                'SIE sugiere: $sugerido',
+                style: TextStyle(color: sobreColor),
+              ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                onPressed: alAceptar,
+                icon: const Icon(Icons.check),
+                label: const Text('Aceptar sugerencia SIE'),
+              ),
+            ],
+            if (advertencia) ...[
+              const SizedBox(height: 8),
+              Text(
+                'No se puede imprimir el carnet mientras esta revisión esté '
+                'en naranja.',
+                style: TextStyle(color: sobreColor),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -875,7 +1308,7 @@ class _AvisoRevisionSie extends StatelessWidget {
                   Text(
                     corregida
                         ? 'Datos corregidos con SIE'
-                        : noDisponible
+                        : !revision.completada
                         ? 'Revisión SIE pendiente'
                         : 'Revisión SIE completada',
                     style: tema.textTheme.titleSmall,
@@ -953,13 +1386,13 @@ class _CorreccionPendiente extends StatelessWidget {
 class _Seccion extends StatelessWidget {
   const _Seccion({
     required this.titulo,
-    required this.cantidad,
+    this.cantidad,
     required this.hijo,
     this.accion,
   });
 
   final String titulo;
-  final int cantidad;
+  final int? cantidad;
   final Widget hijo;
 
   /// Botón al costado del título, cuando la sección deja hacer algo.
@@ -974,17 +1407,18 @@ class _Seccion extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(titulo, style: tema.textTheme.titleMedium),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: tema.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
+            Expanded(child: Text(titulo, style: tema.textTheme.titleMedium)),
+            if (cantidad != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: tema.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('$cantidad', style: tema.textTheme.labelSmall),
               ),
-              child: Text('$cantidad', style: tema.textTheme.labelSmall),
-            ),
-            const Spacer(),
+            ],
             ?accion,
           ],
         ),
@@ -1040,11 +1474,7 @@ class _FilaLote extends StatelessWidget {
       children: [
         ListTile(
           dense: true,
-          leading: Icon(
-            lote.tieneUbicacion
-                ? Icons.location_on_outlined
-                : Icons.grid_view_outlined,
-          ),
+          leading: const Icon(Icons.grid_view_outlined),
           title: Text(lote.codigo.isEmpty ? 'Lote ${lote.id}' : lote.codigo),
           onTap: alAbrir,
           subtitle: Text(

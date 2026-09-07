@@ -30,7 +30,7 @@ void main() {
     expect(api.verificaciones, 0);
     // Cuando hay una foto cargada, el resumen no muestra información
     // redundante; la fotografía se consulta en su sección propia.
-    expect(find.text('Fotografía'), findsNothing);
+    expect(find.text('Fotografía'), findsOneWidget);
     expect(find.text('Sin foto'), findsNothing);
     expect(find.text('Marcado'), findsNothing);
     expect(find.text('Fecha de creación'), findsOneWidget);
@@ -42,26 +42,33 @@ void main() {
     expect(
       find.text(
         'Se consultará la cédula 654321. Si SIE devuelve nombres o apellidos '
-        'diferentes, se corregirán automáticamente en la ficha.',
+        'diferentes, podrás revisarlos y decidir si querés reemplazarlos.',
       ),
       findsOneWidget,
     );
     await tester.tap(find.widgetWithText(FilledButton, 'Verificar'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
 
     expect(api.verificaciones, 1);
-    expect(find.text('Datos corregidos con SIE'), findsOneWidget);
+    expect(api.aceptado, isFalse);
+    expect(find.text('El nombre no coincide con SIE'), findsOneWidget);
+    await tester.tap(find.text('Sí, reemplazar'));
+    await tester.pumpAndSettle();
+    expect(api.aceptado, isTrue);
+    expect(find.text('Corrección SIE aceptada'), findsOneWidget);
     expect(find.text('MARÍA NÚÑEZ'), findsOneWidget);
   });
 }
 
 class _ApiVerificacionManual extends ApiClient {
   int verificaciones = 0;
+  bool aceptado = false;
 
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
     if (ruta == '/productores/43') {
-      final corregido = verificaciones > 0;
+      final corregido = aceptado;
       return {
         'productor': {
           'id': 43,
@@ -74,6 +81,12 @@ class _ApiVerificacionManual extends ApiClient {
           'centralId': 3,
           'centralNombre': 'IVIRGARZAMA',
           'revisionSiePendiente': false,
+          if (corregido) ...{
+            'revisionSieEstado': 'CORREGIDO_SIE',
+            'revisionSieMensaje':
+                'Los nombres y apellidos se corrigieron con SIE.',
+            'revisionSieBloqueaImpresion': false,
+          },
           'auditoria': {'estado': true, 'creadoEn': '2026-08-23T14:05:00'},
         },
         'lotes': <dynamic>[],
@@ -98,6 +111,20 @@ class _ApiVerificacionManual extends ApiClient {
   Future<Object?> crear(String ruta, Object cuerpo) async {
     if (ruta == '/productores/43/verificacion-sie') {
       verificaciones++;
+      return {
+        'estado': 'REQUIERE_CONFIRMACION',
+        'completada': false,
+        'datosModificados': false,
+        'actuales': {'ci': '654321', 'nombres': 'MARIA', 'apellidos': 'NUNEZ'},
+        'propuestos': {
+          'ci': '654321',
+          'nombres': 'MARÍA',
+          'apellidos': 'NÚÑEZ',
+        },
+      };
+    }
+    if (ruta == '/productores/43/revision-sie/confirmacion') {
+      aceptado = (cuerpo as Map)['aceptar'] as bool;
       return {
         'estado': 'CORREGIDA',
         'completada': true,

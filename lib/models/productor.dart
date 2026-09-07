@@ -32,9 +32,18 @@ class Productor {
     this.codigo,
     this.codigoPadron,
     this.revisionSiePendiente = false,
+    this.revisionSieEstado,
+    this.revisionSieMensaje,
+    this.sieNombresSugeridos,
+    this.sieApellidosSugeridos,
+    this.revisionSieBloqueaImpresion = false,
+    this.observado = false,
+    this.observacion,
     this.credencialImpresiones = 0,
     this.credencialUltimaImpresion,
     this.credencialLista = false,
+    this.clasificacion,
+    this.revisionLotePendiente = false,
     this.auditoria = Auditoria.habilitado,
   });
 
@@ -54,12 +63,35 @@ class Productor {
   /// Al abrir su ficha se consulta SIE una vez y el backend apaga la marca.
   final bool revisionSiePendiente;
 
+  /// Resultado que queda guardado después de usar SIE.
+  final EstadoRevisionSiePersistida? revisionSieEstado;
+  final String? revisionSieMensaje;
+  final String? sieNombresSugeridos;
+  final String? sieApellidosSugeridos;
+  final bool revisionSieBloqueaImpresion;
+
+  bool get tieneSugerenciaSie =>
+      revisionSieEstado == EstadoRevisionSiePersistida.diferenciaPendiente &&
+      (sieNombresSugeridos?.isNotEmpty ?? false);
+
+  /// Observación administrativa escrita durante una revisión manual.
+  /// Mientras siga vigente, no se permite imprimir su credencial.
+  final bool observado;
+  final String? observacion;
+
   /// Veces que Windows confirmó el envío del anverso a la impresora.
   final int credencialImpresiones;
   final DateTime? credencialUltimaImpresion;
 
   /// Tiene fotografía y los datos personales mínimos para imprimir.
   final bool credencialLista;
+
+  /// Clasificación conservada del Excel o de su parcela actual.
+  final EstadoLote? clasificacion;
+  final bool revisionLotePendiente;
+
+  String get resumenRevisionLote =>
+      '${clasificacion?.etiqueta ?? 'Sin clasificación'} · Falta número de lote';
 
   bool get credencialImpresa => credencialImpresiones > 0;
 
@@ -141,12 +173,26 @@ class Productor {
     codigo: json['codigo'] as String?,
     codigoPadron: json['codigoPadron'] as String?,
     revisionSiePendiente: json['revisionSiePendiente'] as bool? ?? false,
+    revisionSieEstado: EstadoRevisionSiePersistida.desdeJson(
+      json['revisionSieEstado'],
+    ),
+    revisionSieMensaje: json['revisionSieMensaje'] as String?,
+    sieNombresSugeridos: json['sieNombresSugeridos'] as String?,
+    sieApellidosSugeridos: json['sieApellidosSugeridos'] as String?,
+    revisionSieBloqueaImpresion:
+        json['revisionSieBloqueaImpresion'] as bool? ?? false,
+    observado: json['observado'] as bool? ?? false,
+    observacion: json['observacion'] as String?,
     credencialImpresiones:
         (json['credencialImpresiones'] as num?)?.toInt() ?? 0,
     credencialUltimaImpresion: DateTime.tryParse(
       json['credencialUltimaImpresion'] as String? ?? '',
     ),
     credencialLista: json['credencialLista'] as bool? ?? false,
+    clasificacion: json['clasificacion'] == null
+        ? null
+        : EstadoLote.desde(json['clasificacion']),
+    revisionLotePendiente: json['revisionLotePendiente'] as bool? ?? false,
     auditoria: Auditoria.desdeJson(json['auditoria'] as Map<String, dynamic>?),
   );
 
@@ -155,6 +201,31 @@ class Productor {
 
   @override
   int get hashCode => id.hashCode;
+}
+
+enum EstadoRevisionSiePersistida {
+  verificado,
+  corregidoSie,
+  corregidoManual,
+  diferenciaPendiente,
+  noEncontrado,
+  sinCedula;
+
+  bool get esAdvertencia => switch (this) {
+    diferenciaPendiente || noEncontrado || sinCedula => true,
+    _ => false,
+  };
+
+  static EstadoRevisionSiePersistida? desdeJson(Object? valor) =>
+      switch (valor) {
+        'VERIFICADO' => verificado,
+        'CORREGIDO_SIE' => corregidoSie,
+        'CORREGIDO_MANUAL' => corregidoManual,
+        'DIFERENCIA_PENDIENTE' => diferenciaPendiente,
+        'NO_ENCONTRADO' => noEncontrado,
+        'SIN_CEDULA' => sinCedula,
+        _ => null,
+      };
 }
 
 /// Ficha completa: el productor con sus lotes y sus imágenes.
@@ -282,6 +353,8 @@ class ConsultaPersona {
 }
 
 enum EstadoRevisionSie {
+  requiereConfirmacion,
+  conservada,
   corregida,
   verificada,
   aceptadaSinCoincidencia,
@@ -296,17 +369,24 @@ class RevisionSieProductor {
     required this.completada,
     required this.datosModificados,
     required this.mensaje,
+    this.actuales,
+    this.propuestos,
   });
 
   final EstadoRevisionSie estado;
   final bool completada;
   final bool datosModificados;
   final String mensaje;
+  final Map<String, dynamic>? actuales;
+  final Map<String, dynamic>? propuestos;
 
   factory RevisionSieProductor.desdeJson(Map<String, dynamic> json) =>
       RevisionSieProductor(
         estado: switch (json['estado']) {
+          'REQUIERE_CONFIRMACION' => EstadoRevisionSie.requiereConfirmacion,
+          'CONSERVADA' => EstadoRevisionSie.conservada,
           'CORREGIDA' => EstadoRevisionSie.corregida,
+          'CORREGIDA_MANUAL' => EstadoRevisionSie.corregida,
           'VERIFICADA' => EstadoRevisionSie.verificada,
           'ACEPTADA_SIN_COINCIDENCIA' =>
             EstadoRevisionSie.aceptadaSinCoincidencia,
@@ -317,5 +397,7 @@ class RevisionSieProductor {
         completada: json['completada'] as bool? ?? false,
         datosModificados: json['datosModificados'] as bool? ?? false,
         mensaje: json['mensaje'] as String? ?? 'Revisión SIE procesada.',
+        actuales: (json['actuales'] as Map?)?.cast<String, dynamic>(),
+        propuestos: (json['propuestos'] as Map?)?.cast<String, dynamic>(),
       );
 }
