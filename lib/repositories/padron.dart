@@ -20,6 +20,7 @@ export '../models/auditoria.dart';
 export '../models/backup.dart';
 export '../models/cargo.dart';
 export '../models/central.dart';
+export '../models/conciliacion_udestro.dart';
 export '../models/credencial_previa.dart';
 export '../models/diseno_credencial.dart';
 export '../models/federacion.dart';

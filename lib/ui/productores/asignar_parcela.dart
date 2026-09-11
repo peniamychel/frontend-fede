@@ -406,7 +406,7 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
   late EstadoLote _estado =
       clasificacionesParcela.contains(widget.productor.clasificacion)
       ? widget.productor.clasificacion!
-      : EstadoLote.sinSistema;
+      : EstadoLote.blanco;
   bool _cargando = true;
 
   @override

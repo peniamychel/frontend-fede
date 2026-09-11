@@ -611,10 +611,12 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
             ),
           ],
         ),
-        body: CargaAsync<ProductorDetalle>(
-          futuro: _futuro,
-          alReintentar: _recargar,
-          constructor: (context, detalle) => _contenido(context, detalle),
+        body: SelectionArea(
+          child: CargaAsync<ProductorDetalle>(
+            futuro: _futuro,
+            alReintentar: _recargar,
+            constructor: (context, detalle) => _contenido(context, detalle),
+          ),
         ),
       ),
     );

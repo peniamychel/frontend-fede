@@ -20,12 +20,12 @@ void main() {
   late _ApiEspia espia;
 
   Widget app() => TemaScope(
-        preferencia: PreferenciaTema(),
-        child: PadronScope(
-          padron: Padron(api: espia),
-          child: const MaterialApp(home: Inicio()),
-        ),
-      );
+    preferencia: PreferenciaTema(),
+    child: PadronScope(
+      padron: Padron(api: espia),
+      child: const MaterialApp(home: Inicio()),
+    ),
+  );
 
   setUp(() => espia = _ApiEspia());
 
@@ -34,18 +34,25 @@ void main() {
     await tester.pump();
 
     // Productores es la primera sección: lo suyo sí se pide.
-    expect(espia.rutas.any((r) => r.startsWith('/productores')), isTrue,
-        reason: 'la sección visible tiene que cargar sus datos');
+    expect(
+      espia.rutas.any((r) => r.startsWith('/productores')),
+      isTrue,
+      reason: 'la sección visible tiene que cargar sus datos',
+    );
 
     // Lo de las otras tres, no.
     for (final ajena in ['/reuniones', '/federaciones']) {
-      expect(espia.rutas.any((r) => r.startsWith(ajena)), isFalse,
-          reason: 'no se puede consultar $ajena antes de entrar a esa sección');
+      expect(
+        espia.rutas.any((r) => r.startsWith(ajena)),
+        isFalse,
+        reason: 'no se puede consultar $ajena antes de entrar a esa sección',
+      );
     }
   });
 
-  testWidgets('entrar a una sección carga la suya, y solo la suya',
-      (tester) async {
+  testWidgets('entrar a una sección carga la suya, y solo la suya', (
+    tester,
+  ) async {
     await tester.pumpWidget(app());
     await tester.pump();
     espia.rutas.clear();
@@ -55,12 +62,16 @@ void main() {
     await tester.pump();
 
     expect(espia.rutas.any((r) => r.startsWith('/reuniones')), isTrue);
-    expect(espia.rutas.any((r) => r.startsWith('/federaciones')), isFalse,
-        reason: 'entrar a una sección no puede arrastrar a las demás');
+    expect(
+      espia.rutas.any((r) => r.startsWith('/federaciones')),
+      isFalse,
+      reason: 'entrar a una sección no puede arrastrar a las demás',
+    );
   });
 
-  testWidgets('volver a una sección ya visitada no la reconstruye',
-      (tester) async {
+  testWidgets('volver a una sección ya visitada no la reconstruye', (
+    tester,
+  ) async {
     // Es lo que da el IndexedStack y hay que conservarlo: al volver, el scroll
     // y los filtros siguen donde estaban, sin pedir los datos de nuevo.
     await tester.pumpWidget(app());
@@ -75,9 +86,39 @@ void main() {
     await tester.tap(find.text('Reuniones'));
     await tester.pump();
 
-    expect(espia.rutas.where((r) => r.startsWith('/reuniones')).length,
-        equals(tras),
-        reason: 'volver no puede volver a consultar');
+    expect(
+      espia.rutas.where((r) => r.startsWith('/reuniones')).length,
+      equals(tras),
+      reason: 'volver no puede volver a consultar',
+    );
+  });
+
+  testWidgets('el nombre del padrón abre el directorio de la federación', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(app());
+    await tester.pump();
+
+    expect(
+      espia.rutas.where((ruta) => ruta == '/federaciones'),
+      isEmpty,
+      reason: 'el menú no debe consultar la federación antes de abrirse',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('menu-directorio-federacion')));
+    await tester.pumpAndSettle();
+    expect(find.text('Directorio de la federación'), findsOneWidget);
+
+    await tester.tap(find.text('Directorio de la federación'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Directorio de CARRASCO TROPICAL'), findsOneWidget);
+    expect(espia.rutas, contains('/federaciones/10/directorio'));
+    expect(espia.rutas, contains('/federaciones/10/directorio/historial'));
   });
 }
 
@@ -92,6 +133,22 @@ class _ApiEspia extends ApiClient {
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
     rutas.add(ruta);
+    if (ruta == '/federaciones') {
+      return [
+        {'id': 10, 'nombre': 'CARRASCO TROPICAL'},
+      ];
+    }
+    if (ruta == '/federaciones/10/directorio') {
+      return {
+        'ambito': 'FEDERACION',
+        'ambitoId': 10,
+        'ambitoNombre': 'CARRASCO TROPICAL',
+        'puestos': <dynamic>[],
+      };
+    }
+    if (ruta == '/federaciones/10/directorio/historial') {
+      return <dynamic>[];
+    }
     // Las pantallas esperan una lista o una página; se devuelve lo mínimo que
     // no rompe el mapeo de ninguna.
     if (ruta.contains('total')) return 0;

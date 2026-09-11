@@ -5,9 +5,12 @@ import 'package:flutter/services.dart';
 import 'administracion/backups_pagina.dart';
 import 'calidad/calidad_pagina.dart';
 import 'credenciales/editor_credencial_pagina.dart';
+import 'jerarquia/directorio_pagina.dart';
 import 'jerarquia/jerarquia_pagina.dart';
+import 'padron_scope.dart';
 import 'productores/productores_pagina.dart';
 import 'reuniones/reuniones_pagina.dart';
+import 'widgets/estados.dart';
 
 /// Armazón de la app con navegación adaptativa.
 ///
@@ -100,20 +103,42 @@ class _InicioState extends State<Inicio> {
                     ? NavigationRailLabelType.none
                     : NavigationRailLabelType.all,
                 leading: ancho >= 1100
-                    ? const Padding(
-                        padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-                        child: Row(
-                          children: [
-                            Icon(Icons.badge_outlined),
-                            SizedBox(width: 12),
-                            Text(
-                              'PADRÓN FEDERACIÓN\nCARRASCO TROPICAL',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
+                    ? PopupMenuButton<String>(
+                        key: const ValueKey('menu-directorio-federacion'),
+                        tooltip: 'Opciones de la federación',
+                        onSelected: (opcion) {
+                          if (opcion == 'directorio') {
+                            _abrirDirectorioFederacion();
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: 'directorio',
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(Icons.groups_2_outlined),
+                              title: Text('Directorio de la federación'),
                             ),
-                          ],
+                          ),
+                        ],
+                        child: const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
+                          child: Row(
+                            children: [
+                              Icon(Icons.badge_outlined),
+                              SizedBox(width: 12),
+                              Text(
+                                'PADRÓN FEDERACIÓN\nCARRASCO TROPICAL',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Icon(Icons.arrow_drop_down, size: 18),
+                            ],
+                          ),
                         ),
                       )
                     : const SizedBox(height: 8),
@@ -154,6 +179,20 @@ class _InicioState extends State<Inicio> {
       // construye como antes y conserva su estado al ir y volver.
       _visitadas.add(indice);
     });
+  }
+
+  Future<void> _abrirDirectorioFederacion() async {
+    try {
+      final federacion = await PadronScope.of(context).federaciones.deTrabajo();
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => DirectorioPagina.deFederacion(federacion),
+        ),
+      );
+    } catch (error) {
+      if (mounted) mostrarError(context, error);
+    }
   }
 
   Future<void> _retroceder() async {

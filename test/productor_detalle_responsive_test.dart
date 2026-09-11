@@ -30,6 +30,20 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.byType(SelectionArea), findsOneWidget);
+    for (final texto in [
+      'MARÍA PÉREZ',
+      'Central: $_central',
+      'Sindicato: $_sindicato',
+    ]) {
+      expect(
+        find.ancestor(
+          of: find.text(texto),
+          matching: find.byType(SelectionArea),
+        ),
+        findsOneWidget,
+      );
+    }
     expect(find.text('Fotografía'), findsOneWidget);
     expect(find.text('Fotografías'), findsNothing);
     expect(find.text('2'), findsNothing);
@@ -82,7 +96,14 @@ void main() {
           expect(widget.maxLines, isNull);
           expect(widget.softWrap, isTrue);
           expect(widget.overflow, isNot(TextOverflow.ellipsis));
-          final paragraph = tester.renderObject<RenderParagraph>(finder);
+          final textoRenderizado = find.descendant(
+            of: finder,
+            matching: find.byType(RichText),
+          );
+          expect(textoRenderizado, findsOneWidget);
+          final paragraph = tester.renderObject<RenderParagraph>(
+            textoRenderizado,
+          );
           expect(paragraph.didExceedMaxLines, isFalse);
           final cajas = paragraph.getBoxesForSelection(
             TextSelection(baseOffset: 0, extentOffset: texto.length),

@@ -58,7 +58,6 @@ enum EstadoLote {
 /// Clasificaciones que se pueden elegir al asignar una parcela.
 /// `nuevo` y `desconocido` son estados de importación/revisión, no opciones.
 const clasificacionesParcela = <EstadoLote>[
-  EstadoLote.sinSistema,
   EstadoLote.conSistema,
   EstadoLote.blanco,
   EstadoLote.fraccionado,

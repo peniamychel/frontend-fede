@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,7 +8,11 @@ import 'inicio.dart';
 import 'padron_scope.dart';
 
 class PadronApp extends StatefulWidget {
-  const PadronApp({super.key});
+  const PadronApp({super.key, this.preferenciaTema});
+
+  /// `main` la entrega ya cargada para que MaterialApp no cambie de tema
+  /// mientras Flutter calcula el primer layout de la versión web.
+  final PreferenciaTema? preferenciaTema;
 
   @override
   State<PadronApp> createState() => _PadronAppState();
@@ -15,16 +20,13 @@ class PadronApp extends StatefulWidget {
 
 class _PadronAppState extends State<PadronApp> {
   final Padron _padron = Padron();
-  final PreferenciaTema _tema = PreferenciaTema();
+  late final PreferenciaTema _tema;
   final GlobalKey<NavigatorState> _navegador = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
-    // Se lee sin bloquear el arranque: la app se dibuja en automático y salta
-    // al tema guardado en cuanto se conoce. Esperar la lectura para mostrar
-    // algo agregaría una pantalla en blanco por una preferencia.
-    _tema.cargar();
+    _tema = widget.preferenciaTema ?? PreferenciaTema();
   }
 
   @override
@@ -50,10 +52,17 @@ class _PadronAppState extends State<PadronApp> {
             darkTheme: _construirTema(Brightness.dark),
             themeMode: modo,
             home: const Inicio(),
-            builder: (context, child) => RetrocesoConEscape(
-              navegador: _navegador,
-              child: child ?? const SizedBox.shrink(),
-            ),
+            builder: (context, child) {
+              final contenido = child ?? const SizedBox.shrink();
+              // El navegador ya administra su propia tecla Escape. Crear un
+              // foco global durante el arranque de Flutter Web provoca que el
+              // motor intente medir controles antes del primer layout.
+              if (kIsWeb) return contenido;
+              return RetrocesoConEscape(
+                navegador: _navegador,
+                child: contenido,
+              );
+            },
           ),
         ),
       ),
@@ -121,7 +130,10 @@ class RetrocesoConEscape extends StatelessWidget {
           navegador.currentState?.maybePop();
         },
       },
-      child: Focus(autofocus: true, child: child),
+      // Navigator y los controles de cada ruta administran el foco. Pedirlo
+      // aquí con autofocus durante el primer frame hacía que Flutter Web
+      // intentara recorrer un RenderBox todavía sin tamaño.
+      child: Focus(child: child),
     );
   }
 }

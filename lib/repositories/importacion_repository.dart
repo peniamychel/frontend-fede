@@ -1,6 +1,8 @@
 import '../core/api_client.dart';
 import '../core/api_config.dart';
 import '../models/importacion.dart';
+import '../models/conciliacion_udestro.dart';
+import '../core/pagina.dart';
 
 class ImportacionRepository {
   const ImportacionRepository(this._api);
@@ -8,6 +10,7 @@ class ImportacionRepository {
   final ApiClient _api;
 
   static const String _ruta = '/importaciones/productores';
+  static const String _rutaUdestro = '/conciliaciones-udestro';
 
   /// Dirección de la plantilla de ejemplo.
   ///
@@ -43,5 +46,70 @@ class ImportacionRepository {
       },
     );
     return ImportacionResultado.desdeJson(datos.comoObjeto);
+  }
+
+  /// Compara la lista completa de UDESTRO y guarda un borrador sin tocar el padrón.
+  Future<ConciliacionUdestro> analizarUdestro({
+    required List<int> bytes,
+    required String nombreArchivo,
+  }) async {
+    final datos = await _api.subirArchivo(
+      _rutaUdestro,
+      campo: 'archivo',
+      bytes: bytes,
+      nombreArchivo: nombreArchivo,
+    );
+    return ConciliacionUdestro.desdeJson(datos.comoObjeto);
+  }
+
+  Future<ConciliacionUdestro> obtenerConciliacionUdestro(int id) async {
+    final datos = await _api.obtener('$_rutaUdestro/$id');
+    return ConciliacionUdestro.desdeJson(datos.comoObjeto);
+  }
+
+  Future<ConciliacionUdestro> ultimoBorradorUdestro() async {
+    final datos = await _api.obtener('$_rutaUdestro/ultimo-borrador');
+    return ConciliacionUdestro.desdeJson(datos.comoObjeto);
+  }
+
+  Future<Pagina<FilaConciliacionUdestro>> filasUdestro(
+    int id, {
+    required AccionConciliacionUdestro accion,
+    int pagina = 0,
+    int tamano = 50,
+  }) async {
+    final datos = await _api.obtener(
+      '$_rutaUdestro/$id/filas',
+      query: {
+        'accion': accion.valor,
+        'page': pagina,
+        'size': tamano,
+        'sort': 'id,asc',
+      },
+    );
+    return paginaFilasUdestro(datos.comoObjeto);
+  }
+
+  Future<FilaConciliacionUdestro> decidirConflictoUdestro({
+    required int conciliacionId,
+    required int filaId,
+    required DecisionConflictoUdestro decision,
+    int? productorId,
+  }) async {
+    final datos = await _api.parchear(
+      '$_rutaUdestro/$conciliacionId/filas/$filaId',
+      cuerpo: {'decision': decision.valor, 'productorId': ?productorId},
+    );
+    return FilaConciliacionUdestro.desdeJson(datos.comoObjeto);
+  }
+
+  Future<ConciliacionUdestro> aplicarUdestro(
+    int id, {
+    required bool aprobarSindicatosNuevos,
+  }) async {
+    final datos = await _api.crearConTiempoLimite('$_rutaUdestro/$id/aplicar', {
+      'aprobarSindicatosNuevos': aprobarSindicatosNuevos,
+    }, tiempoLimite: const Duration(minutes: 30));
+    return ConciliacionUdestro.desdeJson(datos.comoObjeto);
   }
 }

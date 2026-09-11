@@ -107,7 +107,7 @@ class _ApiLote extends ApiClient {
   final bool ubicado;
   bool consultoSistemas = false;
   String numero = '66';
-  String estado = 'SIN_SISTEMA';
+  String estado = 'BLANCO';
   String? ultimoNumero;
   String? ultimaClasificacion;
 

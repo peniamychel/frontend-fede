@@ -6,6 +6,7 @@ import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/estados.dart';
 import 'informe_importacion.dart';
+import 'conciliacion_udestro_pagina.dart';
 
 /// Carga masiva del padrón desde una planilla de Excel.
 ///
@@ -64,6 +65,19 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _paso1(context),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: _trabajando
+                            ? null
+                            : () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      const ConciliacionUdestroPagina(),
+                                ),
+                              ),
+                        icon: const Icon(Icons.compare_arrows_outlined),
+                        label: const Text('Conciliar lista UDESTRO'),
+                      ),
                       const SizedBox(height: 16),
                       if (_informe != null) ...[
                         InformeImportacion(informe: _informe!),

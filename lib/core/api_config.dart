@@ -18,6 +18,10 @@ class ApiConfig {
     'API_PUERTO',
     defaultValue: 8080,
   );
+  static const bool _mismoOrigenForzado = bool.fromEnvironment(
+    'API_MISMO_ORIGEN',
+    defaultValue: false,
+  );
 
   /// Prefijo común de los recursos versionados del backend.
   static const String prefijo = '/api/v1';
@@ -32,16 +36,20 @@ class ApiConfig {
     return 'localhost';
   }
 
-  /// En web la API se publica detrás del mismo servidor que entrega Flutter.
-  /// Reutilizar esquema y puerto permite que Nginx haga el proxy en Docker sin
-  /// dejar una IP ni un puerto de producción escritos dentro del build.
+  /// En web se reutiliza el esquema para conservar HTTP/HTTPS. El puerto se
+  /// resuelve por separado: durante el desarrollo Flutter suele vivir en 5173
+  /// y Spring en 8080, mientras que en producción Nginx publica ambos por 80.
   static String get esquema {
     if (kIsWeb && _hostForzado.isEmpty) return Uri.base.scheme;
     return 'http';
   }
 
   static int get puerto {
-    if (kIsWeb && _hostForzado.isEmpty) return Uri.base.port;
+    if (kIsWeb && _hostForzado.isEmpty) {
+      final puertoWeb = Uri.base.port;
+      final puertoEstandar = Uri.base.scheme == 'https' ? 443 : 80;
+      if (_mismoOrigenForzado || puertoWeb == puertoEstandar) return puertoWeb;
+    }
     return _puerto;
   }
 

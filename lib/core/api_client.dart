@@ -106,6 +106,15 @@ class ApiClient {
   Future<Object?> crear(String ruta, Object cuerpo) =>
       _enviar('POST', ruta, cuerpo: cuerpo);
 
+  /// POST para procesos largos que igualmente devuelven JSON. Mantenerlo
+  /// separado evita extender el tiempo de espera de las operaciones normales.
+  Future<Object?> crearConTiempoLimite(
+    String ruta,
+    Object cuerpo, {
+    required Duration tiempoLimite,
+  }) =>
+      _enviar('POST', ruta, cuerpo: cuerpo, tiempoLimitePeticion: tiempoLimite);
+
   /// PUT, con parámetros de consulta opcionales.
   ///
   /// El [query] va aparte y no pegado a [ruta] con un `?`: la URI se arma con
@@ -254,6 +263,7 @@ class ApiClient {
     String ruta, {
     Map<String, dynamic>? query,
     Object? cuerpo,
+    Duration? tiempoLimitePeticion,
   }) async {
     final uri = ApiConfig.uri(ruta, query);
     final peticion = http.Request(metodo, uri)..headers.addAll(_cabeceras);
@@ -264,7 +274,9 @@ class ApiClient {
 
     final http.Response respuesta;
     try {
-      final flujo = await _cliente.send(peticion).timeout(tiempoLimite);
+      final flujo = await _cliente
+          .send(peticion)
+          .timeout(tiempoLimitePeticion ?? tiempoLimite);
       respuesta = await http.Response.fromStream(flujo);
     } on TimeoutException catch (e) {
       throw SinConexionException(ApiConfig.descripcion, e);

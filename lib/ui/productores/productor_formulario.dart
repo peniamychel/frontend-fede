@@ -54,7 +54,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   /// y motivo, y se hace desde la ficha de la parcela.
   List<Lote> _parcelasLibres = const [];
   List<Lote> _parcelasDelSindicato = const [];
-  EstadoLote _clasificacionParcela = EstadoLote.sinSistema;
+  EstadoLote _clasificacionParcela = EstadoLote.blanco;
 
   bool _cargandoDisponibles = false;
 

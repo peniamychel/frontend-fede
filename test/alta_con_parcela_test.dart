@@ -148,7 +148,7 @@ void main() {
     );
     await registrar(tester);
 
-    expect(espia.creados['/lotes']!['estado'], 'SIN_SISTEMA');
+    expect(espia.creados['/lotes']!['estado'], 'BLANCO');
   });
 
   testWidgets('avisa ocupantes y próxima letra del número repetido', (
@@ -226,7 +226,7 @@ class _ApiEspia extends ApiClient {
         : '77',
     'sindicatoId': 7,
     'sindicatoNombre': 'LIBERTAD',
-    'estado': 'SIN_SISTEMA',
+    'estado': 'BLANCO',
     'tenedor': tenedor,
   };
 
