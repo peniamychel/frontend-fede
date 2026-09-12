@@ -28,6 +28,7 @@ void main() {
     List<Map<String, String>> faltantes = const [],
   }) => {
     'productorId': 1,
+    'centralId': 5,
     'nombreCompleto': 'JUAN MORALES',
     'federacion': 'FEDERACIÓN CARRASCO',
     'central': 'IVIRGARZAMA',
@@ -36,7 +37,7 @@ void main() {
     'apellidos': 'MORALES',
     'ci': '3434',
     'lotes': '',
-    'codigoPadron': '2-IVI-1',
+    'codigoPadron': '2IVI1',
     'codigoQr': 'CDB01AF229',
     // Sin foto a propósito: cargar una URL de red en una prueba de widget
     // fallaría, y el recuadro rojo de «SIN FOTO» también merece verse.
@@ -61,10 +62,17 @@ void main() {
   Widget pantalla(
     Map<String, dynamic> respuesta, {
     Map<String, dynamic>? configuracion,
+    bool conFase = true,
   }) => TemaScope(
     preferencia: PreferenciaTema(),
     child: PadronScope(
-      padron: Padron(api: _ApiFija(respuesta, configuracion)),
+      padron: Padron(
+        api: _ApiFija(
+          respuesta,
+          configuracion: configuracion,
+          conFase: conFase,
+        ),
+      ),
       child: const MaterialApp(
         home: CredencialPreviaPagina(productorId: 1, nombre: 'JUAN'),
       ),
@@ -130,7 +138,7 @@ void main() {
     expect(find.text('Lista para imprimir.'), findsOneWidget);
     // La tarjeta trae los datos como van a salir.
     expect(find.text('JUAN MORALES'), findsOneWidget);
-    expect(find.text('2-IVI-1'), findsOneWidget);
+    expect(find.text('2IVI1'), findsOneWidget);
     expect(find.text('CARRASCO'), findsOneWidget);
 
     final boton = tester.widget<FilledButton>(
@@ -156,6 +164,22 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('1. Imprimir anverso'), findsNothing);
+  });
+
+  testWidgets('Windows no imprime una credencial si no hay fase activa', (
+    tester,
+  ) async {
+    await tester.pumpWidget(pantalla(previa(completa: true), conFase: false));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Primero habilitá una fase'), findsOneWidget);
+    final boton = tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.text('1. Imprimir anverso'),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(boton.onPressed, isNull);
   });
 
   testWidgets('usa las plantillas personalizadas devueltas por el editor', (
@@ -208,13 +232,32 @@ void main() {
 
 /// Un ApiClient que responde siempre lo mismo y no llama a ningún servidor.
 class _ApiFija extends ApiClient {
-  _ApiFija(this.respuesta, [this.configuracion]);
+  _ApiFija(this.respuesta, {this.configuracion, this.conFase = true});
 
   final Map<String, dynamic> respuesta;
   final Map<String, dynamic>? configuracion;
+  final bool conFase;
 
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
+    if (ruta == '/centrales/5/fases-impresion') {
+      return {
+        'centralId': 5,
+        'central': 'IVIRGARZAMA',
+        if (conFase)
+          'faseActiva': const {
+            'id': 4,
+            'numero': 2,
+            'estado': 'ABIERTA',
+            'abiertaEn': '2026-09-11T08:00:00',
+            'cerradaEn': null,
+            'total': 3,
+            'impresos': 1,
+            'pendientes': 2,
+          },
+        'historial': const <Object>[],
+      };
+    }
     if (ruta == '/configuracion/credencial' && configuracion != null) {
       return configuracion;
     }

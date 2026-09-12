@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fede/core/preferencia_tema.dart';
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/padron_scope.dart';
+import 'package:fede/ui/productores/fila_productor.dart';
 import 'package:fede/ui/productores/productor_detalle_pagina.dart';
 
 void main() {
@@ -123,7 +124,7 @@ void main() {
   });
 
   testWidgets(
-    'muestra en naranja una cédula no encontrada y bloquea impresión',
+    'permite aprobar una cédula no encontrada sin editar el productor',
     (tester) async {
       final api = _ApiRevisionSie()..noEncontrado = true;
       final tema = PreferenciaTema();
@@ -147,6 +148,55 @@ void main() {
       expect(find.textContaining('No se puede imprimir'), findsOneWidget);
       final tarjeta = find.ancestor(of: titulo, matching: find.byType(Card));
       expect(tester.widget<Card>(tarjeta.first).color, Colors.orange.shade100);
+
+      await tester.tap(find.text('Aprobar datos'));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Aprobar los datos actuales?'), findsOneWidget);
+      await tester.tap(find.text('Aprobar datos actuales'));
+      await tester.pumpAndSettle();
+
+      expect(api.aprobacionesManuales, 1);
+      expect(find.text('No encontrado en SIE'), findsNothing);
+      expect(find.text('Datos aprobados manualmente'), findsOneWidget);
+      expect(find.textContaining('No se puede imprimir'), findsNothing);
+      expect(find.textContaining('Revisión SIE pendiente'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'la impresora queda gris con SIE pendiente aunque exista fase activa',
+    (tester) async {
+      final productor = Productor.desdeJson({
+        'id': 42,
+        'nombres': 'JOSE',
+        'apellidos': 'PENA MUNOZ',
+        'nombreCompleto': 'JOSE PENA MUNOZ',
+        'revisionSieEstado': 'NO_ENCONTRADO',
+        'revisionSieBloqueaImpresion': true,
+        'credencialLista': false,
+        'faseImpresionPendiente': true,
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FilaProductor(productor: productor, alTocar: () {}),
+          ),
+        ),
+      );
+
+      final tooltip = find.byTooltip(
+        'Revisión SIE pendiente: excluido de impresión',
+      );
+      expect(tooltip, findsOneWidget);
+      final icono = find.descendant(
+        of: tooltip,
+        matching: find.byIcon(Icons.print),
+      );
+      expect(
+        tester.widget<Icon>(icono).color,
+        Theme.of(tester.element(icono)).colorScheme.outline,
+      );
     },
   );
 }
@@ -156,10 +206,12 @@ class _ApiRevisionSie extends ApiClient {
   bool? decision;
   bool sugerenciaGuardada = false;
   bool noEncontrado = false;
+  int aprobacionesManuales = 0;
 
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
     if (ruta == '/productores/42') {
+      final aprobadoManualmente = aprobacionesManuales > 0;
       final revisado = sugerenciaGuardada || noEncontrado;
       final corregido = decision == true;
       return {
@@ -174,7 +226,13 @@ class _ApiRevisionSie extends ApiClient {
           'centralId': 3,
           'centralNombre': 'IVIRGARZAMA',
           'revisionSiePendiente': !revisado,
-          if (noEncontrado) ...{
+          if (aprobadoManualmente) ...{
+            'revisionSieEstado': 'APROBADO_MANUAL',
+            'revisionSieMensaje':
+                'Los datos actuales fueron revisados y aprobados manualmente.',
+            'revisionSieBloqueaImpresion': false,
+            'revisionSiePendiente': false,
+          } else if (noEncontrado) ...{
             'revisionSieEstado': 'NO_ENCONTRADO',
             'revisionSieMensaje': 'La cédula no fue encontrada en SIE.',
             'revisionSieBloqueaImpresion': true,
@@ -229,6 +287,15 @@ class _ApiRevisionSie extends ApiClient {
         'completada': true,
         'datosModificados': decision,
         'mensaje': decision! ? 'Corrección aceptada.' : 'Datos conservados.',
+      };
+    }
+    if (ruta == '/productores/42/revision-sie/aprobacion-manual') {
+      aprobacionesManuales++;
+      return {
+        'estado': 'APROBADA_MANUAL',
+        'completada': true,
+        'datosModificados': false,
+        'mensaje': 'Los datos actuales fueron aprobados manualmente.',
       };
     }
     return <String, dynamic>{};

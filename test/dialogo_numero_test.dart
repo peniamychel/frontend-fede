@@ -173,7 +173,7 @@ void main() {
     expect(resultado, isNull);
   });
 
-  group('la abreviatura de la central', () {
+  group('el código membretado de la central', () {
     Widget bancoSigla({
       String? numeroInicial,
       ValueChanged<NombreYNumero?>? alCerrar,
@@ -191,7 +191,7 @@ void main() {
       await abrir(tester);
 
       await tester.enterText(campo('Nombre *'), 'IVIRGARZAMA');
-      await tester.enterText(campo('Abreviatura'), 'ivi');
+      await tester.enterText(campo('Código membretado'), 'ivi');
       await tester.pump();
 
       // Se ve en mayúsculas mientras se escribe, no recién al guardar.
@@ -207,7 +207,7 @@ void main() {
       await tester.pumpWidget(bancoSigla());
       await abrir(tester);
 
-      await tester.enterText(campo('Abreviatura'), 'IVIRGA');
+      await tester.enterText(campo('Código membretado'), 'IVIRGA');
       await tester.pump();
 
       expect(find.text('IVI'), findsOneWidget);
@@ -220,7 +220,7 @@ void main() {
       await abrir(tester);
 
       await tester.enterText(campo('Nombre *'), '1RO DE MAYO');
-      await tester.enterText(campo('Abreviatura'), '1mo');
+      await tester.enterText(campo('Código membretado'), '1mo');
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
 
@@ -235,7 +235,7 @@ void main() {
       await abrir(tester);
 
       await tester.enterText(campo('Nombre *'), 'PEÑA ÑANDÚ');
-      await tester.enterText(campo('Abreviatura'), 'ñá1');
+      await tester.enterText(campo('Código membretado'), 'ñá1');
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
 
@@ -247,25 +247,41 @@ void main() {
       await tester.pumpWidget(bancoSigla());
       await abrir(tester);
 
-      await tester.enterText(campo('Abreviatura'), 'I-V .');
+      await tester.enterText(campo('Código membretado'), 'I-V .');
       await tester.pump();
 
       expect(find.text('IV'), findsOneWidget);
     });
 
-    testWidgets('con uno o dos caracteres avisa y no cierra', (tester) async {
+    testWidgets('dos letras no se aceptan como código numérico', (
+      tester,
+    ) async {
       NombreYNumero? resultado;
       await tester.pumpWidget(bancoSigla(alCerrar: (d) => resultado = d));
       await abrir(tester);
 
       await tester.enterText(campo('Nombre *'), 'IVIRGARZAMA');
-      await tester.enterText(campo('Abreviatura'), 'IV');
+      await tester.enterText(campo('Código membretado'), 'IV');
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Son tres caracteres'), findsOneWidget);
+      expect(find.text('Usá 3 letras o números, o 2 dígitos'), findsOneWidget);
       expect(find.byType(DialogoNombreNumero), findsOneWidget);
       expect(resultado, isNull);
+    });
+
+    testWidgets('acepta un código formado por dos dígitos', (tester) async {
+      NombreYNumero? resultado;
+      await tester.pumpWidget(bancoSigla(alCerrar: (d) => resultado = d));
+      await abrir(tester);
+
+      await tester.enterText(campo('Nombre *'), 'CENTRAL NUMÉRICA');
+      await tester.enterText(campo('Código membretado'), '07');
+      expect(find.text('Opcional.'), findsOneWidget);
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(resultado?.numero, '07');
     });
 
     testWidgets('vacía sigue siendo válida: es opcional', (tester) async {

@@ -100,7 +100,7 @@ class _SindicatoProductoresPaginaState
             icon: const Icon(Icons.picture_as_pdf_outlined),
           ),
           IconButton(
-            tooltip: 'Estado e impresión de credenciales',
+            tooltip: 'Estado e impresión de carnets',
             onPressed: _abrirImpresionMasiva,
             icon: const Icon(Icons.badge_outlined),
           ),

@@ -68,6 +68,11 @@ class ProductorRepository {
     return Productor.desdeJson(datos.comoObjeto);
   }
 
+  /// Incorpora un carnet ya impreso a la fase activa para volver a imprimirlo.
+  Future<void> agregarReimpresionAFase(int id) => _api
+      .crear('$_ruta/$id/fase-impresion/reimpresion', const {})
+      .then((_) {});
+
   /// Listado paginado del padrón. Los tres filtros son opcionales y
   /// combinables; [texto] busca a la vez en nombres, apellidos, cédula y carné.
   ///
@@ -123,6 +128,15 @@ class ProductorRepository {
       'actuales': propuesta.actuales,
       'propuestos': propuesta.propuestos,
     });
+    return RevisionSieProductor.desdeJson(datos.comoObjeto);
+  }
+
+  /// Conserva y aprueba la identidad actual cuando SIE no encontró la cédula.
+  Future<RevisionSieProductor> aprobarDatosActualesSie(int id) async {
+    final datos = await _api.crear(
+      '$_ruta/$id/revision-sie/aprobacion-manual',
+      const {},
+    );
     return RevisionSieProductor.desdeJson(datos.comoObjeto);
   }
 

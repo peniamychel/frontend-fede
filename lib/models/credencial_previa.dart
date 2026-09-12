@@ -6,6 +6,7 @@
 class CredencialPrevia {
   const CredencialPrevia({
     required this.productorId,
+    this.centralId = 0,
     required this.nombreCompleto,
     required this.federacion,
     required this.central,
@@ -37,6 +38,7 @@ class CredencialPrevia {
            secretarioGeneralSindicato ?? secretarioRelaciones ?? secretario;
 
   final int productorId;
+  final int centralId;
   final String nombreCompleto;
 
   /// Título de la federación tal como se imprime en la banda verde.
@@ -52,7 +54,7 @@ class CredencialPrevia {
   /// para que se pueda imprimir el carnet de productor.
   final String lotes;
 
-  /// El código del padrón, `2-IVI-1`. Null si todavía no se puede armar.
+  /// El código del padrón, `2IVI1`. Null si todavía no se puede armar.
   final String? codigoPadron;
 
   /// El código que dice el QR.
@@ -95,6 +97,7 @@ class CredencialPrevia {
   factory CredencialPrevia.desdeJson(Map<String, dynamic> json) =>
       CredencialPrevia(
         productorId: (json['productorId'] as num?)?.toInt() ?? 0,
+        centralId: (json['centralId'] as num?)?.toInt() ?? 0,
         nombreCompleto: json['nombreCompleto'] as String? ?? '',
         federacion: json['federacion'] as String? ?? '',
         central: json['central'] as String? ?? '',
@@ -257,6 +260,7 @@ class PanelImpresionSindicato {
     required this.faltantesDelSindicato,
     required this.candidatos,
     this.ultimoGrupo,
+    this.faseActiva,
   });
 
   final int sindicatoId;
@@ -269,6 +273,7 @@ class PanelImpresionSindicato {
   final List<Faltante> faltantesDelSindicato;
   final List<CandidatoImpresionCredencial> candidatos;
   final UltimoGrupoImpresionCredencial? ultimoGrupo;
+  final FaseActivaImpresion? faseActiva;
 
   factory PanelImpresionSindicato.desdeJson(Map<String, dynamic> json) =>
       PanelImpresionSindicato(
@@ -289,6 +294,24 @@ class PanelImpresionSindicato {
                 json['ultimoGrupo'] as Map<String, dynamic>,
               )
             : null,
+        faseActiva: json['faseActiva'] is Map<String, dynamic>
+            ? FaseActivaImpresion.desdeJson(
+                json['faseActiva'] as Map<String, dynamic>,
+              )
+            : null,
+      );
+}
+
+class FaseActivaImpresion {
+  const FaseActivaImpresion({required this.id, required this.numero});
+
+  final int id;
+  final int numero;
+
+  factory FaseActivaImpresion.desdeJson(Map<String, dynamic> json) =>
+      FaseActivaImpresion(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        numero: (json['numero'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -332,12 +355,18 @@ class CandidatoImpresionCredencial {
     required this.impresiones,
     required this.ultimaImpresion,
     required this.seleccionable,
+    this.incluidoEnFase = false,
+    this.pendienteEnFase = false,
+    this.reimpresionEnFase = false,
   });
 
   final CredencialPrevia credencial;
   final int impresiones;
   final DateTime? ultimaImpresion;
   final bool seleccionable;
+  final bool incluidoEnFase;
+  final bool pendienteEnFase;
+  final bool reimpresionEnFase;
 
   int get productorId => credencial.productorId;
 
@@ -351,6 +380,9 @@ class CandidatoImpresionCredencial {
           json['ultimaImpresion'] as String? ?? '',
         ),
         seleccionable: json['seleccionable'] as bool? ?? false,
+        incluidoEnFase: json['incluidoEnFase'] as bool? ?? false,
+        pendienteEnFase: json['pendienteEnFase'] as bool? ?? false,
+        reimpresionEnFase: json['reimpresionEnFase'] as bool? ?? false,
       );
 }
 

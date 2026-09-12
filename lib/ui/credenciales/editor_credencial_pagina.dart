@@ -903,7 +903,7 @@ const _muestra = CredencialPrevia(
   apellidos: 'QUISPE MAMANI',
   ci: '4487439',
   lotes: '12-A',
-  codigoPadron: '2-IVI-1',
+  codigoPadron: '2IVI1',
   codigoQr: 'MUESTRA',
   ejecutivoFederacion: FirmantePrevio(
     nombre: 'ANA CHOQUE MAMANI',

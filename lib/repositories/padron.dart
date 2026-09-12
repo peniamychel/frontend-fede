@@ -24,6 +24,7 @@ export '../models/conciliacion_udestro.dart';
 export '../models/credencial_previa.dart';
 export '../models/diseno_credencial.dart';
 export '../models/federacion.dart';
+export '../models/fase_impresion.dart';
 export '../models/imagen.dart';
 export '../models/informe_impresion_central.dart';
 export '../models/lado_credencial.dart';

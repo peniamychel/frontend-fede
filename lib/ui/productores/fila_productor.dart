@@ -215,9 +215,20 @@ class _EstadoImpresion extends StatelessWidget {
         : productor.observado
         ? ('Observado: excluido de impresión', tema.colorScheme.error)
         : productor.revisionSieBloqueaImpresion
-        ? ('Revisión SIE pendiente: excluido de impresión', Colors.orange)
+        ? (
+            'Revisión SIE pendiente: excluido de impresión',
+            tema.colorScheme.outline,
+          )
         : productor.revisionLotePendiente
         ? ('En revisión: falta número de lote', tema.colorScheme.outline)
+        : productor.faseImpresionPendiente &&
+              (productor.credencialLista || productor.reimpresionFasePendiente)
+        ? (
+            productor.reimpresionFasePendiente
+                ? 'Agregado a una fase para reimpresión'
+                : 'Agregado a una fase de impresión',
+            Colors.orange.shade800,
+          )
         : !productor.credencialLista
         ? ('Credencial incompleta o sin fotografía', tema.colorScheme.outline)
         : productor.credencialImpresa

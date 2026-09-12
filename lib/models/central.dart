@@ -8,6 +8,8 @@ class Central {
     required this.federacionId,
     required this.federacionNombre,
     this.abreviatura,
+    this.faseImpresionActivaNumero,
+    this.ultimaFaseImpresionNumero = 0,
     this.auditoria = Auditoria.habilitado,
   });
 
@@ -22,16 +24,21 @@ class Central {
   /// Sigla de tres letras en mayúsculas. Única entre todas las centrales, y
   /// null mientras no se la carguen.
   final String? abreviatura;
+  final int? faseImpresionActivaNumero;
+  final int ultimaFaseImpresionNumero;
 
   factory Central.desdeJson(Map<String, dynamic> json) => Central(
-        id: (json['id'] as num?)?.toInt() ?? 0,
-        nombre: json['nombre'] as String? ?? '',
-        federacionId: (json['federacionId'] as num?)?.toInt() ?? 0,
-        federacionNombre: json['federacionNombre'] as String? ?? '',
-        abreviatura: json['abreviatura'] as String?,
-        auditoria:
-            Auditoria.desdeJson(json['auditoria'] as Map<String, dynamic>?),
-      );
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    nombre: json['nombre'] as String? ?? '',
+    federacionId: (json['federacionId'] as num?)?.toInt() ?? 0,
+    federacionNombre: json['federacionNombre'] as String? ?? '',
+    abreviatura: json['abreviatura'] as String?,
+    faseImpresionActivaNumero: (json['faseImpresionActivaNumero'] as num?)
+        ?.toInt(),
+    ultimaFaseImpresionNumero:
+        (json['ultimaFaseImpresionNumero'] as num?)?.toInt() ?? 0,
+    auditoria: Auditoria.desdeJson(json['auditoria'] as Map<String, dynamic>?),
+  );
 
   @override
   bool operator ==(Object other) => other is Central && other.id == id;
@@ -55,8 +62,8 @@ class CentralRequest {
   /// tenía. Omitirla dejaría la anterior, que no es lo que pide quien vacía
   /// el campo.
   Map<String, dynamic> aJson() => {
-        'nombre': nombre,
-        'federacionId': federacionId,
-        'abreviatura': abreviatura,
-      };
+    'nombre': nombre,
+    'federacionId': federacionId,
+    'abreviatura': abreviatura,
+  };
 }

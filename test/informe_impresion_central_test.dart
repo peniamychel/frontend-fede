@@ -32,17 +32,30 @@ void main() {
 
     expect(find.text('Avance general'), findsOneWidget);
     expect(find.text('43.8%'), findsOneWidget);
-    expect(find.text('7 de 16 credenciales impresas'), findsOneWidget);
-    expect(find.text('No impresos'), findsOneWidget);
+    expect(find.text('7 de 16 carnets impresos'), findsOneWidget);
+    expect(find.text('Pendientes'), findsOneWidget);
     expect(find.text('Sin foto'), findsOneWidget);
-    expect(find.text('Listos para imprimir'), findsOneWidget);
+    expect(find.text('Observados'), findsOneWidget);
+    expect(find.text('Sistema'), findsOneWidget);
+    expect(find.text('Sin sistema'), findsOneWidget);
+    expect(find.textContaining('con foto'), findsNothing);
+    expect(find.textContaining('Con foto'), findsNothing);
+    expect(find.textContaining('Listos'), findsNothing);
     expect(find.text('Sindicatos sin sello'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Sindicatos que todavía no tienen sello'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Sindicatos que todavía no tienen sello'), findsOneWidget);
     expect(find.text('NUEVA ESPERANZA'), findsWidgets);
     expect(find.text('Informe general'), findsOneWidget);
     expect(find.text('Planilla de sellos y firmas'), findsOneWidget);
-    expect(find.text('Informe nominal completo'), findsOneWidget);
-    expect(find.text('Informe nominal por sindicatos'), findsOneWidget);
+    expect(find.text('Informe nominal completo'), findsNothing);
+    expect(find.text('Informe nominal por sindicatos'), findsNothing);
+    expect(find.text('Informe pre-impresión'), findsOneWidget);
+    expect(find.text('Fases de impresión'), findsOneWidget);
+    expect(find.text('1ra fase de impresión habilitada'), findsOneWidget);
     expect(find.byTooltip('Descargar informe en PDF'), findsNothing);
 
     await tester.scrollUntilVisible(
@@ -68,46 +81,47 @@ void main() {
     expect(avanceSegundo.value, 0.5);
   });
 
-  testWidgets(
-    'integra listas nominales colapsadas y permite elegir sindicatos',
-    (tester) async {
-      tester.view.physicalSize = const Size(900, 1100);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      final api = _ApiInforme();
-      await tester.pumpWidget(
-        PadronScope(
-          padron: Padron(api: api),
-          child: const MaterialApp(
-            home: InformeImpresionCentralPagina(central: central),
-          ),
+  testWidgets('integra listas nominales colapsadas sin acciones redundantes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _ApiInforme();
+    await tester.pumpWidget(
+      PadronScope(
+        padron: Padron(api: api),
+        child: const MaterialApp(
+          home: InformeImpresionCentralPagina(central: central),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('MARÍA PÉREZ'), findsNothing);
-      expect(api.ultimaSeleccion, [1, 2]);
+    expect(find.text('MARÍA PÉREZ'), findsNothing);
+    expect(api.ultimaSeleccion, [1, 2]);
 
-      await tester.ensureVisible(find.text('1RO DE MAYO'));
-      await tester.tap(find.text('1RO DE MAYO'));
-      await tester.pumpAndSettle();
-      expect(find.text('Carnets impresos (1)'), findsOneWidget);
-      expect(find.text('No impresos por datos faltantes (1)'), findsOneWidget);
-      expect(find.text('MARÍA PÉREZ'), findsOneWidget);
-      expect(find.text('Fotografía, Cédula, Número de lote'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('1RO DE MAYO'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, -120));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1RO DE MAYO'));
+    await tester.pumpAndSettle();
+    expect(find.text('Carnets impresos (1)'), findsOneWidget);
+    expect(find.text('No impresos por datos faltantes (1)'), findsOneWidget);
+    expect(find.text('MARÍA PÉREZ'), findsOneWidget);
+    expect(find.text('Fotografía, Cédula, Número de lote'), findsOneWidget);
+    expect(find.text('Observados: 1'), findsOneWidget);
+    expect(find.text('Sistema: 6'), findsOneWidget);
+    expect(find.text('Sin sistema: 4'), findsOneWidget);
+    expect(find.text('Avance: 40.0%'), findsOneWidget);
 
-      await tester.ensureVisible(find.text('Informe nominal por sindicatos'));
-      await tester.tap(find.text('Informe nominal por sindicatos'));
-      await tester.pumpAndSettle();
-      expect(find.text('Seleccionar sindicatos'), findsOneWidget);
-      await tester.tap(
-        find.widgetWithText(CheckboxListTile, 'NUEVA ESPERANZA'),
-      );
-      expect(find.text('Descargar PDF'), findsOneWidget);
-      await tester.tap(find.text('Cancelar'));
-      await tester.pumpAndSettle();
-    },
-  );
+    expect(find.text('Informe nominal completo'), findsNothing);
+    expect(find.text('Informe nominal por sindicatos'), findsNothing);
+  });
 }
 
 class _ApiInforme extends ApiClient {
@@ -115,6 +129,34 @@ class _ApiInforme extends ApiClient {
 
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
+    if (ruta == '/centrales/13/fases-impresion') {
+      return const {
+        'centralId': 13,
+        'central': '13 DE JUNIO',
+        'faseActiva': {
+          'id': 7,
+          'numero': 1,
+          'estado': 'ABIERTA',
+          'abiertaEn': '2026-09-11T08:00:00',
+          'cerradaEn': null,
+          'total': 16,
+          'impresos': 7,
+          'pendientes': 9,
+        },
+        'historial': [
+          {
+            'id': 7,
+            'numero': 1,
+            'estado': 'ABIERTA',
+            'abiertaEn': '2026-09-11T08:00:00',
+            'cerradaEn': null,
+            'total': 16,
+            'impresos': 7,
+            'pendientes': 9,
+          },
+        ],
+      };
+    }
     if (ruta != '/centrales/13/credenciales/impresion') {
       throw StateError('Ruta no simulada: $ruta');
     }
@@ -130,6 +172,9 @@ class _ApiInforme extends ApiClient {
       'pendientesConFoto': 6,
       'sinFoto': 3,
       'listosParaImprimir': 4,
+      'observados': 3,
+      'sistema': 8,
+      'sinSistema': 8,
       'porcentajeAvance': 43.8,
       'detalle': [
         {
@@ -142,6 +187,9 @@ class _ApiInforme extends ApiClient {
           'pendientesConFoto': 5,
           'sinFoto': 1,
           'listosParaImprimir': 3,
+          'observados': 1,
+          'sistema': 6,
+          'sinSistema': 4,
           'porcentajeAvance': 40,
         },
         {
@@ -154,6 +202,9 @@ class _ApiInforme extends ApiClient {
           'pendientesConFoto': 1,
           'sinFoto': 2,
           'listosParaImprimir': 1,
+          'observados': 2,
+          'sistema': 2,
+          'sinSistema': 4,
           'porcentajeAvance': 50,
         },
       ],
@@ -186,7 +237,7 @@ class _ApiInforme extends ApiClient {
                 'apellidos': 'PÉREZ',
                 'ci': '123',
                 'lotes': '22 A',
-                'codigoPadron': '2-13J-8',
+                'codigoPadron': '213J8',
                 'impresiones': 2,
                 'ultimaImpresion': '2026-08-28T10:30:00',
                 'datosFaltantes': <String>[],
@@ -199,7 +250,7 @@ class _ApiInforme extends ApiClient {
                 'apellidos': 'MAMANI',
                 'ci': '',
                 'lotes': '23',
-                'codigoPadron': '2-13J-9',
+                'codigoPadron': '213J9',
                 'impresiones': 0,
                 'ultimaImpresion': null,
                 'datosFaltantes': ['Fotografía', 'Cédula', 'Número de lote'],

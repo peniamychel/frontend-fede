@@ -12,6 +12,9 @@ class InformeImpresionCentral {
     required this.pendientesConFoto,
     required this.sinFoto,
     required this.listosParaImprimir,
+    required this.observados,
+    required this.sistema,
+    required this.sinSistema,
     required this.porcentajeAvance,
     required this.detalle,
   });
@@ -27,6 +30,9 @@ class InformeImpresionCentral {
   final int pendientesConFoto;
   final int sinFoto;
   final int listosParaImprimir;
+  final int observados;
+  final int sistema;
+  final int sinSistema;
   final double porcentajeAvance;
   final List<AvanceImpresionSindicato> detalle;
 
@@ -43,6 +49,9 @@ class InformeImpresionCentral {
         pendientesConFoto: (json['pendientesConFoto'] as num?)?.toInt() ?? 0,
         sinFoto: (json['sinFoto'] as num?)?.toInt() ?? 0,
         listosParaImprimir: (json['listosParaImprimir'] as num?)?.toInt() ?? 0,
+        observados: (json['observados'] as num?)?.toInt() ?? 0,
+        sistema: (json['sistema'] as num?)?.toInt() ?? 0,
+        sinSistema: (json['sinSistema'] as num?)?.toInt() ?? 0,
         porcentajeAvance: (json['porcentajeAvance'] as num?)?.toDouble() ?? 0,
         detalle: ((json['detalle'] as List?) ?? const [])
             .whereType<Map<String, dynamic>>()
@@ -116,6 +125,9 @@ class AvanceImpresionSindicato {
     required this.pendientesConFoto,
     required this.sinFoto,
     required this.listosParaImprimir,
+    required this.observados,
+    required this.sistema,
+    required this.sinSistema,
     required this.porcentajeAvance,
   });
 
@@ -128,6 +140,9 @@ class AvanceImpresionSindicato {
   final int pendientesConFoto;
   final int sinFoto;
   final int listosParaImprimir;
+  final int observados;
+  final int sistema;
+  final int sinSistema;
   final double porcentajeAvance;
 
   factory AvanceImpresionSindicato.desdeJson(Map<String, dynamic> json) =>
@@ -141,6 +156,9 @@ class AvanceImpresionSindicato {
         pendientesConFoto: (json['pendientesConFoto'] as num?)?.toInt() ?? 0,
         sinFoto: (json['sinFoto'] as num?)?.toInt() ?? 0,
         listosParaImprimir: (json['listosParaImprimir'] as num?)?.toInt() ?? 0,
+        observados: (json['observados'] as num?)?.toInt() ?? 0,
+        sistema: (json['sistema'] as num?)?.toInt() ?? 0,
+        sinSistema: (json['sinSistema'] as num?)?.toInt() ?? 0,
         porcentajeAvance: (json['porcentajeAvance'] as num?)?.toDouble() ?? 0,
       );
 }

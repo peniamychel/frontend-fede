@@ -109,10 +109,7 @@ void main() {
       botonCon(tester, Icons.picture_as_pdf_outlined).tooltip,
       contains('nómina'),
     );
-    expect(
-      botonCon(tester, Icons.badge_outlined).tooltip,
-      contains('credenciales'),
-    );
+    expect(botonCon(tester, Icons.badge_outlined).tooltip, contains('carnets'));
   });
 }
 

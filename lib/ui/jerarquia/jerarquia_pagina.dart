@@ -401,7 +401,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                     nombre: c.nombre,
                     habilitado: c.habilitado,
                   ),
-                  subtitle: _abreviatura(c.abreviatura),
+                  subtitle: _subtituloCentral(c),
                   onTap: () => _elegirCentral(c),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -503,6 +503,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
         builder: (_) => InformeImpresionCentralPagina(central: central),
       ),
     );
+    if (mounted) _recargarCentrales();
   }
 
   Future<void> _verInformeImpresionFederacion() async {
@@ -741,6 +742,27 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     );
   }
 
+  Widget? _subtituloCentral(Central central) {
+    final abreviatura = central.abreviatura;
+    final fase = central.faseImpresionActivaNumero;
+    if (abreviatura == null && fase == null) return null;
+    return Wrap(
+      spacing: 10,
+      runSpacing: 2,
+      children: [
+        if (abreviatura != null) _abreviatura(abreviatura)!,
+        if (fase != null)
+          Text(
+            '${ordinalFase(fase)} fase impresión habilitada',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.orange.shade800,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+      ],
+    );
+  }
+
   /// Menú de acciones de una fila.
   ///
   /// Las dos descargas solo las pasan los sindicatos: son los únicos que tienen
@@ -809,7 +831,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.badge_outlined),
-              title: Text('Estado e impresión de credenciales'),
+              title: Text('Estado e impresión de Carnets'),
             ),
           ),
         const PopupMenuItem(value: 'eliminar', child: Text('Eliminar')),

@@ -34,6 +34,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   RevisionSieProductor? _revisionSie;
 
   bool _verificandoSie = false;
+  bool _agregandoReimpresion = false;
 
   /// Nombre ya cargado, solo para nombrarlo en el aviso de la descarga. Se
   /// anota al dibujar la ficha y no dispara redibujado: no se muestra en
@@ -475,6 +476,55 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     }
   }
 
+  Future<void> _aprobarDatosActualesSie(Productor productor) async {
+    if (_verificandoSie ||
+        productor.revisionSieEstado !=
+            EstadoRevisionSiePersistida.noEncontrado) {
+      return;
+    }
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.how_to_reg_outlined),
+        title: const Text('¿Aprobar los datos actuales?'),
+        content: const Text(
+          'Se conservarán los nombres, apellidos y cédula actuales. La '
+          'advertencia de SIE quedará aprobada y dejará de bloquear la '
+          'impresión. Si existe una observación manual independiente, esa '
+          'observación seguirá vigente.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.check_circle_outline),
+            label: const Text('Aprobar datos actuales'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+
+    setState(() => _verificandoSie = true);
+    try {
+      await PadronScope.of(
+        context,
+      ).productores.aprobarDatosActualesSie(productor.id);
+      if (!mounted) return;
+      _huboCambios = true;
+      setState(() => _verificandoSie = false);
+      mostrarExito(context, 'Datos del productor aprobados');
+      _recargar();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _verificandoSie = false);
+      mostrarError(context, e);
+    }
+  }
+
   /// El aviso de que está observado, arriba de todo.
   ///
   /// Va antes que cualquier otro dato porque es lo primero que hay que saber de
@@ -638,6 +688,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
               ? () => _aceptarSugerenciaSie(p)
               : () => _verificarConSie(p),
           alEditarObservacion: () => _editarObservacion(p),
+          agregandoReimpresion: _agregandoReimpresion,
+          alAgregarReimpresion: () => _agregarReimpresion(p),
           alEditar: () => _editar(p),
           alCambiarEstado: () => _cambiarEstado(p, detalle.lotes.isNotEmpty),
           alEliminar: () => _eliminar(detalle),
@@ -693,6 +745,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
             productor: p,
             estado: estado,
             alAceptar: () => _aceptarSugerenciaSie(p),
+            alAprobarDatos: () => _aprobarDatosActualesSie(p),
+            procesando: _verificandoSie,
           ),
         ],
         _avisoDeVeto(context),
@@ -862,6 +916,43 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     }
   }
 
+  Future<void> _agregarReimpresion(Productor p) async {
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.replay_outlined),
+        title: const Text('Agregar para reimpresión'),
+        content: Text(
+          '${p.nombreCompleto} quedará pendiente dentro de la fase activa. '
+          'Su carnet podrá seleccionarse nuevamente en la impresión masiva.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Agregar a la fase'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+    setState(() => _agregandoReimpresion = true);
+    try {
+      await PadronScope.of(context).productores.agregarReimpresionAFase(p.id);
+      if (!mounted) return;
+      _huboCambios = true;
+      mostrarExito(context, 'Productor agregado para reimpresión.');
+      _recargar();
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    } finally {
+      if (mounted) setState(() => _agregandoReimpresion = false);
+    }
+  }
+
   Future<void> _confirmarCorreccion(Productor p) async {
     try {
       await PadronScope.of(context).productores.confirmarCorreccionNombre(p.id);
@@ -882,6 +973,8 @@ class _Encabezado extends StatelessWidget {
     required this.verificandoSie,
     required this.alVerificarConSie,
     required this.alEditarObservacion,
+    required this.agregandoReimpresion,
+    required this.alAgregarReimpresion,
     required this.alEditar,
     required this.alCambiarEstado,
     required this.alEliminar,
@@ -892,6 +985,8 @@ class _Encabezado extends StatelessWidget {
   final bool verificandoSie;
   final VoidCallback alVerificarConSie;
   final VoidCallback alEditarObservacion;
+  final bool agregandoReimpresion;
+  final VoidCallback alAgregarReimpresion;
   final VoidCallback alEditar;
   final VoidCallback alCambiarEstado;
   final VoidCallback alEliminar;
@@ -931,6 +1026,26 @@ class _Encabezado extends StatelessWidget {
                             : Icons.check_circle_outline,
                       ),
                     ),
+                    if (productor.credencialImpresa)
+                      IconButton(
+                        tooltip: 'Agregar a la fase activa para reimpresión',
+                        onPressed: agregandoReimpresion
+                            ? null
+                            : alAgregarReimpresion,
+                        icon: agregandoReimpresion
+                            ? const SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                Icons.replay_outlined,
+                                color: productor.reimpresionFasePendiente
+                                    ? Colors.orange.shade800
+                                    : null,
+                              ),
+                      ),
                     IconButton(
                       tooltip: productor.tieneSugerenciaSie
                           ? 'Aceptar sugerencia SIE'
@@ -1047,7 +1162,17 @@ class _EstadoImpresionCredencial extends StatelessWidget {
         : productor.observado
         ? ('Observado, excluido de impresión', tema.colorScheme.error)
         : productor.revisionSieBloqueaImpresion
-        ? ('Revisión SIE pendiente', Colors.orange)
+        ? ('Revisión SIE pendiente', tema.colorScheme.outline)
+        : productor.revisionLotePendiente
+        ? ('En revisión: falta número de lote', tema.colorScheme.outline)
+        : productor.faseImpresionPendiente &&
+              (productor.credencialLista || productor.reimpresionFasePendiente)
+        ? (
+            productor.reimpresionFasePendiente
+                ? 'Agregada para reimpresión en una fase'
+                : 'Pendiente en una fase de impresión',
+            Colors.orange.shade800,
+          )
         : !productor.credencialLista
         ? ('Incompleta o sin fotografía', tema.colorScheme.outline)
         : productor.credencialImpresa
@@ -1144,11 +1269,15 @@ class _AvisoEstadoSie extends StatelessWidget {
     required this.productor,
     required this.estado,
     required this.alAceptar,
+    required this.alAprobarDatos,
+    required this.procesando,
   });
 
   final Productor productor;
   final EstadoRevisionSiePersistida estado;
   final VoidCallback alAceptar;
+  final VoidCallback alAprobarDatos;
+  final bool procesando;
 
   @override
   Widget build(BuildContext context) {
@@ -1166,6 +1295,8 @@ class _AvisoEstadoSie extends StatelessWidget {
       EstadoRevisionSiePersistida.corregidoSie => 'Corrección SIE aceptada',
       EstadoRevisionSiePersistida.corregidoManual =>
         'Datos corregidos manualmente',
+      EstadoRevisionSiePersistida.aprobadoManual =>
+        'Datos aprobados manualmente',
       EstadoRevisionSiePersistida.diferenciaPendiente =>
         'Corrección SIE pendiente',
       EstadoRevisionSiePersistida.noEncontrado => 'No encontrado en SIE',
@@ -1220,6 +1351,19 @@ class _AvisoEstadoSie extends StatelessWidget {
                 onPressed: alAceptar,
                 icon: const Icon(Icons.check),
                 label: const Text('Aceptar sugerencia SIE'),
+              ),
+            ],
+            if (estado == EstadoRevisionSiePersistida.noEncontrado) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: procesando ? null : alAprobarDatos,
+                icon: procesando
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check_circle_outline),
+                label: const Text('Aprobar datos'),
               ),
             ],
             if (advertencia) ...[

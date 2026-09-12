@@ -107,7 +107,7 @@ class _ApiObservacion extends ApiClient {
     'apellidos': 'PÉREZ',
     'nombreCompleto': 'MARÍA PÉREZ',
     'ci': '1234567',
-    'codigoPadron': '2-13J-100',
+    'codigoPadron': '213J100',
     'sindicatoId': 7,
     'sindicatoNombre': '1RO DE MAYO',
     'centralId': 3,

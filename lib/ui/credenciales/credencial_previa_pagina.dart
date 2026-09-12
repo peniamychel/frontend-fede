@@ -30,7 +30,8 @@ class CredencialPreviaPagina extends StatefulWidget {
 }
 
 class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
-  late Future<(CredencialPrevia, EditorDisenoCredencial)> _futuro;
+  late Future<(CredencialPrevia, EditorDisenoCredencial, FaseImpresionCarnet?)>
+  _futuro;
 
   @override
   void initState() {
@@ -47,12 +48,17 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
     });
   }
 
-  Future<(CredencialPrevia, EditorDisenoCredencial)> _cargarTodo(
-    Padron padron,
-  ) async {
+  Future<(CredencialPrevia, EditorDisenoCredencial, FaseImpresionCarnet?)>
+  _cargarTodo(Padron padron) async {
     final previa = await padron.productores.previaCredencial(
       widget.productorId,
     );
+    FaseImpresionCarnet? faseActiva;
+    if (impresionDeCredencialesDisponible && previa.centralId > 0) {
+      faseActiva = (await padron.centrales.estadoFasesImpresion(
+        previa.centralId,
+      )).faseActiva;
+    }
     try {
       final editor = await padron.disenoCredencial.obtener();
       final diseno = editor.diseno.elementos.isEmpty
@@ -66,6 +72,7 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
           plantillaCaraUrl: editor.plantillaCaraUrl,
           plantillaReversoUrl: editor.plantillaReversoUrl,
         ),
+        faseActiva,
       );
     } catch (_) {
       // Mantiene operativa la previa si se abre contra un backend anterior.
@@ -75,6 +82,7 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
           diseno: DisenoCredencial.predeterminado(),
           campos: const [],
         ),
+        faseActiva,
       );
     }
   }
@@ -92,22 +100,25 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
           ),
         ],
       ),
-      body: CargaAsync<(CredencialPrevia, EditorDisenoCredencial)>(
-        futuro: _futuro,
-        alReintentar: _recargar,
-        constructor: (context, datos) => _Contenido(
-          previa: datos.$1,
-          editor: datos.$2,
-          cargar: (lado) => PadronScope.of(
-            context,
-          ).productores.descargarLadoCredencial(datos.$1.productorId, lado),
-          alAnversoImpreso: () async {
-            await PadronScope.of(
-              context,
-            ).productores.confirmarImpresionCredencial(datos.$1.productorId);
-          },
-        ),
-      ),
+      body:
+          CargaAsync<
+            (CredencialPrevia, EditorDisenoCredencial, FaseImpresionCarnet?)
+          >(
+            futuro: _futuro,
+            alReintentar: _recargar,
+            constructor: (context, datos) => _Contenido(
+              previa: datos.$1,
+              editor: datos.$2,
+              faseActiva: datos.$3,
+              cargar: (lado) => PadronScope.of(
+                context,
+              ).productores.descargarLadoCredencial(datos.$1.productorId, lado),
+              alAnversoImpreso: () async {
+                await PadronScope.of(context).productores
+                    .confirmarImpresionCredencial(datos.$1.productorId);
+              },
+            ),
+          ),
     );
   }
 }
@@ -116,12 +127,14 @@ class _Contenido extends StatelessWidget {
   const _Contenido({
     required this.previa,
     required this.editor,
+    required this.faseActiva,
     required this.cargar,
     required this.alAnversoImpreso,
   });
 
   final CredencialPrevia previa;
   final EditorDisenoCredencial editor;
+  final FaseImpresionCarnet? faseActiva;
   final CargarLadoCredencial cargar;
   final RegistrarAnversoImpreso alAnversoImpreso;
 
@@ -159,6 +172,7 @@ class _Contenido extends StatelessWidget {
 
         final informe = _Informe(
           previa: previa,
+          faseActiva: faseActiva,
           cargar: cargar,
           alAnversoImpreso: alAnversoImpreso,
         );
@@ -206,11 +220,13 @@ class _Rotulo extends StatelessWidget {
 class _Informe extends StatelessWidget {
   const _Informe({
     required this.previa,
+    required this.faseActiva,
     required this.cargar,
     required this.alAnversoImpreso,
   });
 
   final CredencialPrevia previa;
+  final FaseImpresionCarnet? faseActiva;
   final CargarLadoCredencial cargar;
   final RegistrarAnversoImpreso alAnversoImpreso;
 
@@ -317,9 +333,49 @@ class _Informe extends StatelessWidget {
           const SizedBox(height: 16),
           for (final falta in lista) _FilaFaltante(falta: falta),
         ],
+        if (impresionDeCredencialesDisponible) ...[
+          const SizedBox(height: 16),
+          Card(
+            margin: EdgeInsets.zero,
+            color: faseActiva == null
+                ? tema.colorScheme.errorContainer
+                : Colors.orange.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Icon(
+                    faseActiva == null
+                        ? Icons.lock_outline
+                        : Icons.print_outlined,
+                    color: faseActiva == null
+                        ? tema.colorScheme.onErrorContainer
+                        : Colors.orange.shade900,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      faseActiva == null
+                          ? 'Primero habilitá una fase desde Avance de '
+                                'impresión de la central.'
+                          : '${ordinalFase(faseActiva!.numero)} fase de '
+                                'impresión habilitada',
+                      style: TextStyle(
+                        color: faseActiva == null
+                            ? tema.colorScheme.onErrorContainer
+                            : Colors.orange.shade900,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 24),
         PanelImpresionCredencial(
-          habilitada: previa.completa,
+          habilitada: previa.completa && faseActiva != null,
           nombre: previa.nombreCompleto,
           cargar: cargar,
           alAnversoImpreso: alAnversoImpreso,

@@ -25,7 +25,8 @@ Future<bool> vetarEnLaReunion(BuildContext context, Reunion reunion) async {
     context: context,
     builder: (_) => _DialogoDecision<Productor>(
       titulo: 'Vetar en «${reunion.titulo}»',
-      explicacion: 'Queda observado hasta que otra asamblea decida sacarlo de '
+      explicacion:
+          'Queda observado hasta que otra asamblea decida sacarlo de '
           'la lista: su credencial deja de emitirse, deja el cargo si ocupaba '
           'alguno, y no se le toma asistencia. No se lo da de baja ni pierde '
           'su parcela.',
@@ -47,11 +48,13 @@ Future<bool> vetarEnLaReunion(BuildContext context, Reunion reunion) async {
   if (elegido == null || !context.mounted) return false;
 
   try {
-    await padron.vetos.vetar(VetoRequest(
-      productorId: elegido.item.id,
-      reunionId: reunion.id,
-      motivo: elegido.motivo,
-    ));
+    await padron.vetos.vetar(
+      VetoRequest(
+        productorId: elegido.item.id,
+        reunionId: reunion.id,
+        motivo: elegido.motivo,
+      ),
+    );
     if (context.mounted) {
       mostrarExito(context, '${elegido.item.nombreCompleto} quedó observado');
     }
@@ -73,7 +76,8 @@ Future<bool> levantarEnLaReunion(BuildContext context, Reunion reunion) async {
     context: context,
     builder: (_) => _DialogoDecision<Veto>(
       titulo: 'Sacar de la lista en «${reunion.titulo}»',
-      explicacion: 'Al levantarlo, su credencial vuelve a emitirse. No '
+      explicacion:
+          'Al levantarlo, su credencial vuelve a emitirse. No '
           'aparecen los vetos que impuso esta misma reunión: eso se decide en '
           'otra asamblea.',
       buscar: (texto) async {
@@ -104,7 +108,10 @@ Future<bool> levantarEnLaReunion(BuildContext context, Reunion reunion) async {
       LevantarVetoRequest(reunionId: reunion.id, motivo: elegido.motivo),
     );
     if (context.mounted) {
-      mostrarExito(context, '${elegido.item.productorNombre} salió de la lista');
+      mostrarExito(
+        context,
+        '${elegido.item.productorNombre} salió de la lista',
+      );
     }
     return true;
   } catch (e) {
@@ -285,15 +292,16 @@ class _DialogoDecisionState<T> extends State<_DialogoDecision<T>> {
       textCapitalization: TextCapitalization.characters,
       decoration: InputDecoration(
         labelText: 'Buscar a la persona',
-        helperText: 'Por nombre, cédula o código (2-IVI-1 o el del QR).',
+        helperText: 'Por nombre, cédula o código (2IVI1 o el del QR).',
         prefixIcon: const Icon(Icons.search),
         suffixIcon: _buscando
             ? const Padding(
                 padding: EdgeInsets.all(12),
                 child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               )
             : null,
         border: const OutlineInputBorder(),
@@ -307,24 +315,31 @@ class _DialogoDecisionState<T> extends State<_DialogoDecision<T>> {
     final tema = Theme.of(context);
 
     if (_fallo != null) {
-      return Text(_fallo!,
-          style: tema.textTheme.bodySmall
-              ?.copyWith(color: tema.colorScheme.error));
+      return Text(
+        _fallo!,
+        style: tema.textTheme.bodySmall?.copyWith(
+          color: tema.colorScheme.error,
+        ),
+      );
     }
     if (_busqueda.text.trim().length < 2) {
       return Text(
         'Escribí al menos dos letras, o el código entero.',
-        style:
-            tema.textTheme.bodySmall?.copyWith(color: tema.colorScheme.outline),
+        style: tema.textTheme.bodySmall?.copyWith(
+          color: tema.colorScheme.outline,
+        ),
       );
     }
     if (_buscando) {
       return const SizedBox.shrink();
     }
     if (_resultados.isEmpty) {
-      return Text(widget.sinResultados,
-          style: tema.textTheme.bodySmall
-              ?.copyWith(color: tema.colorScheme.outline));
+      return Text(
+        widget.sinResultados,
+        style: tema.textTheme.bodySmall?.copyWith(
+          color: tema.colorScheme.outline,
+        ),
+      );
     }
 
     return ConstrainedBox(
@@ -355,13 +370,22 @@ class _DialogoDecisionState<T> extends State<_DialogoDecision<T>> {
       margin: EdgeInsets.zero,
       color: tema.colorScheme.secondaryContainer,
       child: ListTile(
-        leading: Icon(Icons.person, color: tema.colorScheme.onSecondaryContainer),
-        title: Text(fila.titulo,
-            style: tema.textTheme.titleSmall
-                ?.copyWith(color: tema.colorScheme.onSecondaryContainer)),
-        subtitle: Text(fila.detalle,
-            style: tema.textTheme.bodySmall
-                ?.copyWith(color: tema.colorScheme.onSecondaryContainer)),
+        leading: Icon(
+          Icons.person,
+          color: tema.colorScheme.onSecondaryContainer,
+        ),
+        title: Text(
+          fila.titulo,
+          style: tema.textTheme.titleSmall?.copyWith(
+            color: tema.colorScheme.onSecondaryContainer,
+          ),
+        ),
+        subtitle: Text(
+          fila.detalle,
+          style: tema.textTheme.bodySmall?.copyWith(
+            color: tema.colorScheme.onSecondaryContainer,
+          ),
+        ),
         trailing: TextButton(
           onPressed: () => setState(() => _elegido = null),
           child: const Text('Cambiar'),
@@ -372,8 +396,7 @@ class _DialogoDecisionState<T> extends State<_DialogoDecision<T>> {
 
   void _aceptar() {
     if (!_formulario.currentState!.validate()) return;
-    Navigator.of(context)
-        .pop(_Decision<T>(_elegido as T, _motivo.text.trim()));
+    Navigator.of(context).pop(_Decision<T>(_elegido as T, _motivo.text.trim()));
   }
 }
 
@@ -394,11 +417,14 @@ class _FilaResultado extends StatelessWidget {
         children: [
           Text(fila.detalle, maxLines: 1, overflow: TextOverflow.ellipsis),
           if (fila.nota != null)
-            Text(fila.nota!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: tema.textTheme.bodySmall
-                    ?.copyWith(color: tema.colorScheme.outline)),
+            Text(
+              fila.nota!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: tema.textTheme.bodySmall?.copyWith(
+                color: tema.colorScheme.outline,
+              ),
+            ),
         ],
       ),
       onTap: alElegir,

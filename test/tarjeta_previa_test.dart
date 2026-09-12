@@ -20,7 +20,7 @@ void main() {
   const anchoDelDoble = TarjetaPrevia.anchoPt * 2;
 
   CredencialPrevia previa({
-    String? codigoPadron = '2-IVI-1',
+    String? codigoPadron = '2IVI1',
     String apellidos = 'COLQUECHAMBI MAMANI',
     FirmantePrevio? ejecutivoFederacion = const FirmantePrevio(
       nombre: 'ANA QUISPE',
@@ -255,10 +255,7 @@ void main() {
       texto('CANDIDO COLQUECHAMBI MAMANI').style?.fontSize,
       TarjetaPrevia.valorPt * 2,
     );
-    expect(
-      texto('2-IVI-1').style?.fontSize,
-      TarjetaPrevia.numeroPlantillaPt * 2,
-    );
+    expect(texto('2IVI1').style?.fontSize, TarjetaPrevia.numeroPlantillaPt * 2);
   });
 
   testWidgets('el anverso lleva lo mismo que imprime el PDF', (tester) async {
@@ -270,7 +267,7 @@ void main() {
       'IVIRGARZAMA',
       'ALTO SAN SALVADOR',
       '12-A',
-      '2-IVI-1',
+      '2IVI1',
     ]) {
       expect(find.text(esperado), findsOneWidget, reason: 'falta «$esperado»');
     }

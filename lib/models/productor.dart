@@ -44,6 +44,8 @@ class Productor {
     this.credencialLista = false,
     this.clasificacion,
     this.revisionLotePendiente = false,
+    this.faseImpresionPendiente = false,
+    this.reimpresionFasePendiente = false,
     this.auditoria = Auditoria.habilitado,
   });
 
@@ -52,7 +54,7 @@ class Productor {
   final String? codigo;
 
   /// Código en el padrón: número de la federación, sigla de la central y número
-  /// del productor dentro de esa central, como `2-IVI-1`.
+  /// del productor dentro de esa central, como `2IVI1`.
   ///
   /// Null mientras la federación no tenga número o la central no tenga sigla.
   /// El backend prefiere no devolver nada antes que un código a medias, porque
@@ -89,6 +91,8 @@ class Productor {
   /// Clasificación conservada del Excel o de su parcela actual.
   final EstadoLote? clasificacion;
   final bool revisionLotePendiente;
+  final bool faseImpresionPendiente;
+  final bool reimpresionFasePendiente;
 
   String get resumenRevisionLote =>
       '${clasificacion?.etiqueta ?? 'Sin clasificación'} · Falta número de lote';
@@ -193,6 +197,9 @@ class Productor {
         ? null
         : EstadoLote.desde(json['clasificacion']),
     revisionLotePendiente: json['revisionLotePendiente'] as bool? ?? false,
+    faseImpresionPendiente: json['faseImpresionPendiente'] as bool? ?? false,
+    reimpresionFasePendiente:
+        json['reimpresionFasePendiente'] as bool? ?? false,
     auditoria: Auditoria.desdeJson(json['auditoria'] as Map<String, dynamic>?),
   );
 
@@ -207,6 +214,7 @@ enum EstadoRevisionSiePersistida {
   verificado,
   corregidoSie,
   corregidoManual,
+  aprobadoManual,
   diferenciaPendiente,
   noEncontrado,
   sinCedula;
@@ -221,6 +229,7 @@ enum EstadoRevisionSiePersistida {
         'VERIFICADO' => verificado,
         'CORREGIDO_SIE' => corregidoSie,
         'CORREGIDO_MANUAL' => corregidoManual,
+        'APROBADO_MANUAL' => aprobadoManual,
         'DIFERENCIA_PENDIENTE' => diferenciaPendiente,
         'NO_ENCONTRADO' => noEncontrado,
         'SIN_CEDULA' => sinCedula,
@@ -356,6 +365,7 @@ enum EstadoRevisionSie {
   requiereConfirmacion,
   conservada,
   corregida,
+  aprobadaManual,
   verificada,
   aceptadaSinCoincidencia,
   aceptadaSinCedula,
@@ -387,6 +397,7 @@ class RevisionSieProductor {
           'CONSERVADA' => EstadoRevisionSie.conservada,
           'CORREGIDA' => EstadoRevisionSie.corregida,
           'CORREGIDA_MANUAL' => EstadoRevisionSie.corregida,
+          'APROBADA_MANUAL' => EstadoRevisionSie.aprobadaManual,
           'VERIFICADA' => EstadoRevisionSie.verificada,
           'ACEPTADA_SIN_COINCIDENCIA' =>
             EstadoRevisionSie.aceptadaSinCoincidencia,

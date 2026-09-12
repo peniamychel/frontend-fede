@@ -146,7 +146,7 @@ class _ApiDetalle extends ApiClient {
           'apellidos': 'PÉREZ',
           'nombreCompleto': 'MARÍA PÉREZ',
           'ci': '123456',
-          'codigoPadron': '2-13J-100',
+          'codigoPadron': '213J100',
           'sindicatoId': 7,
           'sindicatoNombre': _sindicato,
           'centralId': 3,

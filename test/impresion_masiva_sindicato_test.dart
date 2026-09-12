@@ -109,12 +109,47 @@ void main() {
     expect(find.text('Cancelar todo el grupo'), findsOneWidget);
     expect(find.text('Guardar revisión (1)'), findsOneWidget);
   });
+
+  testWidgets('sin fase activa informa y bloquea los envíos a la Zebra', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      PadronScope(
+        padron: Padron(api: _ApiPanel(conFase: false)),
+        child: const MaterialApp(
+          home: PliegoPreviaPagina(sindicato: sindicato),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Primero habilitá una fase'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Impresiones faltantes (4)'),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Imprimir reversos'),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
 }
 
 class _ApiPanel extends ApiClient {
-  _ApiPanel({this.conUltimoGrupo = false});
+  _ApiPanel({this.conUltimoGrupo = false, this.conFase = true});
 
   final bool conUltimoGrupo;
+  final bool conFase;
 
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
@@ -132,6 +167,7 @@ class _ApiPanel extends ApiClient {
         'listosParaImprimir': 4,
         'faltantesDelSindicato': const [],
         'candidatos': const [],
+        if (conFase) 'faseActiva': const {'id': 7, 'numero': 1},
         if (conUltimoGrupo)
           'ultimoGrupo': {
             'id': 41,

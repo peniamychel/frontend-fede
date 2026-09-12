@@ -730,7 +730,12 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     try {
       final repo = PadronScope.of(context).productores;
       if (_esEdicion) {
-        await repo.actualizar(widget.productor!.id, request);
+        final actualizado = await repo.actualizar(
+          widget.productor!.id,
+          request,
+        );
+        if (!mounted) return;
+        await _avisarIncorporacionAFase(actualizado);
         if (!mounted) return;
         Navigator.of(context).pop(true);
         return;
@@ -760,6 +765,8 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
         }
       }
       if (!mounted) return;
+      await _avisarIncorporacionAFase(creado);
+      if (!mounted) return;
       await _abrirFicha(creado);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -775,6 +782,31 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
       setState(() => _guardando = false);
       mostrarError(context, e);
     }
+  }
+
+  Future<void> _avisarIncorporacionAFase(Productor productor) async {
+    if (!productor.faseImpresionPendiente || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.event_note_outlined),
+        title: const Text('Pendiente para una fase de impresión'),
+        content: Text(
+          productor.reimpresionFasePendiente
+              ? 'Los cambios fueron guardados. Como este productor ya tenía '
+                    'un carnet impreso, quedó reservado para la siguiente fase '
+                    'como reimpresión.'
+              : 'El productor fue guardado y quedó reservado para la próxima '
+                    'fase de impresión que corresponda.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

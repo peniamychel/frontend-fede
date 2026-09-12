@@ -120,7 +120,7 @@ class _ApiLote extends ApiClient {
     'sindicatoNombre': 'LIBERTAD',
     'centralId': 3,
     'centralNombre': '13 DE JUNIO',
-    'codigoPadron': '2-13J-100',
+    'codigoPadron': '213J100',
     'clasificacion': estado,
     'revisionLotePendiente': !guardado,
     'credencialLista': false,

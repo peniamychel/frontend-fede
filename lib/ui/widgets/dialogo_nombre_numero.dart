@@ -5,15 +5,15 @@ import 'package:flutter/services.dart';
 /// si se cargó.
 ///
 /// El segundo se sigue llamando `numero` por cómo nació el diálogo, pero ahí
-/// viaja lo que describa [SegundoCampo]: el número del sindicato, la sigla de
-/// la central o la descripción de un sistema.
+/// viaja lo que describa [SegundoCampo]: el número del sindicato, el código
+/// membretado de la central o la descripción de un sistema.
 typedef NombreYNumero = ({String nombre, String? numero});
 
 /// Qué se pide en el segundo campo del diálogo.
 ///
 /// Existe porque no todos los que abren este diálogo piden lo mismo ahí: el
-/// sindicato lleva un número, la central una sigla de tres letras y un sistema
-/// su descripción. Sin esto habría tres diálogos casi iguales, o uno con la
+/// sindicato lleva un número, la central un código membretado y un sistema su
+/// descripción. Sin esto habría tres diálogos casi iguales, o uno con la
 /// etiqueta equivocada.
 class SegundoCampo {
   const SegundoCampo({
@@ -45,18 +45,16 @@ class SegundoCampo {
     ayuda: 'Opcional. No puede repetirse.',
   );
 
-  /// La sigla de la central: tres caracteres, siempre en mayúsculas.
+  /// Código membretado de la central, siempre en mayúsculas.
   ///
   /// Admite números además de letras porque varias centrales empiezan con uno:
   /// la sigla de 1RO DE MAYO es 1MO.
   ///
-  /// El largo y las mayúsculas se imponen mientras se escribe en vez de avisar
-  /// después: son tres caracteres, no hay nada que explicar si el campo solo
-  /// deja escribir eso. El validador cubre lo que el formateador no puede, que
-  /// es haber escrito uno o dos y frenar ahí.
+  /// Conserva los códigos alfanuméricos de tres caracteres y admite además los
+  /// códigos compuestos únicamente por dos dígitos.
   static final abreviatura = SegundoCampo(
-    etiqueta: 'Abreviatura',
-    ayuda: 'Opcional. Tres letras o números, y no puede repetirse.',
+    etiqueta: 'Código membretado',
+    ayuda: 'Opcional.',
     formateadores: [
       // Las siglas también pueden contener letras españolas. El backend y la
       // base trabajan en UTF-8, así que no corresponde convertir Ñ en N ni
@@ -65,7 +63,9 @@ class SegundoCampo {
       LengthLimitingTextInputFormatter(3),
       _AMayusculas(),
     ],
-    validador: (v) => v.length == 3 ? null : 'Son tres caracteres',
+    validador: (v) => v.length == 3 || RegExp(r'^\d{2}$').hasMatch(v)
+        ? null
+        : 'Usá 3 letras o números, o 2 dígitos',
   );
 }
 

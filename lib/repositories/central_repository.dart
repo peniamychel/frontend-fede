@@ -1,6 +1,7 @@
 import '../core/api_client.dart';
 import '../core/api_config.dart';
 import '../models/central.dart';
+import '../models/fase_impresion.dart';
 import '../models/informe_impresion_central.dart';
 import '../models/sindicato.dart';
 
@@ -56,6 +57,38 @@ class CentralRepository {
   /// PDF con el mismo resumen y el desglose por sindicato.
   Uri urlInformeImpresion(int id) =>
       ApiConfig.uri('$_ruta/$id/credenciales/impresion/informe.pdf');
+
+  Future<DescargaBinaria> descargarInformePreImpresion(int id) =>
+      _api.obtenerBytes(
+        '$_ruta/$id/credenciales/impresion/informe-pre-impresion.pdf',
+      );
+
+  Future<EstadoFasesImpresionCentral> estadoFasesImpresion(int id) async {
+    final datos = await _api.obtener('$_ruta/$id/fases-impresion');
+    return EstadoFasesImpresionCentral.desdeJson(datos.comoObjeto);
+  }
+
+  Future<EstadoFasesImpresionCentral> habilitarFaseImpresion(int id) async {
+    final datos = await _api.crear(
+      '$_ruta/$id/fases-impresion/habilitar',
+      const {},
+    );
+    return EstadoFasesImpresionCentral.desdeJson(datos.comoObjeto);
+  }
+
+  Future<EstadoFasesImpresionCentral> cerrarFaseImpresion(
+    int id,
+    int faseId,
+  ) async {
+    final datos = await _api.crear(
+      '$_ruta/$id/fases-impresion/$faseId/cerrar',
+      const {},
+    );
+    return EstadoFasesImpresionCentral.desdeJson(datos.comoObjeto);
+  }
+
+  Future<DescargaBinaria> descargarInformeFase(int id, int faseId) =>
+      _api.obtenerBytes('$_ruta/$id/fases-impresion/$faseId/informe.pdf');
 
   /// Planilla física para recolectar sellos, firma y pie de firma.
   Uri urlPlanillaRecoleccionDirectorio(int id) => ApiConfig.uri(

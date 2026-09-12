@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fede/repositories/padron.dart';
 
-/// El código del padrón: 2-IVI-1.
+/// El código del padrón: 2IVI1.
 ///
 /// Se arma con el número de la federación, la sigla de la central y el número
 /// del productor dentro de esa central. Todo se hace sobre una federación
@@ -24,33 +24,38 @@ void main() {
   final centrales = <int>[];
 
   Future<Central> central(String nombre, String abreviatura) async {
-    final c = await padron.centrales.crear(CentralRequest(
-      nombre: nombre,
-      abreviatura: abreviatura,
-      federacionId: fede.id,
-    ));
+    final c = await padron.centrales.crear(
+      CentralRequest(
+        nombre: nombre,
+        abreviatura: abreviatura,
+        federacionId: fede.id,
+      ),
+    );
     centrales.add(c.id);
     return c;
   }
 
   Future<Sindicato> sindicato(String nombre, int centralId) async {
-    final s = await padron.sindicatos
-        .crear(SindicatoRequest(nombre: nombre, centralId: centralId));
+    final s = await padron.sindicatos.crear(
+      SindicatoRequest(nombre: nombre, centralId: centralId),
+    );
     sindicatos.add(s.id);
     return s;
   }
 
   Future<Productor> productor(String nombres, int sindicatoId) async {
     final p = await padron.productores.crear(
-        ProductorRequest(nombres: nombres, sindicatoId: sindicatoId));
+      ProductorRequest(nombres: nombres, sindicatoId: sindicatoId),
+    );
     productores.add(p.id);
     return p;
   }
 
   setUpAll(() async {
     padron = Padron();
-    fede = await padron.federaciones
-        .crear(const FederacionRequest(nombre: 'ZZZ COD FEDE', numero: '77'));
+    fede = await padron.federaciones.crear(
+      const FederacionRequest(nombre: 'ZZZ COD FEDE', numero: '77'),
+    );
   });
 
   tearDownAll(() async {
@@ -88,7 +93,7 @@ void main() {
 
     final p = await productor('ZZZ PRIMERO', s.id);
 
-    expect(p.codigoPadron, '77-CUN-1');
+    expect(p.codigoPadron, '77CUN1');
   });
 
   test('el siguiente sigue la cuenta, aunque sea de otro sindicato', () async {
@@ -101,8 +106,8 @@ void main() {
     final primero = await productor('ZZZ SEGUNDO A', unoS.id);
     final segundo = await productor('ZZZ SEGUNDO B', otroS.id);
 
-    expect(primero.codigoPadron, '77-CDO-1');
-    expect(segundo.codigoPadron, '77-CDO-2');
+    expect(primero.codigoPadron, '77CDO1');
+    expect(segundo.codigoPadron, '77CDO2');
   });
 
   test('cada central arranca de nuevo en 1', () async {
@@ -114,43 +119,53 @@ void main() {
     final aca = await productor('ZZZ TERCERO ACA', unaS.id);
     final alla = await productor('ZZZ TERCERO ALLA', otraS.id);
 
-    expect(aca.codigoPadron, '77-CTR-1');
-    expect(alla.codigoPadron, '77-CCU-1');
+    expect(aca.codigoPadron, '77CTR1');
+    expect(alla.codigoPadron, '77CCU1');
   });
 
   test('sin sigla en la central no hay código', () async {
     // Es el estado de todas las centrales hasta que alguien les ponga la sigla.
     final c = await padron.centrales.crear(
-        CentralRequest(nombre: 'ZZZ COD SIN SIGLA', federacionId: fede.id));
+      CentralRequest(nombre: 'ZZZ COD SIN SIGLA', federacionId: fede.id),
+    );
     centrales.add(c.id);
     final s = await sindicato('ZZZ COD SIND E', c.id);
 
     final p = await productor('ZZZ SIN CODIGO', s.id);
 
-    expect(p.codigoPadron, isNull,
-        reason: 'antes que un código a medias, ninguno');
-  });
-
-  test('ponerle la sigla a la central le da código a los que ya estaban',
-      () async {
-    // Por esto se guarda el número y no la cadena armada: los productores
-    // cargados antes de definir la sigla no hay que tocarlos.
-    final c = await padron.centrales.crear(
-        CentralRequest(nombre: 'ZZZ COD TARDIA', federacionId: fede.id));
-    centrales.add(c.id);
-    final s = await sindicato('ZZZ COD SIND F', c.id);
-    final p = await productor('ZZZ ESPERA SIGLA', s.id);
-    expect(p.codigoPadron, isNull);
-
-    await padron.centrales.actualizar(
-      c.id,
-      CentralRequest(
-          nombre: c.nombre, abreviatura: 'CTA', federacionId: fede.id),
+    expect(
+      p.codigoPadron,
+      isNull,
+      reason: 'antes que un código a medias, ninguno',
     );
-
-    final conCodigo = await padron.productores.obtener(p.id);
-    expect(conCodigo.productor.codigoPadron, '77-CTA-1');
   });
+
+  test(
+    'ponerle la sigla a la central le da código a los que ya estaban',
+    () async {
+      // Por esto se guarda el número y no la cadena armada: los productores
+      // cargados antes de definir la sigla no hay que tocarlos.
+      final c = await padron.centrales.crear(
+        CentralRequest(nombre: 'ZZZ COD TARDIA', federacionId: fede.id),
+      );
+      centrales.add(c.id);
+      final s = await sindicato('ZZZ COD SIND F', c.id);
+      final p = await productor('ZZZ ESPERA SIGLA', s.id);
+      expect(p.codigoPadron, isNull);
+
+      await padron.centrales.actualizar(
+        c.id,
+        CentralRequest(
+          nombre: c.nombre,
+          abreviatura: 'CTA',
+          federacionId: fede.id,
+        ),
+      );
+
+      final conCodigo = await padron.productores.obtener(p.id);
+      expect(conCodigo.productor.codigoPadron, '77CTA1');
+    },
+  );
 
   test('mudarse a otra central da número nuevo allá', () async {
     final origen = await central('ZZZ COD ORIGEN', 'COR');
@@ -161,15 +176,18 @@ void main() {
     // El destino ya tiene a alguien, así que el 1 está ocupado.
     await productor('ZZZ YA ESTABA', sDestino.id);
     final viajero = await productor('ZZZ SE MUDA', sOrigen.id);
-    expect(viajero.codigoPadron, '77-COR-1');
+    expect(viajero.codigoPadron, '77COR1');
 
     final mudado = await padron.productores.actualizar(
       viajero.id,
       ProductorRequest(nombres: viajero.nombres, sindicatoId: sDestino.id),
     );
 
-    expect(mudado.codigoPadron, '77-CDE-2',
-        reason: 'el número que traía era de la central que dejó');
+    expect(
+      mudado.codigoPadron,
+      '77CDE2',
+      reason: 'el número que traía era de la central que dejó',
+    );
   });
 
   test('cambiar de sindicato dentro de la misma central no lo toca', () async {
@@ -196,8 +214,8 @@ void main() {
 
     final uno = await productor('ZZZ MUDANZA A', s.id);
     final dos = await productor('ZZZ MUDANZA B', s.id);
-    expect(uno.codigoPadron, '77-CO2-1');
-    expect(dos.codigoPadron, '77-CO2-2');
+    expect(uno.codigoPadron, '77CO21');
+    expect(dos.codigoPadron, '77CO22');
 
     await padron.sindicatos.actualizar(
       s.id,
@@ -205,10 +223,14 @@ void main() {
     );
 
     // Llegan a una central vacía, así que arrancan de 1 y conservan el orden.
-    expect((await padron.productores.obtener(uno.id)).productor.codigoPadron,
-        '77-CD2-1');
-    expect((await padron.productores.obtener(dos.id)).productor.codigoPadron,
-        '77-CD2-2');
+    expect(
+      (await padron.productores.obtener(uno.id)).productor.codigoPadron,
+      '77CD21',
+    );
+    expect(
+      (await padron.productores.obtener(dos.id)).productor.codigoPadron,
+      '77CD22',
+    );
   });
 
   group('buscar por código', () {
@@ -218,37 +240,43 @@ void main() {
       final c = await central('ZZZ COD BUSCA', 'CBU');
       final s = await sindicato('ZZZ COD SIND BUSCA', c.id);
       final p = await productor('ZZZ BUSCAME', s.id);
-      expect(p.codigoPadron, '77-CBU-1');
+      expect(p.codigoPadron, '77CBU1');
 
-      final hallados =
-          (await padron.productores.listar(texto: '77-CBU-1')).contenido;
-
-      expect(hallados.map((x) => x.id), [p.id]);
-    });
-
-    test('el código de la credencial también, y sin importar mayúsculas',
-        () async {
-      final c = await central('ZZZ COD QR', 'CQR');
-      final s = await sindicato('ZZZ COD SIND QR', c.id);
-      final p = await productor('ZZZ DEL QR', s.id);
-      final codigo = (await padron.productores.obtener(p.id)).productor.codigo!;
-
-      final hallados = (await padron.productores
-              .listar(texto: codigo.toLowerCase()))
-          .contenido;
+      final hallados = (await padron.productores.listar(
+        texto: '77CBU1',
+      )).contenido;
 
       expect(hallados.map((x) => x.id), [p.id]);
     });
+
+    test(
+      'el código de la credencial también, y sin importar mayúsculas',
+      () async {
+        final c = await central('ZZZ COD QR', 'CQR');
+        final s = await sindicato('ZZZ COD SIND QR', c.id);
+        final p = await productor('ZZZ DEL QR', s.id);
+        final codigo = (await padron.productores.obtener(
+          p.id,
+        )).productor.codigo!;
+
+        final hallados = (await padron.productores.listar(
+          texto: codigo.toLowerCase(),
+        )).contenido;
+
+        expect(hallados.map((x) => x.id), [p.id]);
+      },
+    );
 
     test('un código de otra central no lo trae', () async {
-      // Sin esto, buscar «77-CBU-1» traería al 1 de cada central.
+      // Sin esto, buscar «77CBU1» traería al 1 de cada central.
       final c = await central('ZZZ COD OTRA', 'COT');
       final s = await sindicato('ZZZ COD SIND OTRA', c.id);
       final ajeno = await productor('ZZZ EL OTRO UNO', s.id);
-      expect(ajeno.codigoPadron, '77-COT-1');
+      expect(ajeno.codigoPadron, '77COT1');
 
-      final hallados =
-          (await padron.productores.listar(texto: '77-COT-1')).contenido;
+      final hallados = (await padron.productores.listar(
+        texto: '77COT1',
+      )).contenido;
 
       expect(hallados.map((x) => x.id), [ajeno.id]);
     });
@@ -256,29 +284,34 @@ void main() {
     test('buscar por nombre y por cédula sigue andando', () async {
       final c = await central('ZZZ COD NOMBRE', 'CNO');
       final s = await sindicato('ZZZ COD SIND NOMBRE', c.id);
-      final p = await padron.productores.crear(ProductorRequest(
-        nombres: 'ZZZ POR NOMBRE',
-        apellidos: 'APELLIDADO',
-        ci: '55443322',
-        sindicatoId: s.id,
-      ));
+      final p = await padron.productores.crear(
+        ProductorRequest(
+          nombres: 'ZZZ POR NOMBRE',
+          apellidos: 'APELLIDADO',
+          ci: '55443322',
+          sindicatoId: s.id,
+        ),
+      );
       productores.add(p.id);
 
       expect(
-          (await padron.productores.listar(texto: 'ZZZ POR NOMBRE'))
-              .contenido
-              .map((x) => x.id),
-          contains(p.id));
+        (await padron.productores.listar(
+          texto: 'ZZZ POR NOMBRE',
+        )).contenido.map((x) => x.id),
+        contains(p.id),
+      );
       expect(
-          (await padron.productores.listar(texto: 'APELLIDADO'))
-              .contenido
-              .map((x) => x.id),
-          contains(p.id));
+        (await padron.productores.listar(
+          texto: 'APELLIDADO',
+        )).contenido.map((x) => x.id),
+        contains(p.id),
+      );
       expect(
-          (await padron.productores.listar(texto: '55443322'))
-              .contenido
-              .map((x) => x.id),
-          contains(p.id));
+        (await padron.productores.listar(
+          texto: '55443322',
+        )).contenido.map((x) => x.id),
+        contains(p.id),
+      );
     });
   });
 }

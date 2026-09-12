@@ -34,51 +34,50 @@ void main() {
     String apellidos = 'MORALES',
     String? ci,
     String? codigoPadron,
-  }) =>
-      {
-        'id': id,
-        'nombres': nombres,
-        'apellidos': apellidos,
-        'nombreCompleto': '$nombres $apellidos',
-        'ci': ci,
-        'codigoPadron': codigoPadron,
-        'sindicatoId': 16,
-        'sindicatoNombre': 'LIBERTAD',
-        'centralId': 20,
-        'centralNombre': 'IVIRGARZAMA',
-        'tieneFoto': false,
-        'marcado': false,
-      };
+  }) => {
+    'id': id,
+    'nombres': nombres,
+    'apellidos': apellidos,
+    'nombreCompleto': '$nombres $apellidos',
+    'ci': ci,
+    'codigoPadron': codigoPadron,
+    'sindicatoId': 16,
+    'sindicatoNombre': 'LIBERTAD',
+    'centralId': 20,
+    'centralNombre': 'IVIRGARZAMA',
+    'tieneFoto': false,
+    'marcado': false,
+  };
 
   Map<String, dynamic> pagina(List<Map<String, dynamic>> contenido) => {
-        'content': contenido,
-        'number': 0,
-        'size': 20,
-        'totalElements': contenido.length,
-        'totalPages': 1,
-      };
+    'content': contenido,
+    'number': 0,
+    'size': 20,
+    'totalElements': contenido.length,
+    'totalPages': 1,
+  };
 
   /// Un botón que abre el diálogo, para poder tocarlo desde la prueba.
   Widget pantalla(_ApiEspia api, {required bool vetar}) => TemaScope(
-        preferencia: PreferenciaTema(),
-        child: PadronScope(
-          padron: Padron(api: api),
-          child: MaterialApp(
-            home: Scaffold(
-              body: Builder(
-                builder: (context) => Center(
-                  child: FilledButton(
-                    onPressed: () => vetar
-                        ? vetarEnLaReunion(context, reunion)
-                        : levantarEnLaReunion(context, reunion),
-                    child: const Text('abrir'),
-                  ),
-                ),
+    preferencia: PreferenciaTema(),
+    child: PadronScope(
+      padron: Padron(api: api),
+      child: MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: FilledButton(
+                onPressed: () => vetar
+                    ? vetarEnLaReunion(context, reunion)
+                    : levantarEnLaReunion(context, reunion),
+                child: const Text('abrir'),
               ),
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 
   Future<void> abrir(WidgetTester tester) async {
     await tester.tap(find.text('abrir'));
@@ -92,12 +91,17 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('la reunión ya está decidida: no se pregunta cuál', (tester) async {
+  testWidgets('la reunión ya está decidida: no se pregunta cuál', (
+    tester,
+  ) async {
     await tester.pumpWidget(pantalla(_ApiEspia(), vetar: true));
     await abrir(tester);
 
     // Antes había un desplegable de reuniones acá. Ahora la asamblea es esta.
-    expect(find.text('Vetar en «Ampliado ordinario de agosto»'), findsOneWidget);
+    expect(
+      find.text('Vetar en «Ampliado ordinario de agosto»'),
+      findsOneWidget,
+    );
     expect(find.byType(DropdownButtonFormField<Reunion?>), findsNothing);
   });
 
@@ -114,12 +118,13 @@ void main() {
     expect(find.textContaining('al menos dos letras'), findsOneWidget);
   });
 
-  testWidgets('busca por nombre, cédula o código y ofrece a quien encuentra',
-      (tester) async {
+  testWidgets('busca por nombre, cédula o código y ofrece a quien encuentra', (
+    tester,
+  ) async {
     final api = _ApiEspia({
       '/productores': pagina([
-        productor(id: 7, nombres: 'JUAN', ci: '3434', codigoPadron: '2-IVI-1'),
-        productor(id: 8, nombres: 'JUANA', ci: '9090', codigoPadron: '2-IVI-4'),
+        productor(id: 7, nombres: 'JUAN', ci: '3434', codigoPadron: '2IVI1'),
+        productor(id: 8, nombres: 'JUANA', ci: '9090', codigoPadron: '2IVI4'),
       ]),
     });
     await tester.pumpWidget(pantalla(api, vetar: true));
@@ -133,24 +138,26 @@ void main() {
     expect(find.text('JUANA MORALES'), findsOneWidget);
     // Cada línea trae con qué reconocerlo, que es de lo que se habla en la
     // asamblea cuando hay dos apellidos iguales.
-    expect(find.text('CI 3434 · 2-IVI-1 · LIBERTAD'), findsOneWidget);
+    expect(find.text('CI 3434 · 2IVI1 · LIBERTAD'), findsOneWidget);
   });
 
   testWidgets('sin elegir a nadie no se puede aceptar', (tester) async {
     await tester.pumpWidget(pantalla(_ApiEspia(), vetar: true));
     await abrir(tester);
 
-    final boton = tester.widget<FilledButton>(find.ancestor(
-      of: find.text('Vetar'),
-      matching: find.byType(FilledButton),
-    ));
+    final boton = tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.text('Vetar'),
+        matching: find.byType(FilledButton),
+      ),
+    );
     expect(boton.onPressed, isNull);
   });
 
   testWidgets('elegido a alguien, pide el motivo y lo exige', (tester) async {
     final api = _ApiEspia({
       '/productores': pagina([
-        productor(id: 7, nombres: 'JUAN', ci: '3434', codigoPadron: '2-IVI-1'),
+        productor(id: 7, nombres: 'JUAN', ci: '3434', codigoPadron: '2IVI1'),
       ]),
     });
     await tester.pumpWidget(pantalla(api, vetar: true));
@@ -177,17 +184,19 @@ void main() {
   testWidgets('con motivo, veta en esta reunión', (tester) async {
     final api = _ApiEspia({
       '/productores': pagina([
-        productor(id: 7, nombres: 'JUAN', ci: '3434', codigoPadron: '2-IVI-1'),
+        productor(id: 7, nombres: 'JUAN', ci: '3434', codigoPadron: '2IVI1'),
       ]),
     });
     await tester.pumpWidget(pantalla(api, vetar: true));
     await abrir(tester);
-    await buscar(tester, '2-IVI-1');
+    await buscar(tester, '2IVI1');
     await tester.tap(find.text('JUAN MORALES'));
     await tester.pumpAndSettle();
 
     await tester.enterText(
-        find.byType(TextFormField), 'Vendió fuera del cupo, según el acta');
+      find.byType(TextFormField),
+      'Vendió fuera del cupo, según el acta',
+    );
     await tester.tap(find.text('Vetar'));
     await tester.pumpAndSettle();
 
@@ -199,8 +208,9 @@ void main() {
     expect(enviado.cuerpo['motivo'], contains('cupo'));
   });
 
-  testWidgets('para quitar, busca entre los vetados igual que para poner',
-      (tester) async {
+  testWidgets('para quitar, busca entre los vetados igual que para poner', (
+    tester,
+  ) async {
     final api = _ApiEspia({
       '/vetos': [
         {
@@ -208,7 +218,7 @@ void main() {
           'productorId': 7,
           'productorNombre': 'JUAN MORALES',
           'ci': '3434',
-          'codigoPadron': '2-IVI-1',
+          'codigoPadron': '2IVI1',
           'motivo': 'Vendió fuera del cupo',
           'desde': '2026-03-12',
           'vigente': true,
@@ -223,20 +233,26 @@ void main() {
     await tester.pumpWidget(pantalla(api, vetar: false));
     await abrir(tester);
 
-    expect(find.text('Sacar de la lista en «Ampliado ordinario de agosto»'),
-        findsOneWidget);
+    expect(
+      find.text('Sacar de la lista en «Ampliado ordinario de agosto»'),
+      findsOneWidget,
+    );
 
     await buscar(tester, '3434');
 
     expect(api.rutasPedidas, ['/vetos']);
     expect(find.text('JUAN MORALES'), findsOneWidget);
     // Se ve por qué está vetado y quién lo vetó: es lo que se lee en el acta.
-    expect(find.textContaining('vetado en «Asamblea de marzo»'), findsOneWidget);
+    expect(
+      find.textContaining('vetado en «Asamblea de marzo»'),
+      findsOneWidget,
+    );
     expect(find.text('Vendió fuera del cupo'), findsOneWidget);
   });
 
-  testWidgets('no se ofrece levantar lo que esta misma reunión vetó',
-      (tester) async {
+  testWidgets('no se ofrece levantar lo que esta misma reunión vetó', (
+    tester,
+  ) async {
     // La asamblea que vetó no puede desdecirse en el mismo acto.
     final api = _ApiEspia({
       '/vetos': [
@@ -289,7 +305,9 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-        find.byType(TextFormField), 'Cumplió la sanción, según el acta');
+      find.byType(TextFormField),
+      'Cumplió la sanción, según el acta',
+    );
     await tester.tap(find.text('Levantar'));
     await tester.pumpAndSettle();
 
@@ -335,8 +353,11 @@ class _ApiEspia extends ApiClient {
   }
 
   @override
-  Future<Object?> reemplazar(String ruta, Object cuerpo,
-      {Map<String, dynamic>? query}) async {
+  Future<Object?> reemplazar(
+    String ruta,
+    Object cuerpo, {
+    Map<String, dynamic>? query,
+  }) async {
     reemplazados.add(_Llamada(ruta, cuerpo as Map<String, dynamic>));
     return {'id': 3, 'productorId': 7, 'productorNombre': 'JUAN MORALES'};
   }

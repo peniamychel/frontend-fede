@@ -20,7 +20,9 @@ class InformeImpresionCentralPagina extends StatefulWidget {
 class _InformeImpresionCentralPaginaState
     extends State<InformeImpresionCentralPagina> {
   late Future<_DatosPagina> _futuro;
-  bool _descargandoNominal = false;
+  bool _descargandoPreImpresion = false;
+  bool _cambiandoFase = false;
+  final Set<int> _descargandoFases = <int>{};
 
   @override
   void initState() {
@@ -36,7 +38,8 @@ class _InformeImpresionCentralPaginaState
       widget.central.id,
       ids,
     );
-    return _DatosPagina(avance: avance, nominal: nominal);
+    final fases = await repositorio.estadoFasesImpresion(widget.central.id);
+    return _DatosPagina(avance: avance, nominal: nominal, fases: fases);
   }
 
   Future<void> _recargar() async {
@@ -45,38 +48,122 @@ class _InformeImpresionCentralPaginaState
     await futuro;
   }
 
-  Future<void> _descargarNominal(List<int> sindicatoIds) async {
-    setState(() => _descargandoNominal = true);
+  Future<void> _descargarPreImpresion() async {
+    setState(() => _descargandoPreImpresion = true);
     try {
-      final descarga = await PadronScope.of(context).centrales
-          .descargarInformeNominalImpresion(widget.central.id, sindicatoIds);
+      final descarga = await PadronScope.of(
+        context,
+      ).centrales.descargarInformePreImpresion(widget.central.id);
       await guardarArchivo(
         descarga.bytes,
         descarga.nombreArchivo,
         descarga.tipoMime,
       );
-      if (mounted) mostrarExito(context, 'Informe nominal descargado en PDF.');
+      if (mounted) mostrarExito(context, 'Informe pre-impresión descargado.');
     } catch (e) {
       if (mounted) mostrarError(context, e);
     } finally {
-      if (mounted) setState(() => _descargandoNominal = false);
+      if (mounted) setState(() => _descargandoPreImpresion = false);
     }
   }
 
-  Future<void> _elegirYDescargar(_DatosPagina datos) async {
-    final seleccion = await showDialog<Set<int>>(
-      context: context,
-      builder: (context) => _DialogoSindicatos(
-        sindicatos: datos.avance.detalle,
-        seleccionados: datos.avance.detalle
-            .map((fila) => fila.sindicatoId)
-            .toSet(),
-      ),
+  Future<void> _habilitarFase(int numero) async {
+    final aceptar = await _confirmar(
+      titulo: 'Habilitar ${ordinalFase(numero)} fase de impresión',
+      mensaje:
+          'Mientras esta fase esté abierta, Windows podrá imprimir carnets. '
+          'Los productores pendientes y los preparados para reimpresión '
+          'quedarán controlados dentro de esta fase.',
+      accion: 'Habilitar fase',
     );
-    if (seleccion == null || seleccion.isEmpty || !mounted) return;
-    final ids = seleccion.toList(growable: false)..sort();
-    await _descargarNominal(ids);
+    if (!aceptar || !mounted) return;
+    setState(() => _cambiandoFase = true);
+    try {
+      await PadronScope.of(
+        context,
+      ).centrales.habilitarFaseImpresion(widget.central.id);
+      if (!mounted) return;
+      mostrarExito(context, '${ordinalFase(numero)} fase habilitada.');
+      await _recargar();
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    } finally {
+      if (mounted) setState(() => _cambiandoFase = false);
+    }
   }
+
+  Future<void> _cerrarFase(FaseImpresionCarnet fase) async {
+    final aceptar = await _confirmar(
+      titulo: 'Cerrar ${ordinalFase(fase.numero)} fase',
+      mensaje:
+          'Después de cerrarla ya no se podrán registrar impresiones en esta '
+          'fase. Sus pendientes pasarán a la próxima fase cuando la habilites.',
+      accion: 'Cerrar fase',
+    );
+    if (!aceptar || !mounted) return;
+    setState(() => _cambiandoFase = true);
+    try {
+      await PadronScope.of(
+        context,
+      ).centrales.cerrarFaseImpresion(widget.central.id, fase.id);
+      if (!mounted) return;
+      mostrarExito(context, '${ordinalFase(fase.numero)} fase cerrada.');
+      await _recargar();
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    } finally {
+      if (mounted) setState(() => _cambiandoFase = false);
+    }
+  }
+
+  Future<void> _descargarFase(FaseImpresionCarnet fase) async {
+    setState(() => _descargandoFases.add(fase.id));
+    try {
+      final descarga = await PadronScope.of(
+        context,
+      ).centrales.descargarInformeFase(widget.central.id, fase.id);
+      await guardarArchivo(
+        descarga.bytes,
+        descarga.nombreArchivo,
+        descarga.tipoMime,
+      );
+      if (mounted) {
+        mostrarExito(
+          context,
+          'Informe de la ${ordinalFase(fase.numero)} fase descargado.',
+        );
+      }
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    } finally {
+      if (mounted) setState(() => _descargandoFases.remove(fase.id));
+    }
+  }
+
+  Future<bool> _confirmar({
+    required String titulo,
+    required String mensaje,
+    required String accion,
+  }) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.print_outlined),
+          title: Text(titulo),
+          content: Text(mensaje),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(accion),
+            ),
+          ],
+        ),
+      ) ??
+      false;
 
   @override
   Widget build(BuildContext context) {
@@ -97,12 +184,14 @@ class _InformeImpresionCentralPaginaState
         constructor: (context, datos) => _Contenido(
           datos: datos,
           central: widget.central,
-          descargandoNominal: _descargandoNominal,
+          descargandoPreImpresion: _descargandoPreImpresion,
+          cambiandoFase: _cambiandoFase,
+          descargandoFases: _descargandoFases,
           alRecargar: _recargar,
-          alDescargarNominal: () => _descargarNominal(
-            datos.avance.detalle.map((fila) => fila.sindicatoId).toList(),
-          ),
-          alElegirNominal: () => _elegirYDescargar(datos),
+          alDescargarPreImpresion: _descargarPreImpresion,
+          alHabilitarFase: _habilitarFase,
+          alCerrarFase: _cerrarFase,
+          alDescargarFase: _descargarFase,
         ),
       ),
     );
@@ -110,10 +199,15 @@ class _InformeImpresionCentralPaginaState
 }
 
 class _DatosPagina {
-  const _DatosPagina({required this.avance, required this.nominal});
+  const _DatosPagina({
+    required this.avance,
+    required this.nominal,
+    required this.fases,
+  });
 
   final InformeImpresionCentral avance;
   final InformeNominalImpresionCentral nominal;
+  final EstadoFasesImpresionCentral fases;
 
   InformeNominalSindicato? nominalDe(int sindicatoId) {
     for (final sindicato in nominal.sindicatos) {
@@ -127,18 +221,26 @@ class _Contenido extends StatelessWidget {
   const _Contenido({
     required this.datos,
     required this.central,
-    required this.descargandoNominal,
+    required this.descargandoPreImpresion,
+    required this.cambiandoFase,
+    required this.descargandoFases,
     required this.alRecargar,
-    required this.alDescargarNominal,
-    required this.alElegirNominal,
+    required this.alDescargarPreImpresion,
+    required this.alHabilitarFase,
+    required this.alCerrarFase,
+    required this.alDescargarFase,
   });
 
   final _DatosPagina datos;
   final Central central;
-  final bool descargandoNominal;
+  final bool descargandoPreImpresion;
+  final bool cambiandoFase;
+  final Set<int> descargandoFases;
   final Future<void> Function() alRecargar;
-  final Future<void> Function() alDescargarNominal;
-  final Future<void> Function() alElegirNominal;
+  final Future<void> Function() alDescargarPreImpresion;
+  final Future<void> Function(int numero) alHabilitarFase;
+  final Future<void> Function(FaseImpresionCarnet fase) alCerrarFase;
+  final Future<void> Function(FaseImpresionCarnet fase) alDescargarFase;
 
   @override
   Widget build(BuildContext context) {
@@ -161,13 +263,21 @@ class _Contenido extends StatelessWidget {
           _AvanceGeneral(informe: informe),
           const SizedBox(height: 12),
           _AccionesInformes(
-            descargandoNominal: descargandoNominal,
+            descargandoPreImpresion: descargandoPreImpresion,
             alDescargarGeneral: () =>
                 descargarInformeImpresionCentral(context, central),
             alDescargarPlanilla: () =>
                 descargarPlanillaRecoleccionDirectorio(context, central),
-            alDescargarNominal: alDescargarNominal,
-            alElegirNominal: alElegirNominal,
+            alDescargarPreImpresion: alDescargarPreImpresion,
+          ),
+          const SizedBox(height: 12),
+          _PanelFasesImpresion(
+            estado: datos.fases,
+            cambiando: cambiandoFase,
+            descargando: descargandoFases,
+            alHabilitar: alHabilitarFase,
+            alCerrar: alCerrarFase,
+            alDescargar: alDescargarFase,
           ),
           const SizedBox(height: 18),
           Wrap(
@@ -186,15 +296,10 @@ class _Contenido extends StatelessWidget {
                 color: Colors.green,
               ),
               _Cifra(
-                etiqueta: 'No impresos',
+                etiqueta: 'Pendientes',
                 valor: informe.pendientes,
                 icono: Icons.pending_actions_outlined,
                 color: Colors.amber.shade800,
-              ),
-              _Cifra(
-                etiqueta: 'Pendientes con foto',
-                valor: informe.pendientesConFoto,
-                icono: Icons.photo_outlined,
               ),
               _Cifra(
                 etiqueta: 'Sin foto',
@@ -203,9 +308,21 @@ class _Contenido extends StatelessWidget {
                 color: tema.colorScheme.error,
               ),
               _Cifra(
-                etiqueta: 'Listos para imprimir',
-                valor: informe.listosParaImprimir,
-                icono: Icons.task_alt_outlined,
+                etiqueta: 'Observados',
+                valor: informe.observados,
+                icono: Icons.visibility_outlined,
+                color: Colors.orange.shade800,
+              ),
+              _Cifra(
+                etiqueta: 'Sistema',
+                valor: informe.sistema,
+                icono: Icons.settings_outlined,
+                color: Colors.green,
+              ),
+              _Cifra(
+                etiqueta: 'Sin sistema',
+                valor: informe.sinSistema,
+                icono: Icons.remove_circle_outline,
               ),
               _Cifra(
                 etiqueta: 'Sindicatos sin sello',
@@ -257,18 +374,16 @@ class _Contenido extends StatelessWidget {
 
 class _AccionesInformes extends StatelessWidget {
   const _AccionesInformes({
-    required this.descargandoNominal,
+    required this.descargandoPreImpresion,
     required this.alDescargarGeneral,
     required this.alDescargarPlanilla,
-    required this.alDescargarNominal,
-    required this.alElegirNominal,
+    required this.alDescargarPreImpresion,
   });
 
-  final bool descargandoNominal;
+  final bool descargandoPreImpresion;
   final Future<void> Function() alDescargarGeneral;
   final Future<void> Function() alDescargarPlanilla;
-  final Future<void> Function() alDescargarNominal;
-  final Future<void> Function() alElegirNominal;
+  final Future<void> Function() alDescargarPreImpresion;
 
   @override
   Widget build(BuildContext context) {
@@ -298,19 +413,16 @@ class _AccionesInformes extends StatelessWidget {
                   label: const Text('Planilla de sellos y firmas'),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: descargandoNominal ? null : alDescargarNominal,
-                  icon: const Icon(Icons.list_alt_outlined),
-                  label: const Text('Informe nominal completo'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: descargandoNominal ? null : alElegirNominal,
-                  icon: descargandoNominal
+                  onPressed: descargandoPreImpresion
+                      ? null
+                      : alDescargarPreImpresion,
+                  icon: descargandoPreImpresion
                       ? const SizedBox.square(
                           dimension: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.checklist_outlined),
-                  label: const Text('Informe nominal por sindicatos'),
+                      : const Icon(Icons.rule_folder_outlined),
+                  label: const Text('Informe pre-impresión'),
                 ),
               ],
             ),
@@ -353,9 +465,133 @@ class _AvanceGeneral extends StatelessWidget {
               borderRadius: BorderRadius.circular(99),
             ),
             const SizedBox(height: 8),
+            Text('${informe.impresos} de ${informe.total} carnets impresos'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PanelFasesImpresion extends StatelessWidget {
+  const _PanelFasesImpresion({
+    required this.estado,
+    required this.cambiando,
+    required this.descargando,
+    required this.alHabilitar,
+    required this.alCerrar,
+    required this.alDescargar,
+  });
+
+  final EstadoFasesImpresionCentral estado;
+  final bool cambiando;
+  final Set<int> descargando;
+  final Future<void> Function(int numero) alHabilitar;
+  final Future<void> Function(FaseImpresionCarnet fase) alCerrar;
+  final Future<void> Function(FaseImpresionCarnet fase) alDescargar;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final activa = estado.faseActiva;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Fases de impresión', style: tema.textTheme.titleMedium),
+            const SizedBox(height: 5),
             Text(
-              '${informe.impresos} de ${informe.total} credenciales impresas',
+              'Windows solo puede imprimir carnets mientras exista una fase '
+              'habilitada. Al cerrarla, su informe queda conservado.',
+              style: tema.textTheme.bodyMedium,
             ),
+            const SizedBox(height: 12),
+            if (activa == null)
+              FilledButton.icon(
+                onPressed: cambiando
+                    ? null
+                    : () => alHabilitar(estado.siguienteNumero),
+                icon: cambiando
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.play_arrow_outlined),
+                label: Text(
+                  'Habilitar ${ordinalFase(estado.siguienteNumero)} fase',
+                ),
+              )
+            else
+              Card(
+                margin: EdgeInsets.zero,
+                color: Colors.orange.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Icon(Icons.print_outlined, color: Colors.orange.shade900),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${ordinalFase(activa.numero)} fase de impresión habilitada',
+                              style: tema.textTheme.titleSmall?.copyWith(
+                                color: Colors.orange.shade900,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              '${activa.impresos} impresos · '
+                              '${activa.pendientes} pendientes',
+                            ),
+                          ],
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: cambiando ? null : () => alCerrar(activa),
+                        icon: const Icon(Icons.stop_circle_outlined),
+                        label: const Text('Cerrar fase'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (estado.historial.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Text('Historial e informes', style: tema.textTheme.titleSmall),
+              const SizedBox(height: 6),
+              for (final fase in estado.historial)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    fase.abierta
+                        ? Icons.play_circle_outline
+                        : Icons.check_circle_outline,
+                    color: fase.abierta ? Colors.orange : Colors.green,
+                  ),
+                  title: Text('${ordinalFase(fase.numero)} fase'),
+                  subtitle: Text(
+                    '${fase.impresos} impresos · ${fase.pendientes} pendientes '
+                    '· ${fase.abierta ? 'Habilitada' : 'Cerrada'}',
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Descargar informe de la fase',
+                    onPressed: descargando.contains(fase.id)
+                        ? null
+                        : () => alDescargar(fase),
+                    icon: descargando.contains(fase.id)
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.picture_as_pdf_outlined),
+                  ),
+                ),
+            ],
           ],
         ),
       ),
@@ -435,7 +671,7 @@ class _Sindicato extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${fila.impresos} impresos · ${fila.pendientes} no impresos'),
+            Text('${fila.impresos} impresos · ${fila.pendientes} pendientes'),
             const SizedBox(height: 6),
             Row(
               children: [
@@ -466,10 +702,12 @@ class _Sindicato extends StatelessWidget {
             children: [
               Text('Total: ${fila.total}'),
               Text('Impresos: ${fila.impresos}'),
-              Text('No impresos: ${fila.pendientes}'),
-              Text('Con foto: ${fila.pendientesConFoto}'),
+              Text('Pendientes: ${fila.pendientes}'),
               Text('Sin foto: ${fila.sinFoto}'),
-              Text('Listos: ${fila.listosParaImprimir}'),
+              Text('Observados: ${fila.observados}'),
+              Text('Sistema: ${fila.sistema}'),
+              Text('Sin sistema: ${fila.sinSistema}'),
+              Text('Avance: ${_porcentaje(porcentaje)}%'),
               Text(
                 fila.selloCargado ? 'Sello: cargado' : 'Sello: falta cargar',
                 style: TextStyle(
@@ -592,81 +830,6 @@ class _ListaNominal extends StatelessWidget {
                     : fila.datosFaltantes.join(', '),
               ),
             ),
-      ],
-    );
-  }
-}
-
-class _DialogoSindicatos extends StatefulWidget {
-  const _DialogoSindicatos({
-    required this.sindicatos,
-    required this.seleccionados,
-  });
-
-  final List<AvanceImpresionSindicato> sindicatos;
-  final Set<int> seleccionados;
-
-  @override
-  State<_DialogoSindicatos> createState() => _DialogoSindicatosState();
-}
-
-class _DialogoSindicatosState extends State<_DialogoSindicatos> {
-  late Set<int> _seleccion;
-
-  @override
-  void initState() {
-    super.initState();
-    _seleccion = {...widget.seleccionados};
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final todos = _seleccion.length == widget.sindicatos.length;
-    return AlertDialog(
-      title: const Text('Seleccionar sindicatos'),
-      content: SizedBox(
-        width: 480,
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            CheckboxListTile(
-              value: todos,
-              tristate: true,
-              title: const Text('Toda la central'),
-              onChanged: (_) => setState(() {
-                _seleccion = todos
-                    ? <int>{}
-                    : widget.sindicatos.map((s) => s.sindicatoId).toSet();
-              }),
-            ),
-            const Divider(),
-            for (final sindicato in widget.sindicatos)
-              CheckboxListTile(
-                value: _seleccion.contains(sindicato.sindicatoId),
-                title: Text(sindicato.sindicato),
-                subtitle: Text('${sindicato.total} productores'),
-                onChanged: (valor) => setState(() {
-                  if (valor ?? false) {
-                    _seleccion.add(sindicato.sindicatoId);
-                  } else {
-                    _seleccion.remove(sindicato.sindicatoId);
-                  }
-                }),
-              ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: _seleccion.isEmpty
-              ? null
-              : () => Navigator.pop(context, _seleccion),
-          child: const Text('Descargar PDF'),
-        ),
       ],
     );
   }

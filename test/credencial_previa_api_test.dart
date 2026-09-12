@@ -121,7 +121,7 @@ void main() {
       }
 
       // Lo que sí está, ya se muestra como va a salir.
-      expect(previa.codigoPadron, '88-ZPV-1');
+      expect(previa.codigoPadron, '88ZPV1');
       expect(previa.federacion, contains('ZZZ PREVIA FEDE'));
     },
   );

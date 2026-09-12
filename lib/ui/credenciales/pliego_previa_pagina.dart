@@ -6,7 +6,7 @@ import '../widgets/estados.dart';
 import 'impresion_credencial.dart';
 import 'tarjeta_previa.dart';
 
-/// Estado de credenciales e impresión masiva por sindicato.
+/// Estado de carnets e impresión masiva por sindicato.
 /// Android y web consultan el mismo estado; el envío físico se habilita solo
 /// en la aplicación nativa de Windows.
 class PliegoPreviaPagina extends StatefulWidget {
@@ -69,7 +69,9 @@ class _PliegoPreviaPaginaState extends State<PliegoPreviaPagina> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Impresión · ${widget.sindicato.nombre}'),
+        title: Text(
+          'Estado e impresión de carnets · ${widget.sindicato.nombre}',
+        ),
         actions: [
           IconButton(
             tooltip: 'Actualizar cantidades',
@@ -110,6 +112,8 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fase = panel.faseActiva;
+    final faseHabilitada = fase != null;
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -149,6 +153,48 @@ class _Panel extends StatelessWidget {
         ],
         if (permiteImprimir) ...[
           const SizedBox(height: 24),
+          if (!faseHabilitada)
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: const Padding(
+                padding: EdgeInsets.all(16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.lock_outline),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Primero habilitá una fase en Avance de impresión de '
+                        'la central. Sin una fase abierta no se pueden enviar '
+                        'ni contabilizar carnets.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Card(
+              color: Colors.orange.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(Icons.print_outlined, color: Colors.orange.shade900),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${ordinalFase(fase.numero)} fase de impresión habilitada',
+                      style: TextStyle(
+                        color: Colors.orange.shade900,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
           const _SelectorImpresoraMasiva(),
           const SizedBox(height: 28),
           Text('Acciones', style: Theme.of(context).textTheme.titleLarge),
@@ -158,7 +204,7 @@ class _Panel extends StatelessWidget {
             runSpacing: 12,
             children: [
               FilledButton.icon(
-                onPressed: panel.listosParaImprimir == 0
+                onPressed: !faseHabilitada || panel.listosParaImprimir == 0
                     ? null
                     : () => _abrirFaltantes(context),
                 icon: const Icon(Icons.print_outlined),
@@ -167,7 +213,9 @@ class _Panel extends StatelessWidget {
                 ),
               ),
               FilledButton.tonalIcon(
-                onPressed: panel.candidatos.any((c) => c.seleccionable)
+                onPressed:
+                    faseHabilitada &&
+                        panel.candidatos.any((c) => c.seleccionable)
                     ? () => _abrirSelectiva(context)
                     : null,
                 icon: const Icon(Icons.checklist_outlined),
@@ -181,7 +229,9 @@ class _Panel extends StatelessWidget {
                 label: const Text('Revisar última impresión'),
               ),
               OutlinedButton.icon(
-                onPressed: () => _imprimirReversos(context),
+                onPressed: faseHabilitada
+                    ? () => _imprimirReversos(context)
+                    : null,
                 icon: const Icon(Icons.flip_outlined),
                 label: const Text('Imprimir reversos'),
               ),
