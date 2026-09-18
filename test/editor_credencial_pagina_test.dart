@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fede/models/diseno_credencial.dart';
+import 'package:fede/ui/credenciales/fuentes_bajo_demanda.dart';
 
 import 'package:fede/core/api_client.dart';
 import 'package:fede/repositories/padron.dart';
@@ -7,6 +9,10 @@ import 'package:fede/ui/credenciales/editor_credencial_pagina.dart';
 import 'package:fede/ui/padron_scope.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    await Future.wait(FuenteCredencial.values.map(cargarFuenteCredencial));
+  });
   Widget pantalla() => PadronScope(
     padron: Padron(api: _ApiDiseno()),
     child: const MaterialApp(home: EditorCredencialPagina()),

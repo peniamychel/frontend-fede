@@ -36,10 +36,7 @@ void main() {
       expect(find.text('OTRA FEDERACIÓN'), findsNothing);
       expect(find.text('Centrales de CARRASCO TROPICAL'), findsOneWidget);
       expect(find.byTooltip('Avance general de impresión'), findsOneWidget);
-      expect(
-        find.byTooltip('Informe de impresión de la central'),
-        findsNWidgets(2),
-      );
+      expect(find.byTooltip('Informes y reportes central'), findsNWidgets(2));
 
       final alfa = find.byKey(const ValueKey('central-19'));
       final central = find.byKey(const ValueKey('central-20'));
@@ -86,7 +83,14 @@ void main() {
         '19',
       ]);
 
-      await tester.tap(find.byTooltip('Restablecer orden alfabético'));
+      await tester.tap(find.byTooltip('Ordenar centrales'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Código membretado'));
+      await tester.pumpAndSettle();
+      expect(preferencias.getBool('jerarquia.orden_codigo.carrasco'), isTrue);
+      await tester.tap(find.byTooltip('Ordenar centrales'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Restablecer orden alfabético'));
       await tester.pumpAndSettle();
       expect(
         tester.getTopLeft(alfa).dy,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/fondo_ia.dart';
+import '../../core/guardar_archivo.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/estados.dart';
@@ -205,6 +206,7 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
         url: url,
         titulo: 'Fotografía',
         subtitulo: '${foto.dimensiones} · ${foto.tamanoLegible}',
+        alDescargar: () => _descargar(),
       ),
       child: Stack(
         fit: StackFit.expand,
@@ -237,6 +239,22 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
   }
 
   // ---------- Acciones ----------
+
+  Future<void> _descargar() async {
+    try {
+      final archivo = await PadronScope.of(
+        context,
+      ).productores.descargarFotografia(widget.productorId);
+      await guardarArchivo(
+        archivo.bytes,
+        archivo.nombreArchivo,
+        archivo.tipoMime,
+      );
+      if (mounted) mostrarExito(context, 'Fotografía descargada.');
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    }
+  }
 
   Future<void> _elegirYSubir() async {
     final origen = await showModalBottomSheet<ImageSource>(
@@ -307,10 +325,12 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
       bytes: bytes,
     );
 
-    final decision = await showDialog<_Decision>(
-      context: context,
-      builder: (context) => _VistaPrevia(archivo: elegido),
-    );
+    final decision = await Navigator.of(context, rootNavigator: true)
+        .push<_Decision>(
+          MaterialPageRoute<_Decision>(
+            builder: (context) => _VistaPrevia(archivo: elegido),
+          ),
+        );
     if (decision == null || !mounted) return;
 
     setState(() => _ocupado = true);
@@ -381,8 +401,7 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
   }
 }
 
-/// Lo que devuelve el diálogo: null si se canceló, o el recorte elegido —que a
-/// su vez puede ser null cuando se quiere la imagen entera.
+/// Fotografía preparada por el editor. Al cancelar, la ruta devuelve null.
 class _Decision {
   const _Decision({required this.bytes, required this.nombreArchivo});
 
@@ -390,11 +409,7 @@ class _Decision {
   final String nombreArchivo;
 }
 
-/// Vista previa con recorte, antes de mandar la foto.
-///
-/// No bloquea por peso: el archivo puede pesar lo que sea y el servidor lo
-/// reduce. Lo que sí permite es elegir qué parte conservar, porque muchas fotos
-/// de padrón traen mucho fondo y lo que importa es la cara.
+/// Editor a pantalla completa para preparar la fotografía antes de subirla.
 class _VistaPrevia extends StatefulWidget {
   const _VistaPrevia({required this.archivo});
 
@@ -406,181 +421,150 @@ class _VistaPrevia extends StatefulWidget {
 
 class _VistaPreviaState extends State<_VistaPrevia> {
   Recorte? _recorte;
-  Uint8List? _fotoPreparada;
   bool _quitarFondo = true;
   bool _procesando = false;
   bool _ajustandoRecorte = false;
   String? _errorPreparacion;
+
+  bool get _esPng => widget.archivo.name.toLowerCase().endsWith('.png');
+  bool get _soloRecortar => _esPng && !_quitarFondo;
 
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final bytes = Uint8List.fromList(widget.archivo.bytes!);
 
-    return AlertDialog(
-      title: const Text('Recortar y subir'),
-      content: SizedBox(
-        width: 460,
-        child: SingleChildScrollView(
-          physics: _ajustandoRecorte
-              ? const NeverScrollableScrollPhysics()
-              : null,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Acomodá cabeza y hombros dentro del cuadro. La foto se '
-                'guardará cuadrada.',
-                style: tema.textTheme.bodySmall?.copyWith(
-                  color: tema.colorScheme.outline,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              RecortadorImagen(
-                bytes: bytes,
-                alCambiar: (recorte) {
-                  if (!mounted) return;
-                  setState(() {
-                    _recorte = recorte;
-                    _fotoPreparada = null;
-                    _errorPreparacion = null;
-                  });
-                },
-                proporcionFija: Proporcion.cuadrada,
-                alCambiarInteraccion: (ajustando) {
-                  if (!mounted || _ajustandoRecorte == ajustando) return;
-                  setState(() => _ajustandoRecorte = ajustando);
-                },
-              ),
-              const SizedBox(height: 12),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                value: _quitarFondo,
-                onChanged: _procesando
-                    ? null
-                    : (valor) => setState(() {
-                        _quitarFondo = valor;
-                        _fotoPreparada = null;
-                        _errorPreparacion = null;
-                      }),
-                title: const Text('Quitar fondo'),
-                subtitle: Text(
-                  _quitarFondo
-                      ? 'Conserva automáticamente a la persona y guarda PNG transparente.'
-                      : 'Guarda el recorte cuadrado sin eliminar el fondo.',
-                  style: tema.textTheme.bodySmall,
-                ),
-              ),
-              if (_fotoPreparada != null) ...[
-                const SizedBox(height: 8),
-                Text('Vista previa', style: tema.textTheme.labelLarge),
-                const SizedBox(height: 6),
-                Center(
-                  child: Container(
-                    width: 180,
-                    height: 180,
-                    decoration: BoxDecoration(
-                      color: tema.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
+    return Scaffold(
+      appBar: AppBar(title: const Text('Recortar y subir')),
+      body: SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              physics: _ajustandoRecorte
+                  ? const NeverScrollableScrollPhysics()
+                  : null,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Acomodá cabeza y hombros dentro del cuadro. La foto se '
+                    'guardará cuadrada.',
+                    style: tema.textTheme.bodySmall?.copyWith(
+                      color: tema.colorScheme.outline,
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Image.memory(_fotoPreparada!, fit: BoxFit.cover),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'PNG cuadrado · ${pesoLegible(_fotoPreparada!.length)}',
-                  textAlign: TextAlign.center,
-                  style: tema.textTheme.bodySmall?.copyWith(
-                    color: tema.colorScheme.outline,
-                  ),
-                ),
-              ],
-              if (_errorPreparacion != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _errorPreparacion!,
-                  textAlign: TextAlign.center,
-                  style: tema.textTheme.bodySmall?.copyWith(
-                    color: tema.colorScheme.error,
-                  ),
-                ),
-              ],
-              Text(
-                widget.archivo.name,
-                style: tema.textTheme.bodySmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-              ),
-              Text(
-                pesoLegible(widget.archivo.size),
-                style: tema.textTheme.bodySmall?.copyWith(
-                  color: tema.colorScheme.outline,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: tema.colorScheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.auto_awesome,
-                      size: 18,
-                      color: tema.colorScheme.onSecondaryContainer,
+                  const SizedBox(height: 12),
+                  AbsorbPointer(
+                    absorbing: _procesando,
+                    child: RecortadorImagen(
+                      bytes: bytes,
+                      alCambiar: (recorte) {
+                        if (!mounted) return;
+                        setState(() {
+                          _recorte = recorte;
+                          _errorPreparacion = null;
+                        });
+                      },
+                      proporcionFija: Proporcion.cuadrada,
+                      alCambiarInteraccion: (ajustando) {
+                        if (!mounted || _ajustandoRecorte == ajustando) return;
+                        setState(() => _ajustandoRecorte = ajustando);
+                      },
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Primero se prepara una vista previa. La foto se procesa '
-                        'localmente en este equipo; no se envía a un servicio externo.',
-                        style: tema.textTheme.bodySmall?.copyWith(
-                          color: tema.colorScheme.onSecondaryContainer,
-                        ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_esPng)
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: _quitarFondo,
+                      onChanged: _procesando
+                          ? null
+                          : (valor) => setState(() {
+                              _quitarFondo = valor;
+                              _errorPreparacion = null;
+                            }),
+                      title: const Text('Quitar fondo'),
+                      subtitle: Text(
+                        _quitarFondo
+                            ? 'Conserva automáticamente a la persona y guarda PNG transparente.'
+                            : 'Guardar recortando la imagen: este PNG ya está sin fondo.',
+                        style: tema.textTheme.bodySmall,
+                      ),
+                    ),
+                  if (_errorPreparacion != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _errorPreparacion!,
+                      textAlign: TextAlign.center,
+                      style: tema.textTheme.bodySmall?.copyWith(
+                        color: tema.colorScheme.error,
                       ),
                     ),
                   ],
-                ),
+                  Text(
+                    widget.archivo.name,
+                    style: tema.textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                  Text(
+                    pesoLegible(widget.archivo.size),
+                    style: tema.textTheme.bodySmall?.copyWith(
+                      color: tema.colorScheme.outline,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
+              ),
+              if (!_soloRecortar)
+                OutlinedButton.icon(
+                  onPressed: _procesando ? null : _preparar,
+                  icon: _procesando
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.auto_fix_high_outlined, size: 18),
+                  label: Text(_procesando ? 'Procesando…' : 'Procesar imagen'),
+                ),
+              if (_soloRecortar)
+                FilledButton(
+                  onPressed:
+                      _procesando || _ajustandoRecorte || _recorte == null
+                      ? null
+                      : _preparar,
+                  child: Text(
+                    _soloRecortar && _procesando ? 'Procesando…' : 'Subir',
+                  ),
+                ),
             ],
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        OutlinedButton.icon(
-          onPressed: _procesando ? null : _preparar,
-          icon: _procesando
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.auto_fix_high_outlined, size: 18),
-          label: Text(_procesando ? 'Procesando…' : 'Preparar vista previa'),
-        ),
-        FilledButton(
-          onPressed: _fotoPreparada == null || _procesando
-              ? null
-              : () => Navigator.of(context).pop(
-                  _Decision(
-                    bytes: _fotoPreparada!,
-                    nombreArchivo: _nombrePng(),
-                  ),
-                ),
-          child: const Text('Subir'),
-        ),
-      ],
     );
   }
 
@@ -601,17 +585,46 @@ class _VistaPreviaState extends State<_VistaPrevia> {
     setState(() {
       _procesando = true;
       _errorPreparacion = null;
-      _fotoPreparada = null;
     });
     try {
       final resultado = await prepararFotoSinFondo(
         bytes: Uint8List.fromList(widget.archivo.bytes!),
         recorte: recorte,
-        quitarFondo: _quitarFondo,
+        quitarFondo: !_soloRecortar,
         tipoMime: _tipoMime(),
       );
       if (!mounted) return;
-      setState(() => _fotoPreparada = resultado.bytes);
+      if (!_soloRecortar) {
+        final aceptada = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Vista previa'),
+            scrollable: true,
+            content: SizedBox(
+              width: 420,
+              height: (MediaQuery.sizeOf(context).height * .5).clamp(1, 420),
+              child: ColoredBox(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: Image.memory(resultado.bytes, fit: BoxFit.contain),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Atrás'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Subir'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || aceptada != true) return;
+      }
+      Navigator.of(
+        context,
+      ).pop(_Decision(bytes: resultado.bytes, nombreArchivo: _nombrePng()));
     } catch (e) {
       if (!mounted) return;
       setState(() => _errorPreparacion = '$e');

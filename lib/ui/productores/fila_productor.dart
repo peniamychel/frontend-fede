@@ -13,10 +13,12 @@ class FilaProductor extends StatelessWidget {
     required this.productor,
     required this.alTocar,
     this.mostrarRuta = true,
+    this.seleccionado = false,
   });
 
   final Productor productor;
   final VoidCallback alTocar;
+  final bool seleccionado;
 
   /// Dentro de un sindicato concreto la ruta es la misma en todas las filas y
   /// solo ocupa espacio.
@@ -37,11 +39,33 @@ class FilaProductor extends StatelessWidget {
       if (productor.revisionLotePendiente) productor.resumenRevisionLote,
       if (productor.observado)
         'Observado: ${productor.observacion ?? 'Sin detalle'}',
-      if (productor.revisionSieBloqueaImpresion) 'Revisión SIE pendiente',
+      if (productor.revisionSiePendiente ||
+          productor.revisionSieBloqueaImpresion)
+        'Revisión SIE pendiente',
     ];
 
     return ListTile(
+      key: ValueKey('fila-productor-${productor.id}'),
       onTap: alTocar,
+      selected: seleccionado,
+      tileColor: productor.revisionSiePendiente
+          ? tema.colorScheme.surfaceContainerHighest
+          : null,
+      textColor: productor.revisionSiePendiente
+          ? tema.colorScheme.outline
+          : null,
+      selectedColor: productor.revisionSiePendiente
+          ? tema.colorScheme.outline
+          : null,
+      selectedTileColor: tema.colorScheme.primaryContainer.withValues(
+        alpha: 0.55,
+      ),
+      shape: seleccionado
+          ? RoundedRectangleBorder(
+              side: BorderSide(color: tema.colorScheme.primary, width: 1.5),
+              borderRadius: BorderRadius.circular(8),
+            )
+          : null,
       leading: _avatar(context),
       title: TituloConEstado(
         nombre: productor.nombreCompleto.isEmpty

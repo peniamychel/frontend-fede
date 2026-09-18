@@ -44,9 +44,24 @@ void main() {
     expect(find.byTooltip('Clasificación: Sin clasificación'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('resalta la fila del productor seleccionado', (tester) async {
+    await _mostrarFila(tester, seleccionado: true);
+
+    final fila = tester.widget<ListTile>(
+      find.byKey(const ValueKey('fila-productor-42')),
+    );
+    expect(fila.selected, isTrue);
+    expect(fila.selectedTileColor, isNotNull);
+    expect(fila.shape, isA<RoundedRectangleBorder>());
+  });
 }
 
-Future<void> _mostrarFila(WidgetTester tester, {String? clasificacion}) async {
+Future<void> _mostrarFila(
+  WidgetTester tester, {
+  String? clasificacion,
+  bool seleccionado = false,
+}) async {
   final productor = Productor.desdeJson({
     'id': 42,
     'nombres': 'MARÍA',
@@ -65,7 +80,11 @@ Future<void> _mostrarFila(WidgetTester tester, {String? clasificacion}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
-        body: FilaProductor(productor: productor, alTocar: () {}),
+        body: FilaProductor(
+          productor: productor,
+          seleccionado: seleccionado,
+          alTocar: () {},
+        ),
       ),
     ),
   );

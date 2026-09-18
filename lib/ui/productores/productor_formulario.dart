@@ -785,6 +785,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   }
 
   Future<void> _avisarIncorporacionAFase(Productor productor) async {
+    if (productor.credencialImpresa) return;
     if (!productor.faseImpresionPendiente || !mounted) return;
     await showDialog<void>(
       context: context,

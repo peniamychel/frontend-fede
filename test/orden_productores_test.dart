@@ -86,6 +86,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.ultimaConsulta?['sort'], ['updatedAt,desc', 'id,desc']);
+      expect(find.text('Central'), findsNothing);
+      expect(find.text('Sindicato'), findsNothing);
+      expect(find.byType(TextField), findsOneWidget);
+      await tester.tap(find.byTooltip('Ordenar productores'));
+      await tester.pumpAndSettle();
       expect(find.text('Modificados recientemente'), findsOneWidget);
     },
   );

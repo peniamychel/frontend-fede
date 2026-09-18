@@ -47,10 +47,14 @@ class JerarquiaPagina extends StatefulWidget {
 
 class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   static const _claveCentralFijada = 'jerarquia.central_fijada.carrasco';
+  static const _claveOrdenCodigo = 'jerarquia.orden_codigo.carrasco';
+  bool _ordenPorCodigo = false;
 
   Federacion? _federacion;
   Central? _central;
   Sindicato? _sindicato;
+  int? _centralSeleccionadaId;
+  int? _sindicatoSeleccionadoId;
   List<int> _centralesFijadasIds = const [];
 
   late Future<Federacion> _federacionFija;
@@ -118,7 +122,12 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
           valores.map(int.tryParse).whereType<int>().toList(growable: false),
         _ => const <int>[],
       };
-      if (mounted) setState(() => _centralesFijadasIds = ids);
+      if (mounted) {
+        setState(() {
+          _centralesFijadasIds = ids;
+          _ordenPorCodigo = preferencias.getBool(_claveOrdenCodigo) ?? false;
+        });
+      }
     } catch (_) {
       // La lista sigue alfabética si el dispositivo no permite guardar la
       // preferencia. Esta comodidad no debe impedir usar la jerarquía.
@@ -137,14 +146,26 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   }
 
   Future<void> _ordenarCentralesAlfabeticamente() async {
-    if (_centralesFijadasIds.isEmpty) return;
-    setState(() => _centralesFijadasIds = const []);
+    setState(() {
+      _centralesFijadasIds = const [];
+      _ordenPorCodigo = false;
+    });
+    await _guardarCentralesFijadas();
+  }
+
+  Future<void> _cambiarOrdenCentrales(String orden) async {
+    if (orden == 'restaurar') {
+      await _ordenarCentralesAlfabeticamente();
+      return;
+    }
+    setState(() => _ordenPorCodigo = orden == 'codigo');
     await _guardarCentralesFijadas();
   }
 
   Future<void> _guardarCentralesFijadas() async {
     try {
       final preferencias = await SharedPreferences.getInstance();
+      await preferencias.setBool(_claveOrdenCodigo, _ordenPorCodigo);
       if (_centralesFijadasIds.isEmpty) {
         await preferencias.remove(_claveCentralFijada);
       } else {
@@ -168,6 +189,20 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       }
       if (posicionA >= 0) return -1;
       if (posicionB >= 0) return 1;
+      if (_ordenPorCodigo) {
+        final codigoA = (a.abreviatura ?? '').trim().toUpperCase();
+        final codigoB = (b.abreviatura ?? '').trim().toUpperCase();
+        if (codigoA.isEmpty != codigoB.isEmpty) return codigoA.isEmpty ? 1 : -1;
+        final numeroA = int.tryParse(codigoA);
+        final numeroB = int.tryParse(codigoB);
+        if ((numeroA == null) != (numeroB == null)) {
+          return numeroA == null ? 1 : -1;
+        }
+        final comparacion = numeroA != null && numeroB != null
+            ? numeroA.compareTo(numeroB)
+            : codigoA.compareTo(codigoB);
+        if (comparacion != 0) return comparacion;
+      }
       return a.nombre.toUpperCase().compareTo(b.nombre.toUpperCase());
     });
     return resultado;
@@ -201,6 +236,8 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
 
   void _elegirCentral(Central c) {
     setState(() {
+      if (_centralSeleccionadaId != c.id) _sindicatoSeleccionadoId = null;
+      _centralSeleccionadaId = c.id;
       _central = c;
       _sindicato = null;
     });
@@ -353,16 +390,34 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     return _Panel(
       titulo: 'Centrales de ${f.nombre}',
       detalleTitulo: _centralesFijadasIds.isEmpty
-          ? 'Orden alfabético'
+          ? (_ordenPorCodigo
+                ? 'Orden por código membretado'
+                : 'Orden alfabético')
           : '${_centralesFijadasIds.length} '
                 '${_centralesFijadasIds.length == 1 ? 'central fijada' : 'centrales fijadas'} arriba',
       acciones: [
-        IconButton(
-          tooltip: 'Restablecer orden alfabético',
-          onPressed: _centralesFijadasIds.isEmpty
-              ? null
-              : _ordenarCentralesAlfabeticamente,
+        PopupMenuButton<String>(
+          tooltip: 'Ordenar centrales',
+          initialValue: _ordenPorCodigo ? 'codigo' : 'nombre',
+          onSelected: _cambiarOrdenCentrales,
           icon: const Icon(Icons.sort_by_alpha),
+          itemBuilder: (_) => [
+            CheckedPopupMenuItem(
+              value: 'nombre',
+              checked: !_ordenPorCodigo,
+              child: const Text('Orden alfabético'),
+            ),
+            CheckedPopupMenuItem(
+              value: 'codigo',
+              checked: _ordenPorCodigo,
+              child: const Text('Código membretado'),
+            ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'restaurar',
+              child: Text('Restablecer orden alfabético'),
+            ),
+          ],
         ),
       ],
       alAgregar: () => _crearCentral(f),
@@ -382,7 +437,11 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
               for (final c in ordenadas)
                 ListTile(
                   key: ValueKey('central-${c.id}'),
-                  selected: _central?.id == c.id,
+                  selected: _centralSeleccionadaId == c.id,
+                  selectedTileColor: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withValues(alpha: 0.55),
+                  shape: _bordeSeleccion(_centralSeleccionadaId == c.id),
                   leading: IconButton(
                     tooltip: _centralesFijadasIds.contains(c.id)
                         ? 'Quitar de arriba'
@@ -407,7 +466,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        tooltip: 'Informe de impresión de la central',
+                        tooltip: 'Informes y reportes central',
                         onPressed: () => _verInformeImpresionCentral(c),
                         icon: const Icon(Icons.analytics_outlined, size: 20),
                       ),
@@ -556,7 +615,11 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
               children: [
                 for (final s in lista)
                   ListTile(
-                    selected: _sindicato?.id == s.id,
+                    selected: _sindicatoSeleccionadoId == s.id,
+                    selectedTileColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withValues(alpha: 0.55),
+                    shape: _bordeSeleccion(_sindicatoSeleccionadoId == s.id),
                     leading: const Icon(Icons.groups_outlined),
                     title: TituloConEstado(
                       nombre: s.nombre,
@@ -650,6 +713,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   }
 
   void _verProductores(Sindicato s) {
+    setState(() => _sindicatoSeleccionadoId = s.id);
     final ancho = MediaQuery.sizeOf(context).width;
     if (_permiteMesaDeTrabajo(ancho)) {
       setState(() => _sindicato = s);
@@ -661,6 +725,16 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       ),
     );
   }
+
+  ShapeBorder? _bordeSeleccion(bool seleccionado) => seleccionado
+      ? RoundedRectangleBorder(
+          side: BorderSide(
+            color: Theme.of(context).colorScheme.primary,
+            width: 1.5,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        )
+      : null;
 
   /// Abre el directorio de cualquiera de los tres niveles.
   Future<void> _verDirectorio(DirectorioPagina pagina) async {

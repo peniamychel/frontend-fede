@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fede/models/diseno_credencial.dart';
+import 'package:fede/ui/credenciales/fuentes_bajo_demanda.dart';
 
 import 'package:fede/core/preferencia_tema.dart';
 import 'package:fede/repositories/padron.dart';
@@ -15,6 +17,10 @@ import 'package:fede/ui/padron_scope.dart';
 /// recién al abrir la pantalla, así que sin esta prueba nadie lo veía hasta
 /// apretar el botón.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    await Future.wait(FuenteCredencial.values.map(cargarFuenteCredencial));
+  });
   setUp(() {
     debugImpresionDeCredencialesDisponible = true;
   });

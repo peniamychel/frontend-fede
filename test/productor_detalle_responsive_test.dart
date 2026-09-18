@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,11 +7,117 @@ import 'package:fede/core/preferencia_tema.dart';
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/padron_scope.dart';
 import 'package:fede/ui/productores/productor_detalle_pagina.dart';
+import 'package:fede/ui/productores/imagenes_productor.dart';
 
 const _central = 'CENTRAL REGIONAL DE PRODUCTORES TRECE DE JUNIO';
 const _sindicato = 'SINDICATO AGRARIO PRIMERO DE MAYO DE CARRASCO TROPICAL';
 
 void main() {
+  testWidgets('destaca nombres, apellidos, cédula y lote en tres líneas', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final tema = PreferenciaTema();
+    addTearDown(tema.dispose);
+    await tester.pumpWidget(
+      TemaScope(
+        preferencia: tema,
+        child: PadronScope(
+          padron: Padron(api: _ApiDetalle(conLote: true)),
+          child: const MaterialApp(
+            home: ProductorDetallePagina(productorId: 42),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final nombres = find.descendant(
+      of: find.byKey(const ValueKey('productor-nombres')),
+      matching: find.byType(Text),
+    );
+    final apellidos = find.descendant(
+      of: find.byKey(const ValueKey('productor-apellidos')),
+      matching: find.byType(Text),
+    );
+    final cedulaLote = find.descendant(
+      of: find.byKey(const ValueKey('productor-cedula-lote')),
+      matching: find.byType(Text),
+    );
+    expect(find.text('MARÍA'), findsOneWidget);
+    expect(find.text('PÉREZ'), findsOneWidget);
+    expect(find.text('C.I.: 123456   N.° de lote: 15 A'), findsOneWidget);
+
+    final textos = [
+      tester.widget<Text>(nombres),
+      tester.widget<Text>(apellidos),
+      tester.widget<Text>(cedulaLote),
+    ];
+    expect(textos.map((texto) => texto.style?.fontSize).toSet(), hasLength(1));
+    expect(textos.every((texto) => texto.maxLines == 1), isTrue);
+    expect(
+      tester.getTopLeft(nombres).dy,
+      lessThan(tester.getTopLeft(apellidos).dy),
+    );
+    expect(
+      tester.getTopLeft(apellidos).dy,
+      lessThan(tester.getTopLeft(cedulaLote).dy),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('conserva el scroll al recargar después de subir la foto', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final tema = PreferenciaTema();
+    addTearDown(tema.dispose);
+    final api = _ApiDetalle(conFoto: true);
+    await tester.pumpWidget(
+      TemaScope(
+        preferencia: tema,
+        child: PadronScope(
+          padron: Padron(api: api),
+          child: const MaterialApp(
+            home: ProductorDetallePagina(productorId: 42),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Fotografía'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    final antes = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .pixels;
+    expect(antes, greaterThan(0));
+    final carga = Completer<void>();
+    api.esperaDetalle = carga.future;
+    tester
+        .widget<ImagenesProductor>(find.byType(ImagenesProductor))
+        .alCambiar();
+    await tester.pump();
+    expect(find.byType(ImagenesProductor), findsNothing);
+    carga.complete();
+    await tester.pumpAndSettle();
+    final despues = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .pixels;
+    expect(despues, closeTo(antes, 1));
+    expect(find.text('Fotografía').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('muestra una fotografía sin contar ni describir la miniatura', (
     tester,
   ) async {
@@ -32,7 +140,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SelectionArea), findsOneWidget);
     for (final texto in [
-      'MARÍA PÉREZ',
+      'MARÍA',
+      'PÉREZ',
       'Central: $_central',
       'Sindicato: $_sindicato',
     ]) {
@@ -134,11 +243,14 @@ void main() {
 }
 
 class _ApiDetalle extends ApiClient {
-  _ApiDetalle({this.conFoto = false});
+  _ApiDetalle({this.conFoto = false, this.conLote = false});
   final bool conFoto;
+  final bool conLote;
+  Future<void>? esperaDetalle;
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
     if (ruta == '/productores/42') {
+      await esperaDetalle;
       return {
         'productor': {
           'id': 42,
@@ -153,7 +265,18 @@ class _ApiDetalle extends ApiClient {
           'centralNombre': _central,
           'auditoria': {'estado': false},
         },
-        'lotes': <dynamic>[],
+        'lotes': [
+          if (conLote)
+            {
+              'id': 9,
+              'numero': '15',
+              'extension': 'A',
+              'codigo': '15 A',
+              'estado': 'CON_SISTEMA',
+              'sindicatoId': 7,
+              'sindicatoNombre': _sindicato,
+            },
+        ],
         'imagenes': [
           if (conFoto) ...[
             {

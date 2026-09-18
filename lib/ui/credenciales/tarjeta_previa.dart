@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'fuentes_bajo_demanda.dart';
 
 import '../../core/api_config.dart';
 import '../../models/credencial_previa.dart';
@@ -55,34 +56,44 @@ class TarjetaPrevia extends StatelessWidget {
     // Dibujar primero en el lienzo completo y reducirlo como una sola pieza.
     // Reducir solo el Container deformaba la plantilla y recortaba los objetos,
     // que seguían posicionados según `ancho` (420 por defecto).
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: Alignment.topLeft,
-      child: MediaQuery.withNoTextScaling(
-        // El tamaño de letra pertenece al diseño impreso, no al ajuste del móvil.
-        child: Container(
-          width: ancho,
-          height: _p(altoPt),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: grisLinea),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x22000000),
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(
-            children: [
-              if (!elementos.any(
-                (e) => e.tipo == TipoElementoCredencial.plantilla,
-              ))
-                _plantilla(),
-              for (final elemento in elementos) ..._dibujar(elemento),
-            ],
+    return FuentesBajoDemanda(
+      fuentes: elementos
+          .where(
+            (e) =>
+                e.tipo == TipoElementoCredencial.texto ||
+                e.tipo == TipoElementoCredencial.pieFirma,
+          )
+          .map((e) => e.fuente)
+          .toSet(),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.topLeft,
+        child: MediaQuery.withNoTextScaling(
+          // El tamaño de letra pertenece al diseño impreso, no al ajuste del móvil.
+          child: Container(
+            width: ancho,
+            height: _p(altoPt),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: grisLinea),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x22000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              children: [
+                if (!elementos.any(
+                  (e) => e.tipo == TipoElementoCredencial.plantilla,
+                ))
+                  _plantilla(),
+                for (final elemento in elementos) ..._dibujar(elemento),
+              ],
+            ),
           ),
         ),
       ),

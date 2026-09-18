@@ -9,6 +9,7 @@ import '../padron_scope.dart';
 import '../widgets/estados.dart';
 import '../widgets/zona_soltar_archivos.dart';
 import 'tarjeta_previa.dart';
+import 'fuentes_bajo_demanda.dart';
 
 class EditorCredencialPagina extends StatefulWidget {
   const EditorCredencialPagina({super.key});
@@ -755,12 +756,15 @@ class _PanelPropiedades extends StatelessWidget {
                       for (final fuente in FuenteCredencial.values)
                         DropdownMenuItem(
                           value: fuente,
-                          child: Text(
-                            '${fuente.etiqueta} — ${fuente.descripcion}',
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontFamily: fuente.familiaFlutter,
-                              fontWeight: FontWeight.w700,
+                          child: FuentesBajoDemanda(
+                            fuentes: {fuente},
+                            child: Text(
+                              '${fuente.etiqueta} — ${fuente.descripcion}',
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontFamily: fuente.familiaFlutter,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ),

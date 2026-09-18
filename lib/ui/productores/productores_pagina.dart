@@ -29,6 +29,7 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
   Central? _central;
   Sindicato? _sindicato;
   OrdenProductores _orden = OrdenProductores.recientes;
+  int? _productorSeleccionadoId;
 
   List<Central> _centrales = const [];
   List<Sindicato> _sindicatos = const [];
@@ -157,8 +158,11 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
                         label: const Text('Importar desde Excel'),
                       ),
               ),
-              constructor: (context, p) =>
-                  FilaProductor(productor: p, alTocar: () => _abrir(p)),
+              constructor: (context, p) => FilaProductor(
+                productor: p,
+                seleccionado: p.id == _productorSeleccionadoId,
+                alTocar: () => _abrir(p),
+              ),
             ),
           ),
         ],
@@ -273,19 +277,32 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
             );
           }
 
-          return Column(
+          return Row(
             children: [
-              buscador,
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: filtroCentral),
-                  const SizedBox(width: 12),
-                  Expanded(child: filtroSindicato),
+              Expanded(child: buscador),
+              const SizedBox(width: 8),
+              PopupMenuButton<OrdenProductores>(
+                tooltip: 'Ordenar productores',
+                initialValue: _orden,
+                icon: const Icon(Icons.sort_by_alpha),
+                onSelected: (orden) => setState(() => _orden = orden),
+                itemBuilder: (context) => [
+                  for (final orden in OrdenProductores.values)
+                    PopupMenuItem(
+                      value: orden,
+                      child: Row(
+                        children: [
+                          Icon(
+                            orden == _orden ? Icons.check : Icons.sort,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(orden.etiqueta)),
+                        ],
+                      ),
+                    ),
                 ],
               ),
-              const SizedBox(height: 12),
-              selectorOrden,
             ],
           );
         },
@@ -299,6 +316,8 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
         builder: (_) => ProductorDetallePagina(productorId: p.id),
       ),
     );
+    if (!mounted) return;
+    setState(() => _productorSeleccionadoId = p.id);
     if (cambio == true) {
       await _lista.currentState?.refrescarConservandoPosicion();
     }

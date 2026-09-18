@@ -24,11 +24,19 @@
   async function obtenerSegmentador() {
     if (segmentador) return segmentador;
     if (cargando) return cargando;
-    if (typeof SelfieSegmentation === 'undefined') {
-      throw new Error('No se pudo cargar el motor local de eliminación de fondo.');
-    }
-
-    cargando = Promise.resolve().then(() => {
+    cargando = Promise.resolve().then(async () => {
+      if (typeof SelfieSegmentation === 'undefined') {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = rutaMediaPipe('selfie_segmentation.js');
+          script.onload = resolve;
+          script.onerror = () => {
+            script.remove();
+            reject(new Error('No se pudo cargar el motor local. Vuelve a intentar.'));
+          };
+          document.head.appendChild(script);
+        });
+      }
       const nuevo = new SelfieSegmentation({
         locateFile: rutaMediaPipe,
       });
@@ -36,6 +44,9 @@
       nuevo.setOptions({modelSelection: 0});
       segmentador = nuevo;
       return nuevo;
+    }).catch(error => {
+      cargando = null;
+      throw error;
     });
     return cargando;
   }

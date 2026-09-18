@@ -33,6 +33,7 @@ class _SindicatoProductoresPaginaState
   Timer? _rebote;
   String _texto = '';
   OrdenProductores _orden = OrdenProductores.apellidos;
+  int? _productorSeleccionadoId;
 
   @override
   void dispose() {
@@ -182,6 +183,7 @@ class _SindicatoProductoresPaginaState
               constructor: (context, p) => FilaProductor(
                 productor: p,
                 mostrarRuta: false,
+                seleccionado: p.id == _productorSeleccionadoId,
                 alTocar: () => _abrir(p),
               ),
             ),
@@ -197,6 +199,8 @@ class _SindicatoProductoresPaginaState
         builder: (_) => ProductorDetallePagina(productorId: p.id),
       ),
     );
+    if (!mounted) return;
+    setState(() => _productorSeleccionadoId = p.id);
     if (cambio == true) {
       await _lista.currentState?.refrescarConservandoPosicion();
     }

@@ -54,11 +54,6 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
       widget.productorId,
     );
     FaseImpresionCarnet? faseActiva;
-    if (impresionDeCredencialesDisponible && previa.centralId > 0) {
-      faseActiva = (await padron.centrales.estadoFasesImpresion(
-        previa.centralId,
-      )).faseActiva;
-    }
     try {
       final editor = await padron.disenoCredencial.obtener();
       final diseno = editor.diseno.elementos.isEmpty
@@ -91,7 +86,7 @@ class _CredencialPreviaPaginaState extends State<CredencialPreviaPagina> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Vista previa de la credencial'),
+        title: const Text('Vista previa de carnet de productor'),
         actions: [
           IconButton(
             tooltip: 'Volver a revisar',
@@ -337,33 +332,19 @@ class _Informe extends StatelessWidget {
           const SizedBox(height: 16),
           Card(
             margin: EdgeInsets.zero,
-            color: faseActiva == null
-                ? tema.colorScheme.errorContainer
-                : Colors.orange.shade50,
+            color: tema.colorScheme.surfaceContainerHighest,
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Row(
                 children: [
-                  Icon(
-                    faseActiva == null
-                        ? Icons.lock_outline
-                        : Icons.print_outlined,
-                    color: faseActiva == null
-                        ? tema.colorScheme.onErrorContainer
-                        : Colors.orange.shade900,
-                  ),
+                  Icon(Icons.print_outlined, color: tema.colorScheme.onSurface),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      faseActiva == null
-                          ? 'Primero habilitá una fase desde Avance de '
-                                'impresión de la central.'
-                          : '${ordinalFase(faseActiva!.numero)} fase de '
-                                'impresión habilitada',
+                      'Impresión manual sin fase activa. El anverso se suma al '
+                      'contador y se incluirá en el informe de la siguiente fase.',
                       style: TextStyle(
-                        color: faseActiva == null
-                            ? tema.colorScheme.onErrorContainer
-                            : Colors.orange.shade900,
+                        color: tema.colorScheme.onSurface,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -375,7 +356,7 @@ class _Informe extends StatelessWidget {
         ],
         const SizedBox(height: 24),
         PanelImpresionCredencial(
-          habilitada: previa.completa && faseActiva != null,
+          habilitada: previa.completa,
           nombre: previa.nombreCompleto,
           cargar: cargar,
           alAnversoImpreso: alAnversoImpreso,

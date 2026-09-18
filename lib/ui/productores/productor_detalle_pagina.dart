@@ -29,6 +29,9 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
 
   /// Si se tocó algo, la lista de la que venimos tiene que recargarse.
   bool _huboCambios = false;
+  bool _editoProductorImpreso = false;
+  bool _reimpresionSolicitada = false;
+  bool _saliendo = false;
 
   /// Resultado de la revisión automática realizada durante esta apertura.
   RevisionSieProductor? _revisionSie;
@@ -201,7 +204,11 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
 
     // Al completar se relee la ficha para mostrar de inmediato la corrección.
     // Una caída temporal no apaga la marca: se intentará en otra apertura.
-    if (resultado.completada) {
+    if (resultado.completada ||
+        resultado.estado == EstadoRevisionSie.requiereConfirmacion) {
+      // La revisión también modifica el estado aunque el nombre coincida.
+      // La lista debe releerlo al volver para retirar el aspecto pendiente.
+      _huboCambios = true;
       detalle = await padron.productores.obtener(widget.productorId);
     }
     return detalle;
@@ -643,7 +650,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (fueDescartado, _) {
-        if (!fueDescartado) Navigator.of(context).pop(_huboCambios);
+        if (!fueDescartado) _salir();
       },
       child: Scaffold(
         appBar: AppBar(
@@ -678,10 +685,12 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     _nombre = p.nombreCompleto;
 
     return ListView(
+      key: PageStorageKey('ficha-productor-${widget.productorId}'),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
       children: [
         _Encabezado(
           productor: p,
+          numeroLote: detalle.lotes.isEmpty ? null : detalle.lotes.first.codigo,
           tieneFotografia: tieneFotografia,
           verificandoSie: _verificandoSie,
           alVerificarConSie: p.tieneSugerenciaSie
@@ -760,22 +769,39 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
         const SizedBox(height: 24),
         _cargosDirectorio(context),
         const SizedBox(height: 24),
-        _Seccion(
-          titulo: 'Fotografía',
-          hijo: Padding(
-            padding: const EdgeInsets.all(8),
-            child: ImagenesProductor(
-              productorId: p.id,
-              imagenes: detalle.imagenes,
-              alCambiar: () {
-                _huboCambios = true;
-                _recargar();
-              },
-            ),
-          ),
+        LayoutBuilder(
+          builder: (context, restricciones) {
+            final fotografia = _Seccion(
+              titulo: 'Fotografía',
+              hijo: Padding(
+                padding: const EdgeInsets.all(8),
+                child: ImagenesProductor(
+                  productorId: p.id,
+                  imagenes: detalle.imagenes,
+                  alCambiar: () {
+                    _huboCambios = true;
+                    _recargar();
+                  },
+                ),
+              ),
+            );
+            final parcela = _seccionParcela(context, detalle);
+            if (restricciones.maxWidth < 800) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [fotografia, const SizedBox(height: 24), parcela],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: fotografia),
+                const SizedBox(width: 24),
+                Expanded(child: parcela),
+              ],
+            );
+          },
         ),
-        const SizedBox(height: 24),
-        _seccionParcela(context, detalle),
       ],
     );
   }
@@ -906,25 +932,77 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     );
   }
 
+  Future<void> _salir() async {
+    if (_saliendo || _agregandoReimpresion) return;
+    _saliendo = true;
+    try {
+      if (_editoProductorImpreso && !_reimpresionSolicitada) {
+        final agregar = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('¿Agregar para reimpresión?'),
+            content: const Text(
+              'Editaste los datos de un productor cuyo carnet ya fue impreso. '
+              '¿Querés agregarlo para reimpresión? Si no hay una fase activa, '
+              'quedará reservado para la siguiente fase de impresión.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('No, salir'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Sí, agregar'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || agregar == null) return;
+        if (agregar) {
+          await PadronScope.of(
+            context,
+          ).productores.agregarReimpresionAFase(widget.productorId);
+          _reimpresionSolicitada = true;
+          _huboCambios = true;
+        }
+      }
+      if (mounted) Navigator.of(context).pop(_huboCambios);
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    } finally {
+      _saliendo = false;
+    }
+  }
+
   Future<void> _editar(Productor p) async {
     final guardado = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => ProductorFormulario(productor: p)),
     );
     if (guardado == true) {
       _huboCambios = true;
+      if (p.credencialImpresa && !p.reimpresionFasePendiente) {
+        _editoProductorImpreso = true;
+      }
       _recargar();
     }
   }
 
   Future<void> _agregarReimpresion(Productor p) async {
+    final cancelar = p.reimpresionFasePendiente;
     final confirmado = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.replay_outlined),
-        title: const Text('Agregar para reimpresión'),
+        title: Text(
+          cancelar ? 'Cancelar reimpresión' : 'Agregar para reimpresión',
+        ),
         content: Text(
-          '${p.nombreCompleto} quedará pendiente dentro de la fase activa. '
-          'Su carnet podrá seleccionarse nuevamente en la impresión masiva.',
+          cancelar
+              ? '¿Querés quitar a ${p.nombreCompleto} de la reimpresión pendiente? '
+                    'Se conservarán sus impresiones anteriores.'
+              : '${p.nombreCompleto} quedará pendiente para reimpresión. '
+                    'Si no hay una fase activa, se incorporará al habilitar la siguiente.',
         ),
         actions: [
           TextButton(
@@ -933,7 +1011,9 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Agregar a la fase'),
+            child: Text(
+              cancelar ? 'Sí, cancelar reimpresión' : 'Agregar a la fase',
+            ),
           ),
         ],
       ),
@@ -941,10 +1021,22 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     if (confirmado != true || !mounted) return;
     setState(() => _agregandoReimpresion = true);
     try {
-      await PadronScope.of(context).productores.agregarReimpresionAFase(p.id);
+      final repositorio = PadronScope.of(context).productores;
+      if (cancelar) {
+        await repositorio.cancelarReimpresion(p.id);
+      } else {
+        await repositorio.agregarReimpresionAFase(p.id);
+      }
       if (!mounted) return;
+      _reimpresionSolicitada = !cancelar;
+      if (cancelar) _editoProductorImpreso = false;
       _huboCambios = true;
-      mostrarExito(context, 'Productor agregado para reimpresión.');
+      mostrarExito(
+        context,
+        cancelar
+            ? 'Reimpresión cancelada.'
+            : 'Productor agregado para reimpresión.',
+      );
       _recargar();
     } catch (e) {
       if (mounted) mostrarError(context, e);
@@ -969,6 +1061,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
 class _Encabezado extends StatelessWidget {
   const _Encabezado({
     required this.productor,
+    required this.numeroLote,
     required this.tieneFotografia,
     required this.verificandoSie,
     required this.alVerificarConSie,
@@ -981,6 +1074,7 @@ class _Encabezado extends StatelessWidget {
   });
 
   final Productor productor;
+  final String? numeroLote;
   final bool tieneFotografia;
   final bool verificandoSie;
   final VoidCallback alVerificarConSie;
@@ -994,159 +1088,190 @@ class _Encabezado extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
+    final estiloDatoPrincipal = tema.textTheme.headlineSmall?.copyWith(
+      color: productor.habilitado ? null : tema.colorScheme.outline,
+    );
+    final nombres = (productor.nombresCorregidos ?? productor.nombres).trim();
+    final apellidos =
+        (productor.apellidosCorregidos ?? productor.apellidos ?? '').trim();
+    final cedula = productor.ci?.trim();
+    final lote = numeroLote?.trim();
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            LayoutBuilder(
-              builder: (context, restricciones) {
-                final nombre = Text(
-                  productor.nombreCompleto.isEmpty
-                      ? productor.nombres
-                      : productor.nombreCompleto,
-                  style: tema.textTheme.headlineSmall?.copyWith(
-                    color: productor.habilitado
-                        ? null
-                        : tema.colorScheme.outline,
-                  ),
-                );
-                final acciones = Wrap(
-                  children: [
-                    IconButton(
-                      tooltip: productor.habilitado
-                          ? 'Deshabilitar'
-                          : 'Habilitar',
-                      onPressed: alCambiarEstado,
-                      icon: Icon(
-                        productor.habilitado
-                            ? Icons.block
-                            : Icons.check_circle_outline,
-                      ),
-                    ),
-                    if (productor.credencialImpresa)
-                      IconButton(
-                        tooltip: 'Agregar a la fase activa para reimpresión',
-                        onPressed: agregandoReimpresion
-                            ? null
-                            : alAgregarReimpresion,
-                        icon: agregandoReimpresion
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Icon(
-                                Icons.replay_outlined,
-                                color: productor.reimpresionFasePendiente
-                                    ? Colors.orange.shade800
-                                    : null,
-                              ),
-                      ),
-                    IconButton(
-                      tooltip: productor.tieneSugerenciaSie
-                          ? 'Aceptar sugerencia SIE'
-                          : 'Verificar con SIE',
-                      onPressed: verificandoSie ? null : alVerificarConSie,
-                      icon: verificandoSie
-                          ? const SizedBox.square(
-                              dimension: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.fact_check_outlined),
-                    ),
-                    IconButton(
-                      tooltip: productor.observado
-                          ? 'Editar observación'
-                          : 'Marcar como observado',
-                      onPressed: alEditarObservacion,
-                      icon: Icon(
-                        Icons.report_problem_outlined,
-                        color: productor.observado
-                            ? tema.colorScheme.error
-                            : null,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Editar',
-                      onPressed: alEditar,
-                      icon: const Icon(Icons.edit_outlined),
-                    ),
-                    IconButton(
-                      tooltip: 'Eliminar productor',
-                      onPressed: alEliminar,
-                      icon: Icon(
-                        Icons.delete_outline,
-                        color: tema.colorScheme.error,
-                      ),
-                    ),
-                  ],
-                );
-                // En móvil los botones no compiten con el nombre por el ancho.
-                if (restricciones.maxWidth < 600) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [nombre, acciones],
-                  );
-                }
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: nombre),
-                    acciones,
-                  ],
-                );
-              },
-            ),
-            if (!productor.habilitado) ...[
-              const SizedBox(height: 4),
-              const EtiquetaDeshabilitado(),
-            ],
-            const SizedBox(height: 8),
-            Text(
-              'Central: ${productor.centralNombre}',
-              softWrap: true,
-              overflow: TextOverflow.visible,
-              style: tema.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Sindicato: ${productor.sindicatoNombre}',
-              softWrap: true,
-              overflow: TextOverflow.visible,
-              style: tema.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 20),
-            Wrap(
-              spacing: 32,
-              runSpacing: 16,
+        child: LayoutBuilder(
+          builder: (context, restricciones) {
+            final identidad = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Primero el código: es con lo que se lo nombra.
-                _Dato(
-                  etiqueta: 'Código',
-                  valor: productor.codigoPadron,
-                  vacio:
-                      'Falta el número de la federación o la sigla de la '
-                      'central',
+                _LineaIdentidad(
+                  key: const ValueKey('productor-nombres'),
+                  texto: nombres.isEmpty ? 'Sin nombre' : nombres,
+                  estilo: estiloDatoPrincipal,
                 ),
-                _Dato(etiqueta: 'Cédula', valor: productor.ci),
-                if (!tieneFotografia)
-                  const _Dato(etiqueta: 'Fotografía', vacio: 'Sin foto'),
-                _Dato(
-                  etiqueta: 'Fecha de creación',
-                  valor: Auditoria.formatear(productor.auditoria.creadoEn),
+                _LineaIdentidad(
+                  key: const ValueKey('productor-apellidos'),
+                  texto: apellidos.isEmpty ? 'Sin apellidos' : apellidos,
+                  estilo: estiloDatoPrincipal,
                 ),
-                _EstadoImpresionCredencial(productor: productor),
+                const SizedBox(height: 6),
+                _LineaIdentidad(
+                  key: const ValueKey('productor-cedula-lote'),
+                  texto:
+                      'CI: ${cedula == null || cedula.isEmpty ? 'Sin cédula' : cedula}   '
+                      'N° lote: ${lote == null || lote.isEmpty ? 'Sin lote' : lote}',
+                  estilo: estiloDatoPrincipal,
+                ),
               ],
-            ),
-          ],
+            );
+            final acciones = Wrap(
+              children: [
+                IconButton(
+                  tooltip: productor.habilitado ? 'Deshabilitar' : 'Habilitar',
+                  onPressed: alCambiarEstado,
+                  icon: Icon(
+                    productor.habilitado
+                        ? Icons.block
+                        : Icons.check_circle_outline,
+                  ),
+                ),
+                if (productor.credencialImpresa)
+                  IconButton(
+                    tooltip: productor.reimpresionFasePendiente
+                        ? 'Cancelar reimpresión'
+                        : 'Agregar para reimpresión',
+                    onPressed: agregandoReimpresion
+                        ? null
+                        : alAgregarReimpresion,
+                    icon: agregandoReimpresion
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            Icons.replay_outlined,
+                            color: productor.reimpresionFasePendiente
+                                ? Colors.orange.shade800
+                                : null,
+                          ),
+                  ),
+                IconButton(
+                  tooltip: productor.tieneSugerenciaSie
+                      ? 'Aceptar sugerencia SIE'
+                      : 'Verificar con SIE',
+                  onPressed: verificandoSie ? null : alVerificarConSie,
+                  icon: verificandoSie
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.fact_check_outlined),
+                ),
+                IconButton(
+                  tooltip: productor.observado
+                      ? 'Editar observación'
+                      : 'Marcar como observado',
+                  onPressed: alEditarObservacion,
+                  icon: Icon(
+                    Icons.report_problem_outlined,
+                    color: productor.observado ? tema.colorScheme.error : null,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Editar',
+                  onPressed: alEditar,
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Eliminar productor',
+                  onPressed: alEliminar,
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: tema.colorScheme.error,
+                  ),
+                ),
+              ],
+            );
+            final esMovil = restricciones.maxWidth < 600;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (esMovil)
+                  identidad
+                else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: identidad),
+                      acciones,
+                    ],
+                  ),
+                if (!productor.habilitado) ...[
+                  const SizedBox(height: 4),
+                  const EtiquetaDeshabilitado(),
+                ],
+                const SizedBox(height: 8),
+                Text(
+                  'Central: ${productor.centralNombre}',
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
+                  style: tema.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Sindicato: ${productor.sindicatoNombre}',
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
+                  style: tema.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 32,
+                  runSpacing: 16,
+                  children: [
+                    // Primero el código: es con lo que se lo nombra.
+                    _Dato(
+                      etiqueta: 'Código',
+                      valor: productor.codigoPadron,
+                      vacio:
+                          'Falta el número de la federación o la sigla de la '
+                          'central',
+                    ),
+                    if (!tieneFotografia)
+                      const _Dato(etiqueta: 'Fotografía', vacio: 'Sin foto'),
+                    _Dato(
+                      etiqueta: 'Fecha de creación',
+                      valor: Auditoria.formatear(productor.auditoria.creadoEn),
+                    ),
+                    _EstadoImpresionCredencial(productor: productor),
+                  ],
+                ),
+                if (esMovil) ...[const SizedBox(height: 16), acciones],
+              ],
+            );
+          },
         ),
       ),
     );
   }
+}
+
+/// Mantiene cada dato principal en un solo renglón y conserva el mismo estilo
+/// tipográfico. Solo reduce proporcionalmente el conjunto cuando una pantalla
+/// muy angosta no tiene espacio suficiente para mostrarlo completo.
+class _LineaIdentidad extends StatelessWidget {
+  const _LineaIdentidad({super.key, required this.texto, this.estilo});
+
+  final String texto;
+  final TextStyle? estilo;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+    fit: BoxFit.scaleDown,
+    alignment: Alignment.centerLeft,
+    child: Text(texto, maxLines: 1, style: estilo),
+  );
 }
 
 class _EstadoImpresionCredencial extends StatelessWidget {

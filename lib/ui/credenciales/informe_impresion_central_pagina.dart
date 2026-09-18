@@ -21,6 +21,7 @@ class _InformeImpresionCentralPaginaState
     extends State<InformeImpresionCentralPagina> {
   late Future<_DatosPagina> _futuro;
   bool _descargandoPreImpresion = false;
+  bool _descargandoRevisionPadron = false;
   bool _cambiandoFase = false;
   final Set<int> _descargandoFases = <int>{};
 
@@ -64,6 +65,25 @@ class _InformeImpresionCentralPaginaState
       if (mounted) mostrarError(context, e);
     } finally {
       if (mounted) setState(() => _descargandoPreImpresion = false);
+    }
+  }
+
+  Future<void> _descargarRevisionPadron() async {
+    setState(() => _descargandoRevisionPadron = true);
+    try {
+      final descarga = await PadronScope.of(
+        context,
+      ).centrales.descargarRevisionPadron(widget.central.id);
+      await guardarArchivo(
+        descarga.bytes,
+        descarga.nombreArchivo,
+        descarga.tipoMime,
+      );
+      if (mounted) mostrarExito(context, 'Informe de revisión descargado.');
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    } finally {
+      if (mounted) setState(() => _descargandoRevisionPadron = false);
     }
   }
 
@@ -169,7 +189,7 @@ class _InformeImpresionCentralPaginaState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Avance de impresión'),
+        title: const Text('Informes y reportes de la central'),
         actions: [
           IconButton(
             tooltip: 'Recargar',
@@ -185,10 +205,12 @@ class _InformeImpresionCentralPaginaState
           datos: datos,
           central: widget.central,
           descargandoPreImpresion: _descargandoPreImpresion,
+          descargandoRevisionPadron: _descargandoRevisionPadron,
           cambiandoFase: _cambiandoFase,
           descargandoFases: _descargandoFases,
           alRecargar: _recargar,
           alDescargarPreImpresion: _descargarPreImpresion,
+          alDescargarRevisionPadron: _descargarRevisionPadron,
           alHabilitarFase: _habilitarFase,
           alCerrarFase: _cerrarFase,
           alDescargarFase: _descargarFase,
@@ -222,10 +244,12 @@ class _Contenido extends StatelessWidget {
     required this.datos,
     required this.central,
     required this.descargandoPreImpresion,
+    required this.descargandoRevisionPadron,
     required this.cambiandoFase,
     required this.descargandoFases,
     required this.alRecargar,
     required this.alDescargarPreImpresion,
+    required this.alDescargarRevisionPadron,
     required this.alHabilitarFase,
     required this.alCerrarFase,
     required this.alDescargarFase,
@@ -234,10 +258,12 @@ class _Contenido extends StatelessWidget {
   final _DatosPagina datos;
   final Central central;
   final bool descargandoPreImpresion;
+  final bool descargandoRevisionPadron;
   final bool cambiandoFase;
   final Set<int> descargandoFases;
   final Future<void> Function() alRecargar;
   final Future<void> Function() alDescargarPreImpresion;
+  final Future<void> Function() alDescargarRevisionPadron;
   final Future<void> Function(int numero) alHabilitarFase;
   final Future<void> Function(FaseImpresionCarnet fase) alCerrarFase;
   final Future<void> Function(FaseImpresionCarnet fase) alDescargarFase;
@@ -264,11 +290,13 @@ class _Contenido extends StatelessWidget {
           const SizedBox(height: 12),
           _AccionesInformes(
             descargandoPreImpresion: descargandoPreImpresion,
+            descargandoRevisionPadron: descargandoRevisionPadron,
             alDescargarGeneral: () =>
                 descargarInformeImpresionCentral(context, central),
             alDescargarPlanilla: () =>
                 descargarPlanillaRecoleccionDirectorio(context, central),
             alDescargarPreImpresion: alDescargarPreImpresion,
+            alDescargarRevisionPadron: alDescargarRevisionPadron,
           ),
           const SizedBox(height: 12),
           _PanelFasesImpresion(
@@ -375,15 +403,19 @@ class _Contenido extends StatelessWidget {
 class _AccionesInformes extends StatelessWidget {
   const _AccionesInformes({
     required this.descargandoPreImpresion,
+    required this.descargandoRevisionPadron,
     required this.alDescargarGeneral,
     required this.alDescargarPlanilla,
     required this.alDescargarPreImpresion,
+    required this.alDescargarRevisionPadron,
   });
 
   final bool descargandoPreImpresion;
+  final bool descargandoRevisionPadron;
   final Future<void> Function() alDescargarGeneral;
   final Future<void> Function() alDescargarPlanilla;
   final Future<void> Function() alDescargarPreImpresion;
+  final Future<void> Function() alDescargarRevisionPadron;
 
   @override
   Widget build(BuildContext context) {
@@ -423,6 +455,18 @@ class _AccionesInformes extends StatelessWidget {
                         )
                       : const Icon(Icons.rule_folder_outlined),
                   label: const Text('Informe pre-impresión'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: descargandoRevisionPadron
+                      ? null
+                      : alDescargarRevisionPadron,
+                  icon: descargandoRevisionPadron
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.fact_check_outlined),
+                  label: const Text('Informe de revisión del padrón'),
                 ),
               ],
             ),

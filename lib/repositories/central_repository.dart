@@ -63,6 +63,10 @@ class CentralRepository {
         '$_ruta/$id/credenciales/impresion/informe-pre-impresion.pdf',
       );
 
+  Future<DescargaBinaria> descargarRevisionPadron(int id) => _api.obtenerBytes(
+    '$_ruta/$id/credenciales/impresion/revision-padron.pdf',
+  );
+
   Future<EstadoFasesImpresionCentral> estadoFasesImpresion(int id) async {
     final datos = await _api.obtener('$_ruta/$id/fases-impresion');
     return EstadoFasesImpresionCentral.desdeJson(datos.comoObjeto);

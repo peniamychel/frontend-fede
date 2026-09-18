@@ -30,6 +30,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('Informes y reportes de la central'), findsOneWidget);
     expect(find.text('Avance general'), findsOneWidget);
     expect(find.text('43.8%'), findsOneWidget);
     expect(find.text('7 de 16 carnets impresos'), findsOneWidget);

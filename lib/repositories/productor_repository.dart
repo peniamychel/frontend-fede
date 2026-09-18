@@ -51,6 +51,9 @@ class ProductorRepository {
     },
   );
 
+  Future<DescargaBinaria> descargarFotografia(int id) =>
+      _api.obtenerBytes('$_ruta/$id/imagenes/descarga');
+
   /// Lo que va a salir impreso, y lo que falta para poder imprimirlo.
   ///
   /// Hay que pedirla antes de abrir [urlCredencial]: si falta algo el backend
@@ -72,6 +75,9 @@ class ProductorRepository {
   Future<void> agregarReimpresionAFase(int id) => _api
       .crear('$_ruta/$id/fase-impresion/reimpresion', const {})
       .then((_) {});
+
+  Future<void> cancelarReimpresion(int id) =>
+      _api.eliminar('$_ruta/$id/fase-impresion/reimpresion');
 
   /// Listado paginado del padrón. Los tres filtros son opcionales y
   /// combinables; [texto] busca a la vez en nombres, apellidos, cédula y carné.
