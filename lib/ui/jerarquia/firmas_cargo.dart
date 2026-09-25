@@ -18,12 +18,14 @@ class FirmasCargo extends StatefulWidget {
     required this.alCambiar,
     required this.permitePieFirmaImagen,
     required this.firmaObligatoria,
+    this.editable = true,
   });
 
   final Cargo cargo;
   final VoidCallback alCambiar;
   final bool permitePieFirmaImagen;
   final bool firmaObligatoria;
+  final bool editable;
 
   @override
   State<FirmasCargo> createState() => _FirmasCargoState();
@@ -63,7 +65,7 @@ class _FirmasCargoState extends State<FirmasCargo> {
               tipo: TipoImagenCargo.firma,
               clase: ClaseImagenDirectorio.firma,
               url: widget.cargo.firmaUrl,
-              habilitada: true,
+              habilitada: widget.editable,
               obligatoria: widget.firmaObligatoria,
             );
             final pie = _ranuraImagen(
@@ -72,7 +74,7 @@ class _FirmasCargoState extends State<FirmasCargo> {
               tipo: TipoImagenCargo.pieFirma,
               clase: ClaseImagenDirectorio.pieFirma,
               url: widget.cargo.pieFirmaUrl,
-              habilitada: widget.permitePieFirmaImagen,
+              habilitada: widget.editable && widget.permitePieFirmaImagen,
               obligatoria: false,
             );
             if (restricciones.maxWidth < 520) {

@@ -116,34 +116,6 @@ máquina con `--dart-define=API_HOST=192.168.1.X`.
 
 Android y web no necesitan Visual Studio.
 
-## Google Maps (ubicación de sindicatos)
-
-La app funciona **sin clave de Google**: la pantalla de ubicación permite cargar
-las coordenadas a mano y se guardan igual. El mapa es la forma cómoda de
-obtenerlas, no la única. Para activarlo hacen falta tres cosas, y las tres con
-la misma clave:
-
-1. **Generar la clave** en Google Cloud, con la *Maps JavaScript API* habilitada
-   para web y la *Maps SDK for Android* para Android. Restringila: por referente
-   HTTP la de web, por paquete y huella SHA-1 la de Android. Una clave sin
-   restringir la usa cualquiera y la factura llega igual.
-
-2. **Web**: descomentar el `<script>` de `web/index.html` y poner la clave ahí.
-   Queda comentado a propósito — con una clave de ejemplo, Google devuelve un
-   error en la consola en cada carga.
-
-3. **Android**: reemplazar `TU_API_KEY_AQUI` en
-   `android/app/src/main/AndroidManifest.xml`.
-
-Y al arrancar, pasarle la clave también a Dart, que es como la app sabe que el
-mapa está disponible y decide entre mostrarlo o pedir las coordenadas a mano:
-
-```bash
-flutter run -d web-server --web-port=5173 --dart-define=GOOGLE_MAPS_API_KEY=TU_CLAVE
-```
-
-Las coordenadas se guardan como `DECIMAL(10,7)`: un `double` redondea, y en
-coordenadas ese redondeo son metros de error.
 
 ## Productores pendientes de lote
 

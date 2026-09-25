@@ -38,17 +38,12 @@ void main() {
       expect(url.query, isEmpty);
     });
 
-    test('el pliego cuelga del sindicato, y no se pisa con el informe', () {
+    test('el pliego cuelga del sindicato', () {
       final padron = Padron();
 
       expect(
         padron.sindicatos.urlCredenciales(16).path,
         '/api/v1/sindicatos/16/credenciales.pdf',
-      );
-      // Son dos documentos distintos: la nómina y las tarjetas.
-      expect(
-        padron.sindicatos.urlCredenciales(16),
-        isNot(padron.sindicatos.urlInforme(16)),
       );
     });
 
@@ -92,7 +87,7 @@ void main() {
   // simulado, que este proyecto no tiene. Su botón de credencial usa la misma
   // URL que se verifica arriba.
 
-  testWidgets('la pantalla del sindicato ofrece las dos impresiones', (
+  testWidgets('la pantalla del sindicato deja los informes en su panel', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -100,15 +95,9 @@ void main() {
     );
     await tester.pump();
 
-    // La nómina y las credenciales son cosas distintas y conviven: cada una
-    // con su icono y su explicación.
-    expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.picture_as_pdf_outlined), findsNothing);
     expect(find.byIcon(Icons.badge_outlined), findsOneWidget);
 
-    expect(
-      botonCon(tester, Icons.picture_as_pdf_outlined).tooltip,
-      contains('nómina'),
-    );
     expect(botonCon(tester, Icons.badge_outlined).tooltip, contains('carnets'));
   });
 }

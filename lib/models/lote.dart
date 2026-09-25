@@ -252,6 +252,7 @@ class LoteRequest {
     this.estado,
     this.mercado,
     this.superficie,
+    this.letra,
   });
 
   /// Superficie en hectáreas. Null la deja sin medir.
@@ -268,6 +269,7 @@ class LoteRequest {
   final ExtensionLote? extension;
   final String? estado;
   final String? mercado;
+  final String? letra;
 
   Map<String, dynamic> aJson() => {
     'sindicatoId': sindicatoId,
@@ -277,5 +279,6 @@ class LoteRequest {
     if (estado != null) 'estado': estado,
     if (mercado != null) 'mercado': mercado,
     if (superficie != null) 'superficie': superficie,
+    if (letra != null) 'letra': letra,
   };
 }

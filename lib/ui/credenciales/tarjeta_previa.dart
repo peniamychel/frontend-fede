@@ -112,7 +112,7 @@ class TarjetaPrevia extends StatelessWidget {
         ? Image.asset(
             reverso
                 ? 'assets/credencial/reverso.jpg'
-                : 'assets/credencial/cara.jpg',
+                : 'assets/credencial/cara.png',
             fit: BoxFit.fill,
           )
         : Image.network(
@@ -121,7 +121,7 @@ class TarjetaPrevia extends StatelessWidget {
             errorBuilder: (_, _, _) => Image.asset(
               reverso
                   ? 'assets/credencial/reverso.jpg'
-                  : 'assets/credencial/cara.jpg',
+                  : 'assets/credencial/cara.png',
               fit: BoxFit.fill,
             ),
           ),

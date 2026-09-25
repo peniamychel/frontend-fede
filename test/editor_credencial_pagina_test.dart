@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:fede/models/diseno_credencial.dart';
 import 'package:fede/ui/credenciales/fuentes_bajo_demanda.dart';
 
 import 'package:fede/core/api_client.dart';

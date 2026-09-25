@@ -533,7 +533,12 @@ class _DialogoTraspasoState extends State<_DialogoTraspaso> {
     final filtro = textoParaBusqueda(_busqueda.text);
     if (filtro.isEmpty) return widget.candidatos;
     return widget.candidatos
-        .where((p) => textoParaBusqueda(p.nombreCompleto).contains(filtro))
+        .where(
+          (p) => textoParaBusqueda(
+            '${p.nombreCompleto} ${p.ci ?? ''} '
+            '${p.codigoPadron ?? ''} ${p.codigo ?? ''}',
+          ).contains(filtro),
+        )
         .toList();
   }
 
@@ -606,7 +611,7 @@ class _DialogoTraspasoState extends State<_DialogoTraspaso> {
                 controller: _busqueda,
                 onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
-                  hintText: 'Buscar en el sindicato',
+                  hintText: 'Buscar por nombre, cédula o código',
                   prefixIcon: Icon(Icons.search),
                   isDense: true,
                 ),

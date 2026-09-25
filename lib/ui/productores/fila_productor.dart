@@ -94,7 +94,9 @@ class FilaProductor extends StatelessWidget {
                           (productor.revisionLotePendiente &&
                                   texto == productor.resumenRevisionLote) ||
                               (productor.observado &&
-                                  texto.startsWith('Observado:'))
+                                  texto.startsWith('Observado:')) ||
+                              (productor.revisionSieBloqueaImpresion &&
+                                  texto == 'Revisión SIE pendiente')
                           ? tema.colorScheme.error
                           : i == subtitulos.length - 1 && mostrarRuta
                           ? tema.colorScheme.outline
@@ -241,7 +243,7 @@ class _EstadoImpresion extends StatelessWidget {
         : productor.revisionSieBloqueaImpresion
         ? (
             'Revisión SIE pendiente: excluido de impresión',
-            tema.colorScheme.outline,
+            tema.colorScheme.error,
           )
         : productor.revisionLotePendiente
         ? ('En revisión: falta número de lote', tema.colorScheme.outline)

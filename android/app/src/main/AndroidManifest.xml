@@ -15,18 +15,6 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
-        <!--
-             Clave de Google Maps para Android. Es una clave distinta de la de
-             la web: se restringe por nombre de paquete y huella SHA-1, no por
-             referente HTTP.
-
-             Reemplazá TU_API_KEY_AQUI por la tuya. Sin ella el mapa no carga,
-             pero la pantalla de ubicación sigue funcionando con coordenadas
-             manuales.
-        -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="TU_API_KEY_AQUI"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"

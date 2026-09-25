@@ -12,11 +12,8 @@ class AutenticacionRepository {
   static const _claveSesion = 'federa.sesion';
   final ApiClient api;
 
-  Future<Sesion> iniciarSesion(String usuario, String contrasena) async {
-    final respuesta = await api.crear('/auth/login', {
-      'usuario': usuario.trim(),
-      'contrasena': contrasena,
-    });
+  Future<Sesion> acceder(String codigo) async {
+    final respuesta = await api.crear('/auth/acceso', {'codigo': codigo.trim()});
     final sesion = Sesion.desdeLogin(respuesta.comoObjeto);
     api.usarToken(sesion.token);
     await _guardar(sesion);
@@ -38,11 +35,14 @@ class AutenticacionRepository {
       }
       api.usarToken(sesion.token);
       final respuesta = await api.obtener('/auth/yo');
-      if (respuesta.comoObjeto['autenticado'] != true) {
+      final actual = respuesta.comoObjeto;
+      if (actual['autenticado'] != true) {
         await cerrarSesion();
         return null;
       }
-      return sesion;
+      final renovada = sesion.conAutorizaciones(actual);
+      await _guardar(renovada);
+      return renovada;
     } on ApiException {
       await cerrarSesion();
       return null;
@@ -53,6 +53,19 @@ class AutenticacionRepository {
   }
 
   Future<void> cerrarSesion() async {
+    if (api.tieneToken) {
+      try {
+        await api.crear('/auth/logout', const {});
+      } on ApiException {
+        // El cierre local debe funcionar aunque la sesión ya haya vencido.
+      }
+    }
+    api.usarToken(null);
+    final preferencias = await SharedPreferences.getInstance();
+    await preferencias.remove(_claveSesion);
+  }
+
+  Future<void> descartarSesionLocal() async {
     api.usarToken(null);
     final preferencias = await SharedPreferences.getInstance();
     await preferencias.remove(_claveSesion);

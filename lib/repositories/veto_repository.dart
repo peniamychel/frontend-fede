@@ -20,11 +20,14 @@ class VetoRepository {
     bool vigentes = true,
   }) async {
     final buscado = texto?.trim();
-    final datos = await _api.obtener(_ruta, query: {
-      if (buscado != null && buscado.isNotEmpty) 'texto': buscado,
-      'sindicatoId': ?sindicatoId,
-      'vigentes': vigentes,
-    });
+    final datos = await _api.obtener(
+      _ruta,
+      query: {
+        if (buscado != null && buscado.isNotEmpty) 'texto': buscado,
+        'sindicatoId': ?sindicatoId,
+        'vigentes': vigentes,
+      },
+    );
     return datos.comoLista.map(Veto.desdeJson).toList(growable: false);
   }
 
@@ -45,10 +48,18 @@ class VetoRepository {
     return Veto.desdeJson(datos.comoObjeto);
   }
 
+  Future<Veto> registrarYVetar(RegistroProductorVetadoRequest request) async {
+    final datos = await _api.crear('$_ruta/nuevo-productor', request.aJson());
+    return Veto.desdeJson(datos.comoObjeto);
+  }
+
   /// Lo saca de la lista. La reunión tiene que ser otra que la que lo vetó, y
   /// tener su acta cargada.
   Future<Veto> levantar(int vetoId, LevantarVetoRequest request) async {
-    final datos = await _api.reemplazar('$_ruta/$vetoId/levantar', request.aJson());
+    final datos = await _api.reemplazar(
+      '$_ruta/$vetoId/levantar',
+      request.aJson(),
+    );
     return Veto.desdeJson(datos.comoObjeto);
   }
 }

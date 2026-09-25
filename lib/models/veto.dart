@@ -53,23 +53,24 @@ class Veto {
   String get ruta => central.isEmpty ? sindicato : '$central › $sindicato';
 
   factory Veto.desdeJson(Map<String, dynamic> json) => Veto(
-        id: (json['id'] as num?)?.toInt() ?? 0,
-        vigente: json['vigente'] as bool? ?? false,
-        productorId: (json['productorId'] as num?)?.toInt() ?? 0,
-        productorNombre: json['productorNombre'] as String? ?? '',
-        ci: json['ci'] as String?,
-        codigo: json['codigo'] as String?,
-        codigoPadron: json['codigoPadron'] as String?,
-        sindicato: json['sindicato'] as String? ?? '',
-        central: json['central'] as String? ?? '',
-        motivo: json['motivo'] as String? ?? '',
-        desde: DateTime.tryParse(json['desde'] as String? ?? '') ?? DateTime.now(),
-        reunion: ReunionBreve.desdeJson(json['reunion'] as Map<String, dynamic>?),
-        motivoLevantamiento: json['motivoLevantamiento'] as String?,
-        hasta: DateTime.tryParse(json['hasta'] as String? ?? ''),
-        reunionLevanta:
-            ReunionBreve.desdeJson(json['reunionLevanta'] as Map<String, dynamic>?),
-      );
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    vigente: json['vigente'] as bool? ?? false,
+    productorId: (json['productorId'] as num?)?.toInt() ?? 0,
+    productorNombre: json['productorNombre'] as String? ?? '',
+    ci: json['ci'] as String?,
+    codigo: json['codigo'] as String?,
+    codigoPadron: json['codigoPadron'] as String?,
+    sindicato: json['sindicato'] as String? ?? '',
+    central: json['central'] as String? ?? '',
+    motivo: json['motivo'] as String? ?? '',
+    desde: DateTime.tryParse(json['desde'] as String? ?? '') ?? DateTime.now(),
+    reunion: ReunionBreve.desdeJson(json['reunion'] as Map<String, dynamic>?),
+    motivoLevantamiento: json['motivoLevantamiento'] as String?,
+    hasta: DateTime.tryParse(json['hasta'] as String? ?? ''),
+    reunionLevanta: ReunionBreve.desdeJson(
+      json['reunionLevanta'] as Map<String, dynamic>?,
+    ),
+  );
 }
 
 /// Lo mínimo para nombrar una reunión sin traerla entera.
@@ -89,7 +90,8 @@ class ReunionBreve {
     return ReunionBreve(
       id: (json['id'] as num?)?.toInt() ?? 0,
       titulo: json['titulo'] as String? ?? '',
-      fecha: DateTime.tryParse(json['fecha'] as String? ?? '') ?? DateTime.now(),
+      fecha:
+          DateTime.tryParse(json['fecha'] as String? ?? '') ?? DateTime.now(),
     );
   }
 }
@@ -98,41 +100,62 @@ class ReunionBreve {
 class VetoRequest {
   const VetoRequest({
     required this.productorId,
-    required this.reunionId,
+    this.reunionId,
     required this.motivo,
     this.desde,
   });
 
   final int productorId;
-  final int reunionId;
+  final int? reunionId;
   final String motivo;
   final DateTime? desde;
 
   Map<String, dynamic> aJson() => {
-        'productorId': productorId,
-        'reunionId': reunionId,
-        'motivo': motivo,
-        if (desde != null) 'desde': _soloFecha(desde!),
-      };
+    'productorId': productorId,
+    if (reunionId != null) 'reunionId': reunionId,
+    'motivo': motivo,
+    if (desde != null) 'desde': _soloFecha(desde!),
+  };
+}
+
+/// Alta de un productor que todavía no existe, directamente en vetados.
+class RegistroProductorVetadoRequest {
+  const RegistroProductorVetadoRequest({
+    required this.sindicatoId,
+    required this.ci,
+    required this.nombres,
+    required this.apellidos,
+    required this.motivo,
+  });
+
+  final int sindicatoId;
+  final String ci;
+  final String nombres;
+  final String apellidos;
+  final String motivo;
+
+  Map<String, dynamic> aJson() => {
+    'sindicatoId': sindicatoId,
+    'ci': ci,
+    'nombres': nombres,
+    'apellidos': apellidos,
+    'motivo': motivo,
+  };
 }
 
 /// Cuerpo para sacarlo de la lista.
 class LevantarVetoRequest {
-  const LevantarVetoRequest({
-    required this.reunionId,
-    required this.motivo,
-    this.hasta,
-  });
+  const LevantarVetoRequest({this.reunionId, required this.motivo, this.hasta});
 
-  final int reunionId;
+  final int? reunionId;
   final String motivo;
   final DateTime? hasta;
 
   Map<String, dynamic> aJson() => {
-        'reunionId': reunionId,
-        'motivo': motivo,
-        if (hasta != null) 'hasta': _soloFecha(hasta!),
-      };
+    if (reunionId != null) 'reunionId': reunionId,
+    'motivo': motivo,
+    if (hasta != null) 'hasta': _soloFecha(hasta!),
+  };
 }
 
 String _soloFecha(DateTime d) =>

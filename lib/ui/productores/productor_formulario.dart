@@ -982,6 +982,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: _ci,
+        autofocus: !_esEdicion,
         maxLength: ProductorRequest.maxCi,
         textInputAction: _esEdicion
             ? TextInputAction.next

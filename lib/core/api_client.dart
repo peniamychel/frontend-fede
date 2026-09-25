@@ -21,6 +21,7 @@ class ApiClient {
   final http.Client _cliente;
   final Duration tiempoLimite;
   String? _token;
+  VoidCallback? alPerderAutorizacion;
 
   static const Map<String, String> _cabeceras = {
     'Accept': 'application/json',
@@ -35,6 +36,20 @@ class ApiClient {
   }
 
   bool get tieneToken => _token != null;
+
+  /// Descarga enlaces de la API usando la misma sesión que el resto de la app.
+  /// Nunca envía la autorización a un servidor distinto.
+  Future<DescargaBinaria> descargarUrl(Uri url) {
+    final base = ApiConfig.uri('');
+    if (url.origin != base.origin ||
+        !url.path.startsWith('${ApiConfig.prefijo}/')) {
+      throw ArgumentError('La descarga no pertenece al servidor configurado');
+    }
+    return obtenerBytes(
+      url.path.substring(ApiConfig.prefijo.length),
+      query: url.queryParametersAll,
+    );
+  }
 
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) =>
       _enviar('GET', ruta, query: query);
@@ -294,6 +309,7 @@ class ApiClient {
 
   Object? _interpretar(http.Response respuesta) {
     final codigo = respuesta.statusCode;
+    if (codigo == 401) alPerderAutorizacion?.call();
 
     // 204 No Content: los DELETE del backend no devuelven cuerpo.
     if (codigo == 204 || respuesta.bodyBytes.isEmpty) {
@@ -359,6 +375,8 @@ class ApiClient {
     return nombre.replaceAll(RegExp(r'''[/\\]'''), '_');
   }
 }
+
+typedef VoidCallback = void Function();
 
 class ArchivoAdjunto {
   const ArchivoAdjunto({required this.bytes, required this.nombreArchivo});

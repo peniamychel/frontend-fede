@@ -1,6 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../core/guardar_archivo.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
@@ -365,19 +365,12 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
     }
   }
 
-  /// Abre la URL de la plantilla en vez de bajarla con el cliente HTTP: el
-  /// backend la marca como adjunto y el navegador la guarda solo, sin que haya
-  /// que decidir una carpeta de destino en cada plataforma.
+  /// Descarga la plantilla con la sesión activa.
   Future<void> _descargarPlantilla() async {
     final url = PadronScope.of(context).importaciones.urlPlantilla;
     try {
-      final abierta = await launchUrl(
-        url,
-        mode: LaunchMode.externalApplication,
-      );
-      if (!abierta && mounted) {
-        mostrarAviso(context, 'No se pudo abrir la descarga: $url');
-      }
+      final archivo = await PadronScope.of(context).api.descargarUrl(url);
+      await guardarArchivo(archivo.bytes, archivo.nombreArchivo, archivo.tipoMime);
     } catch (e) {
       if (mounted) mostrarError(context, e);
     }

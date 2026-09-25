@@ -4,12 +4,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../widgets/boton_tema.dart';
 import '../credenciales/pliego_previa_pagina.dart';
 import '../credenciales/informe_impresion_central_pagina.dart';
+import '../credenciales/informe_impresion_sindicato_pagina.dart';
 import '../credenciales/informe_impresion_federacion_pagina.dart';
 import '../lotes/lotes_sindicato_pagina.dart';
-import '../widgets/descargas.dart';
+import '../vetos/vetados_pagina.dart';
 import '../widgets/dialogo_nombre_numero.dart';
 import '../widgets/estados.dart';
 import '../widgets/marca_estado.dart';
@@ -28,6 +30,12 @@ class JerarquiaControlador {
   /// Intenta volver un nivel dentro de Central › Sindicato.
   /// Devuelve false cuando la jerarquía ya está en la lista de centrales.
   bool retroceder() => _estado?._retroceder() ?? false;
+
+  /// Sincroniza los totales al volver desde otras secciones del padrón.
+  void refrescarConteos() {
+    _estado?._recargarSindicatos();
+    _estado?._controladorProductores.refrescarTotal();
+  }
 
   void _conectar(_JerarquiaPaginaState estado) => _estado = estado;
 
@@ -48,6 +56,7 @@ class JerarquiaPagina extends StatefulWidget {
 class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   static const _claveCentralFijada = 'jerarquia.central_fijada.carrasco';
   static const _claveOrdenCodigo = 'jerarquia.orden_codigo.carrasco';
+  final _controladorProductores = SindicatoProductoresControlador();
   bool _ordenPorCodigo = false;
 
   Federacion? _federacion;
@@ -265,13 +274,14 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       appBar: AppBar(
         title: const Text('Jerarquía'),
         actions: [
-          IconButton(
-            tooltip: 'Avance general de impresión',
-            onPressed: _federacion == null
-                ? null
-                : _verInformeImpresionFederacion,
-            icon: const Icon(Icons.assessment_outlined),
-          ),
+          if (context.puede('INFORMES_DESCARGAR'))
+            IconButton(
+              tooltip: 'Avance general de impresión',
+              onPressed: _federacion == null
+                  ? null
+                  : _verInformeImpresionFederacion,
+              icon: const Icon(Icons.assessment_outlined),
+            ),
           const BotonTema(),
           IconButton(
             tooltip: 'Recargar',
@@ -323,6 +333,8 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
             child: SindicatoProductoresPagina(
               key: ValueKey('productores-sindicato-${sindicato.id}'),
               sindicato: sindicato,
+              controlador: _controladorProductores,
+              alCambiarProductores: _recargarSindicatos,
             ),
           ),
         ],
@@ -420,7 +432,9 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
           ],
         ),
       ],
-      alAgregar: () => _crearCentral(f),
+      alAgregar: context.puede('JERARQUIA_EDITAR')
+          ? () => _crearCentral(f)
+          : null,
       hijo: CargaAsync<List<Central>>(
         futuro: _centrales!,
         alReintentar: _recargarCentrales,
@@ -433,6 +447,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
           }
           final ordenadas = _centralesOrdenadas(lista);
           return ListView(
+            key: const PageStorageKey<String>('jerarquia-centrales'),
             children: [
               for (final c in ordenadas)
                 ListTile(
@@ -465,11 +480,12 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        tooltip: 'Informes y reportes central',
-                        onPressed: () => _verInformeImpresionCentral(c),
-                        icon: const Icon(Icons.analytics_outlined, size: 20),
-                      ),
+                      if (context.puede('INFORMES_DESCARGAR'))
+                        IconButton(
+                          tooltip: 'Informes y reportes central',
+                          onPressed: () => _verInformeImpresionCentral(c),
+                          icon: const Icon(Icons.analytics_outlined, size: 20),
+                        ),
                       _menu(
                         alEditar: () => _editarCentral(c),
                         alVerDirectorio: () =>
@@ -599,7 +615,9 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
             ? '${resumen.data!.sindicatos.length} sindicatos · '
                   '${resumen.data!.totalProductores} productores'
             : null,
-        alAgregar: () => _crearSindicato(c),
+        alAgregar: context.puede('JERARQUIA_EDITAR')
+            ? () => _crearSindicato(c)
+            : null,
         hijo: CargaAsync<_DatosSindicatos>(
           futuro: _sindicatos!,
           alReintentar: _recargarSindicatos,
@@ -612,6 +630,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
               );
             }
             return ListView(
+              key: PageStorageKey<String>('jerarquia-sindicatos-${c.id}'),
               children: [
                 for (final s in lista)
                   ListTile(
@@ -649,20 +668,31 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(
-                          tooltip: 'Directorio del sindicato',
-                          onPressed: () =>
-                              _verDirectorio(DirectorioPagina.deSindicato(s)),
-                          icon: const Icon(Icons.groups_2_outlined, size: 20),
-                        ),
-                        IconButton(
-                          tooltip: 'Lista física del sindicato',
-                          onPressed: () => _verListaFisica(s),
-                          icon: const Icon(
-                            Icons.document_scanner_outlined,
-                            size: 20,
+                        if (context.puede('INFORMES_DESCARGAR'))
+                          IconButton(
+                            tooltip: 'Informes y reportes del sindicato',
+                            onPressed: () => _verInformesSindicato(s),
+                            icon: const Icon(
+                              Icons.analytics_outlined,
+                              size: 20,
+                            ),
                           ),
-                        ),
+                        if (!context.accesoCentral)
+                          IconButton(
+                            tooltip: 'Directorio del sindicato',
+                            onPressed: () =>
+                                _verDirectorio(DirectorioPagina.deSindicato(s)),
+                            icon: const Icon(Icons.groups_2_outlined, size: 20),
+                          ),
+                        if (!context.accesoCentral)
+                          IconButton(
+                            tooltip: 'Lista física del sindicato',
+                            onPressed: () => _verListaFisica(s),
+                            icon: const Icon(
+                              Icons.document_scanner_outlined,
+                              size: 20,
+                            ),
+                          ),
                         _menu(
                           alEditar: () => _editarSindicato(s),
                           habilitado: s.habilitado,
@@ -677,9 +707,8 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                               ).then((cambio) {
                                 if (cambio) _recargarSindicatos();
                               }),
-                          alDescargarInforme: () =>
-                              descargarInformeSindicato(context, s),
                           alVerLotes: () => _verLotes(s),
+                          alVerVetados: () => _verVetados(s),
                           alDescargarCredenciales: () =>
                               Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -712,18 +741,31 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     );
   }
 
-  void _verProductores(Sindicato s) {
+  Future<void> _verProductores(Sindicato s) async {
     setState(() => _sindicatoSeleccionadoId = s.id);
     final ancho = MediaQuery.sizeOf(context).width;
     if (_permiteMesaDeTrabajo(ancho)) {
       setState(() => _sindicato = s);
       return;
     }
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SindicatoProductoresPagina(sindicato: s),
+        builder: (_) => SindicatoProductoresPagina(
+          sindicato: s,
+          alCambiarProductores: _recargarSindicatos,
+        ),
       ),
     );
+    if (mounted) _recargarSindicatos();
+  }
+
+  Future<void> _verInformesSindicato(Sindicato sindicato) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InformeImpresionSindicatoPagina(sindicato: sindicato),
+      ),
+    );
+    if (mounted) _recargarSindicatos();
   }
 
   ShapeBorder? _bordeSeleccion(bool seleccionado) => seleccionado
@@ -747,6 +789,29 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       MaterialPageRoute(builder: (_) => LotesSindicatoPagina(sindicato: s)),
     );
     if (mounted) _recargarSindicatos();
+  }
+
+  Future<void> _verVetados(Sindicato sindicato) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => VetadosPagina(sindicato: sindicato)),
+    );
+    if (!mounted) return;
+
+    // En escritorio la lista sigue abierta a la derecha. Se refresca sin
+    // perder el scroll para que el vetado desaparezca de inmediato.
+    await _controladorProductores.refrescar();
+    if (!mounted) return;
+
+    final central = _central;
+    if (central == null) return;
+    final futuro = _cargarSindicatos(central);
+    setState(() => _sindicatos = futuro);
+    final datos = await futuro;
+    if (!mounted || _sindicato?.id != sindicato.id) return;
+    final actualizado = datos.sindicatos
+        .where((elemento) => elemento.id == sindicato.id)
+        .firstOrNull;
+    if (actualizado != null) setState(() => _sindicato = actualizado);
   }
 
   Future<void> _verListaFisica(Sindicato s) async {
@@ -839,8 +904,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
 
   /// Menú de acciones de una fila.
   ///
-  /// Las dos descargas solo las pasan los sindicatos: son los únicos que tienen
-  /// nómina que imprimir y productores a los que emitir credencial.
+  /// Los carnets solo se imprimen desde el sindicato.
   Widget _menu({
     required VoidCallback alEditar,
     required VoidCallback alEliminar,
@@ -848,9 +912,11 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     required VoidCallback alCambiarEstado,
     VoidCallback? alVerDirectorio,
     VoidCallback? alVerLotes,
-    VoidCallback? alDescargarInforme,
+    VoidCallback? alVerVetados,
     VoidCallback? alDescargarCredenciales,
   }) {
+    final puedeEditar = context.puede('JERARQUIA_EDITAR');
+    if (context.accesoCentral) return const SizedBox.shrink();
     return PopupMenuButton<String>(
       tooltip: 'Acciones',
       icon: const Icon(Icons.more_vert, size: 20),
@@ -859,12 +925,13 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
         'estado' => alCambiarEstado(),
         'directorio' => alVerDirectorio?.call(),
         'lotes' => alVerLotes?.call(),
-        'informe' => alDescargarInforme?.call(),
+        'vetados' => alVerVetados?.call(),
         'credenciales' => alDescargarCredenciales?.call(),
         _ => alEliminar(),
       },
       itemBuilder: (context) => [
-        const PopupMenuItem(value: 'editar', child: Text('Editar')),
+        if (puedeEditar)
+          const PopupMenuItem(value: 'editar', child: Text('Editar')),
         // El sindicato no lo lleva en el menú: tiene su propio botón en la
         // fila, porque es el directorio que más se toca.
         if (alVerDirectorio != null)
@@ -877,7 +944,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
               title: Text('Directorio'),
             ),
           ),
-        itemCambiarEstado(habilitado),
+        if (puedeEditar) itemCambiarEstado(habilitado),
         if (alVerLotes != null)
           const PopupMenuItem(
             value: 'lotes',
@@ -888,14 +955,14 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
               title: Text('Parcelas'),
             ),
           ),
-        if (alDescargarInforme != null)
+        if (alVerVetados != null)
           const PopupMenuItem(
-            value: 'informe',
+            value: 'vetados',
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.picture_as_pdf_outlined),
-              title: Text('Descargar nómina en PDF'),
+              leading: Icon(Icons.person_off_outlined),
+              title: Text('Productores vetados'),
             ),
           ),
         if (alDescargarCredenciales != null)
@@ -908,7 +975,8 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
               title: Text('Estado e impresión de Carnets'),
             ),
           ),
-        const PopupMenuItem(value: 'eliminar', child: Text('Eliminar')),
+        if (puedeEditar)
+          const PopupMenuItem(value: 'eliminar', child: Text('Eliminar')),
       ],
     );
   }

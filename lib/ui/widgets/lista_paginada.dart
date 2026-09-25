@@ -198,6 +198,10 @@ class ListaPaginadaState<T> extends State<ListaPaginada<T>> {
     return RefreshIndicator(
       onRefresh: refrescar,
       child: ListView.separated(
+        // La firma incluye los filtros activos. Si la lista se desmonta al
+        // abrir otra pantalla y luego vuelve a aparecer, PageStorage restaura
+        // exactamente la posición correspondiente a esos mismos filtros.
+        key: PageStorageKey<String>('lista-paginada-${widget.clave}'),
         controller: _scroll,
         padding: widget.relleno,
         physics: const AlwaysScrollableScrollPhysics(),

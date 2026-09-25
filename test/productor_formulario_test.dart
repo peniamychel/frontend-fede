@@ -46,6 +46,20 @@ void main() {
     expect(find.text('Cambiar'), findsOneWidget);
     expect(find.text('Central *'), findsNothing);
     expect(find.text('Sindicato *'), findsNothing);
+
+    final campoCedula = find.ancestor(
+      of: find.text('Cédula de identidad *'),
+      matching: find.byType(TextFormField),
+    );
+    expect(campoCedula, findsOneWidget);
+    final entradaCedula = find.descendant(
+      of: campoCedula,
+      matching: find.byType(EditableText),
+    );
+    expect(
+      tester.widget<EditableText>(entradaCedula).focusNode.hasFocus,
+      isTrue,
+    );
   });
 
   testWidgets('sin sindicato fijado sí consulta la jerarquía', (tester) async {

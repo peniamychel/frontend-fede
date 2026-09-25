@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../widgets/estados.dart';
 import 'reunion_formulario.dart';
 import 'reunion_pagina.dart';
@@ -73,6 +74,7 @@ class _ReunionesPaginaState extends State<ReunionesPagina> {
 
   @override
   Widget build(BuildContext context) {
+    final editable = context.puede('REUNIONES_GESTIONAR');
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reuniones'),
@@ -84,11 +86,11 @@ class _ReunionesPaginaState extends State<ReunionesPagina> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: editable ? FloatingActionButton.extended(
         onPressed: _crear,
         icon: const Icon(Icons.event_available_outlined),
         label: const Text('Convocar'),
-      ),
+      ) : null,
       body: Column(
         children: [
           _buscador(context),

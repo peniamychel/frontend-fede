@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../widgets/estados.dart';
 import 'impresion_credencial.dart';
 import 'tarjeta_previa.dart';
@@ -147,20 +148,26 @@ class _Contenido extends StatelessWidget {
           children: [
             const _Rotulo('Anverso'),
             const SizedBox(height: 8),
-            TarjetaPrevia(
-              previa: previa,
-              reverso: false,
-              diseno: editor.diseno,
-              plantillaUrl: editor.plantillaCaraUrl,
+            _TarjetaConMarcaVeto(
+              vetado: previa.bloqueo != null,
+              child: TarjetaPrevia(
+                previa: previa,
+                reverso: false,
+                diseno: editor.diseno,
+                plantillaUrl: editor.plantillaCaraUrl,
+              ),
             ),
             const SizedBox(height: 24),
             const _Rotulo('Reverso'),
             const SizedBox(height: 8),
-            TarjetaPrevia(
-              previa: previa,
-              reverso: true,
-              diseno: editor.diseno,
-              plantillaUrl: editor.plantillaReversoUrl,
+            _TarjetaConMarcaVeto(
+              vetado: previa.bloqueo != null,
+              child: TarjetaPrevia(
+                previa: previa,
+                reverso: true,
+                diseno: editor.diseno,
+                plantillaUrl: editor.plantillaReversoUrl,
+              ),
             ),
           ],
         );
@@ -189,6 +196,57 @@ class _Contenido extends StatelessWidget {
                 ),
         );
       },
+    );
+  }
+}
+
+class _TarjetaConMarcaVeto extends StatelessWidget {
+  const _TarjetaConMarcaVeto({required this.vetado, required this.child});
+
+  final bool vetado;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!vetado) return child;
+    final tema = Theme.of(context);
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        child,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Center(
+              child: Transform.rotate(
+                angle: -0.28,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: tema.colorScheme.error.withValues(alpha: 0.55),
+                        width: 3,
+                      ),
+                    ),
+                    child: Text(
+                      'VETADO',
+                      style: tema.textTheme.displaySmall?.copyWith(
+                        color: tema.colorScheme.error.withValues(alpha: 0.55),
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 8,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -274,7 +332,7 @@ class _Informe extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Decidido en «${bloqueo.reunion}». ${bloqueo.comoSeLevanta}',
+                    '${bloqueo.reunion.trim().isEmpty ? '' : 'Decidido en «${bloqueo.reunion}». '}${bloqueo.comoSeLevanta}',
                     style: tema.textTheme.bodySmall?.copyWith(
                       color: tema.colorScheme.onErrorContainer,
                     ),
@@ -328,7 +386,9 @@ class _Informe extends StatelessWidget {
           const SizedBox(height: 16),
           for (final falta in lista) _FilaFaltante(falta: falta),
         ],
-        if (impresionDeCredencialesDisponible) ...[
+        if (bloqueo == null &&
+            context.puede('CARNETS_IMPRIMIR') &&
+            impresionDeCredencialesDisponible) ...[
           const SizedBox(height: 16),
           Card(
             margin: EdgeInsets.zero,
@@ -355,13 +415,24 @@ class _Informe extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 24),
-        PanelImpresionCredencial(
-          habilitada: previa.completa,
-          nombre: previa.nombreCompleto,
-          cargar: cargar,
-          alAnversoImpreso: alAnversoImpreso,
-        ),
-        if (!previa.completa) ...[
+        if (bloqueo == null && context.puede('CARNETS_IMPRIMIR'))
+          PanelImpresionCredencial(
+            habilitada: previa.completa,
+            nombre: previa.nombreCompleto,
+            cargar: cargar,
+            alAnversoImpreso: alAnversoImpreso,
+          ),
+        if (bloqueo != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Esta vista previa es solamente informativa. El carnet no puede '
+            'imprimirse mientras el veto esté vigente.',
+            style: tema.textTheme.bodySmall?.copyWith(
+              color: tema.colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ] else if (!previa.completa) ...[
           const SizedBox(height: 8),
           Text(
             'Completá lo de arriba y volvé a revisar. El servidor tampoco lo '

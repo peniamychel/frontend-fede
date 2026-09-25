@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 import '../../repositories/padron.dart';
 import '../credenciales/pliego_previa_pagina.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../productores/fila_productor.dart';
 import '../productores/productor_detalle_pagina.dart';
 import '../productores/productor_formulario.dart';
-import '../widgets/descargas.dart';
 import '../widgets/estados.dart';
 import '../widgets/lista_paginada.dart';
 
@@ -16,10 +16,35 @@ import '../widgets/lista_paginada.dart';
 ///
 /// Se llega desde la jerarquía, tocando el sindicato. Usa el mismo endpoint
 /// paginado que el padrón completo, fijando el filtro `sindicatoId`.
+class SindicatoProductoresControlador {
+  _SindicatoProductoresPaginaState? _estado;
+
+  /// Recarga las páginas visibles sin perder la posición de desplazamiento.
+  Future<void> refrescar() async {
+    await _estado?._lista.currentState?.refrescarConservandoPosicion();
+    await _estado?._recargarTotal();
+  }
+
+  Future<void> refrescarTotal() async => _estado?._recargarTotal();
+
+  void _conectar(_SindicatoProductoresPaginaState estado) => _estado = estado;
+
+  void _desconectar(_SindicatoProductoresPaginaState estado) {
+    if (identical(_estado, estado)) _estado = null;
+  }
+}
+
 class SindicatoProductoresPagina extends StatefulWidget {
-  const SindicatoProductoresPagina({super.key, required this.sindicato});
+  const SindicatoProductoresPagina({
+    super.key,
+    required this.sindicato,
+    this.controlador,
+    this.alCambiarProductores,
+  });
 
   final Sindicato sindicato;
+  final SindicatoProductoresControlador? controlador;
+  final VoidCallback? alCambiarProductores;
 
   @override
   State<SindicatoProductoresPagina> createState() =>
@@ -34,9 +59,34 @@ class _SindicatoProductoresPaginaState
   String _texto = '';
   OrdenProductores _orden = OrdenProductores.apellidos;
   int? _productorSeleccionadoId;
+  int? _totalProductores;
+  int _solicitudTotal = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controlador?._conectar(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _recargarTotal();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant SindicatoProductoresPagina oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controlador, widget.controlador)) {
+      oldWidget.controlador?._desconectar(this);
+      widget.controlador?._conectar(this);
+    }
+    if (oldWidget.sindicato.id != widget.sindicato.id) {
+      _totalProductores = null;
+      _recargarTotal();
+    }
+  }
 
   @override
   void dispose() {
+    widget.controlador?._desconectar(this);
     _rebote?.cancel();
     _buscador.dispose();
     super.dispose();
@@ -49,10 +99,30 @@ class _SindicatoProductoresPaginaState
     });
   }
 
+  Future<void> _recargarTotal() async {
+    final sindicatoId = widget.sindicato.id;
+    final solicitud = ++_solicitudTotal;
+    try {
+      final pagina = await PadronScope.of(context).productores.listar(
+        sindicatoId: sindicatoId,
+        paginacion: const Paginacion(tamano: 1),
+      );
+      if (!mounted ||
+          solicitud != _solicitudTotal ||
+          widget.sindicato.id != sindicatoId) {
+        return;
+      }
+      setState(() => _totalProductores = pagina.totalElementos);
+    } catch (_) {
+      // La lista muestra su propio error de red; se conserva el último total.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final padron = PadronScope.of(context);
     final s = widget.sindicato;
+    final total = _totalProductores ?? s.totalProductores ?? 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -62,8 +132,7 @@ class _SindicatoProductoresPaginaState
             Text(s.nombre, maxLines: 1, overflow: TextOverflow.ellipsis),
             Text(
               'Central ${s.centralNombre} · '
-              '${s.totalProductores ?? 0} '
-              '${s.totalProductores == 1 ? 'productor' : 'productores'}',
+              '$total ${total == 1 ? 'productor' : 'productores'}',
               style: Theme.of(context).textTheme.bodySmall,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -95,28 +164,29 @@ class _SindicatoProductoresPaginaState
                 ),
             ],
           ),
-          IconButton(
-            tooltip: 'Descargar la nómina en PDF, lista para imprimir',
-            onPressed: () => descargarInformeSindicato(context, s),
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-          ),
-          IconButton(
-            tooltip: 'Estado e impresión de carnets',
-            onPressed: _abrirImpresionMasiva,
-            icon: const Icon(Icons.badge_outlined),
-          ),
+          if (!context.accesoCentral)
+            IconButton(
+              tooltip: 'Estado e impresión de carnets',
+              onPressed: _abrirImpresionMasiva,
+              icon: const Icon(Icons.badge_outlined),
+            ),
           IconButton(
             tooltip: 'Recargar',
-            onPressed: () => _lista.currentState?.refrescar(),
+            onPressed: () {
+              _lista.currentState?.refrescar();
+              _recargarTotal();
+            },
             icon: const Icon(Icons.refresh),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _crear,
-        icon: const Icon(Icons.person_add_alt),
-        label: const Text('Nuevo'),
-      ),
+      floatingActionButton: context.puede('PRODUCTORES_EDITAR')
+          ? FloatingActionButton.extended(
+              onPressed: _crear,
+              icon: const Icon(Icons.person_add_alt),
+              label: const Text('Nuevo'),
+            )
+          : null,
       body: Column(
         children: [
           Padding(
@@ -126,7 +196,7 @@ class _SindicatoProductoresPaginaState
               onChanged: _alEscribir,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: 'Buscar por nombre, apellido, cédula o carné',
+                hintText: 'Buscar por nombre, apellido, cédula o código',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _buscador.text.isEmpty
                     ? null
@@ -158,11 +228,13 @@ class _SindicatoProductoresPaginaState
                 mensaje: _texto.isEmpty
                     ? 'Este sindicato no tiene productores.'
                     : 'Ningún productor coincide con la búsqueda.',
-                detalle: _texto.isEmpty
+                detalle: _texto.isEmpty && context.puede('PRODUCTORES_EDITAR')
                     ? 'Registrá el primero: va a quedar asignado a «${s.nombre}» '
                           'sin que tengas que elegirlo.'
                     : 'Probá con otro nombre, apellido, cédula o código.',
-                accion: _texto.isEmpty
+                accion: _texto.isEmpty && !context.puede('PRODUCTORES_EDITAR')
+                    ? null
+                    : _texto.isEmpty
                     ? FilledButton.icon(
                         onPressed: _crear,
                         icon: const Icon(Icons.person_add_alt),
@@ -203,6 +275,8 @@ class _SindicatoProductoresPaginaState
     setState(() => _productorSeleccionadoId = p.id);
     if (cambio == true) {
       await _lista.currentState?.refrescarConservandoPosicion();
+      await _recargarTotal();
+      if (mounted) widget.alCambiarProductores?.call();
     }
   }
 
@@ -225,6 +299,10 @@ class _SindicatoProductoresPaginaState
         builder: (_) => ProductorFormulario(sindicatoFijo: widget.sindicato),
       ),
     );
-    if (creado == true) _lista.currentState?.refrescar();
+    if (creado == true && mounted) {
+      await _lista.currentState?.refrescar();
+      await _recargarTotal();
+      if (mounted) widget.alCambiarProductores?.call();
+    }
   }
 }

@@ -4,6 +4,48 @@ import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/estados.dart';
 
+/// Conserva la clasificación y la identidad del productor.
+Future<bool> editarSoloNumeroParcela(
+  BuildContext context,
+  Productor productor, {
+  Lote? lote,
+}) async {
+  final repo = PadronScope.of(context).lotes;
+  try {
+    final lotes = await repo.listar(sindicatoId: productor.sindicatoId);
+    if (!context.mounted) return false;
+    final referencia =
+        lote ??
+        Lote(
+          id: -1,
+          numero: null,
+          extension: null,
+          codigo: '',
+          estado: productor.clasificacion ?? EstadoLote.desconocido,
+          estadoOriginal: null,
+          mercado: null,
+          sindicatoId: productor.sindicatoId,
+          sindicatoNombre: productor.sindicatoNombre,
+        );
+    final cambio = await showDialog<_NumeroParcela>(
+      context: context,
+      builder: (_) => _DialogoCambiarNumero(lote: referencia, lotes: lotes),
+    );
+    if (cambio == null || !context.mounted) return false;
+    await repo.guardarNumeroProductor(
+      productor.id,
+      cambio.numero,
+      loteId: lote?.id,
+      letra: cambio.letra ?? '',
+    );
+    if (context.mounted) mostrarExito(context, 'Número de lote guardado');
+    return true;
+  } catch (e) {
+    if (context.mounted) mostrarError(context, e);
+    return false;
+  }
+}
+
 /// Asignar y quitar la parcela de un productor, y cambiar su clasificación,
 /// desde su ficha.
 ///
@@ -34,6 +76,7 @@ Future<bool> asignarParcela(BuildContext context, Productor productor) async {
           numero: elegido.numero,
           superficie: elegido.superficie,
           estado: elegido.estado?.valor,
+          letra: elegido.letra,
         ),
       );
     } else {
@@ -130,16 +173,23 @@ Future<bool> cambiarNumeroParcela(BuildContext context, Lote lote) async {
   if (cambio == null || !context.mounted) return false;
 
   try {
-    final actualizado = await PadronScope.of(context).lotes.actualizar(
-      lote.id,
-      LoteRequest(
-        sindicatoId: lote.sindicatoId,
-        numero: cambio.numero,
-        superficie: lote.superficie,
-        estado: lote.estadoOriginal ?? lote.estado.valor,
-        mercado: lote.mercado?.valor,
-      ),
-    );
+    final actualizado = lote.tenedor == null
+        ? await PadronScope.of(context).lotes.actualizar(
+            lote.id,
+            LoteRequest(
+              sindicatoId: lote.sindicatoId,
+              numero: cambio.numero,
+              superficie: lote.superficie,
+              estado: lote.estadoOriginal ?? lote.estado.valor,
+              mercado: lote.mercado?.valor,
+            ),
+          )
+        : await PadronScope.of(context).lotes.guardarNumeroProductor(
+            lote.tenedor!.productorId,
+            cambio.numero,
+            loteId: lote.id,
+            letra: cambio.letra ?? '',
+          );
     if (context.mounted) {
       mostrarExito(
         context,
@@ -209,27 +259,85 @@ Future<bool> cambiarClasificacionParcela(
 
 /// Lo que devuelve un diálogo: crear algo nuevo, o tomar uno que ya existe.
 class _Eleccion {
-  const _Eleccion.nueva({this.numero, this.superficie, required this.estado})
-    : nuevo = true,
-      existenteId = null;
+  const _Eleccion.nueva({
+    this.numero,
+    this.superficie,
+    this.letra,
+    required this.estado,
+  }) : nuevo = true,
+       existenteId = null;
 
   const _Eleccion.existente(this.existenteId, {required this.estado})
     : nuevo = false,
       numero = null,
-      superficie = null;
+      superficie = null,
+      letra = null;
 
   final bool nuevo;
   final int? existenteId;
 
   final String? numero;
   final double? superficie;
+  final String? letra;
   final EstadoLote? estado;
 }
 
 class _NumeroParcela {
-  const _NumeroParcela(this.numero);
+  const _NumeroParcela(this.numero, this.letra);
 
   final String numero;
+  final String? letra;
+}
+
+Widget _selectorLetra({
+  required String? valor,
+  required List<Lote> ocupantes,
+  required ValueChanged<String?> alCambiar,
+}) {
+  final reservadas = ocupantes
+      .map((lote) => lote.tenedor?.letraReservada)
+      .whereType<String>()
+      .toSet();
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      InputDecorator(
+        decoration: const InputDecoration(
+          labelText: 'Letra del lote',
+          border: OutlineInputBorder(),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String?>(
+            value: valor,
+            isExpanded: true,
+            isDense: true,
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('Automática'),
+              ),
+              for (final letra in 'ABCDEFGH'.split(''))
+                DropdownMenuItem<String?>(
+                  value: letra,
+                  enabled: !reservadas.contains(letra),
+                  child: Text(
+                    reservadas.contains(letra)
+                        ? '$letra · reservada por otro productor'
+                        : letra,
+                  ),
+                ),
+            ],
+            onChanged: alCambiar,
+          ),
+        ),
+      ),
+      const SizedBox(height: 5),
+      const Text(
+        'Si elegís una letra, se conservará aunque se agregue otro productor. '
+        'Automática mantiene la prioridad de Sistema.',
+      ),
+    ],
+  );
 }
 
 class _DialogoCambiarNumero extends StatefulWidget {
@@ -245,12 +353,14 @@ class _DialogoCambiarNumero extends StatefulWidget {
 class _DialogoCambiarNumeroState extends State<_DialogoCambiarNumero> {
   final _formulario = GlobalKey<FormState>();
   late final TextEditingController _numero;
+  String? _letraManual;
 
   @override
   void initState() {
     super.initState();
     _numero = TextEditingController(text: widget.lote.numero ?? '')
       ..addListener(_actualizar);
+    _letraManual = widget.lote.tenedor?.letraReservada;
   }
 
   @override
@@ -260,11 +370,18 @@ class _DialogoCambiarNumeroState extends State<_DialogoCambiarNumero> {
     super.dispose();
   }
 
-  void _actualizar() => setState(() {});
+  void _actualizar() => setState(() {
+    if (_numeroLimpio != (widget.lote.numero ?? '').trim()) {
+      _letraManual = null;
+    }
+  });
 
   String get _numeroLimpio => _numero.text.trim();
 
-  bool get _cambioReal => _numeroLimpio != (widget.lote.numero ?? '').trim();
+  bool get _cambioReal =>
+      _numeroLimpio != (widget.lote.numero ?? '').trim() ||
+      (widget.lote.tenedor != null &&
+          _letraManual != widget.lote.tenedor?.letraReservada);
 
   List<Lote> get _ocupantes {
     final numero = _numeroLimpio.toUpperCase();
@@ -283,13 +400,13 @@ class _DialogoCambiarNumeroState extends State<_DialogoCambiarNumero> {
   Widget build(BuildContext context) {
     final ocupantes = _ocupantes;
     final lleno = ocupantes.length >= 8;
-    final actualConSistema = widget.lote.estado == EstadoLote.conSistema;
-    final hayOtroConSistema = ocupantes.any(
-      (otro) => otro.estado == EstadoLote.conSistema,
-    );
     final tema = Theme.of(context);
     return AlertDialog(
-      title: const Text('Cambiar número de lote'),
+      title: Text(
+        widget.lote.id == -1
+            ? 'Asignar número de lote'
+            : 'Cambiar número de lote',
+      ),
       content: SizedBox(
         width: 460,
         child: Form(
@@ -300,8 +417,10 @@ class _DialogoCambiarNumeroState extends State<_DialogoCambiarNumero> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'El lote seguirá a nombre de ${widget.lote.tenedor?.nombre ?? 'su tenedor actual'}. '
-                  'Solo se corregirá su número.',
+                  widget.lote.id == -1
+                      ? 'Se asignará el número conservando la clasificación actual del productor.'
+                      : 'El lote seguirá a nombre de ${widget.lote.tenedor?.nombre ?? 'su tenedor actual'}. '
+                            'Solo se corregirá su número.',
                   style: tema.textTheme.bodySmall,
                 ),
                 const SizedBox(height: 16),
@@ -332,13 +451,13 @@ class _DialogoCambiarNumeroState extends State<_DialogoCambiarNumero> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          ocupantes.isEmpty
-                              ? 'Ese número no tiene otro productor: el lote quedará sin letra y el código del productor no cambiará.'
-                              : lleno
+                          lleno
                               ? 'Ese número ya tiene ocho productores (A-H).'
-                              : actualConSistema && !hayOtroConSistema
-                              ? 'Este productor tiene Sistema: recibirá la letra A y las letras de los demás se reordenarán.'
-                              : 'Ya tiene ${ocupantes.length} productor(es). Las letras se recalcularán automáticamente, dando prioridad a quienes tienen Sistema.',
+                              : _letraManual != null
+                              ? 'La letra $_letraManual quedará reservada; las demás usarán las letras disponibles.'
+                              : ocupantes.isEmpty
+                              ? 'Sin reserva manual, el lote quedará sin letra mientras sea el único con ese número.'
+                              : 'Ya tiene ${ocupantes.length} productor(es). Las letras automáticas dan prioridad a quienes tienen Sistema.',
                           style: tema.textTheme.bodySmall?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
@@ -361,6 +480,14 @@ class _DialogoCambiarNumeroState extends State<_DialogoCambiarNumero> {
                     ),
                   ),
                 ],
+                if (widget.lote.id == -1 || widget.lote.tieneTenedor) ...[
+                  const SizedBox(height: 12),
+                  _selectorLetra(
+                    valor: _letraManual,
+                    ocupantes: ocupantes,
+                    alCambiar: (letra) => setState(() => _letraManual = letra),
+                  ),
+                ],
               ],
             ),
           ),
@@ -381,7 +508,7 @@ class _DialogoCambiarNumeroState extends State<_DialogoCambiarNumero> {
 
   void _guardar() {
     if (!_formulario.currentState!.validate()) return;
-    Navigator.of(context).pop(_NumeroParcela(_numeroLimpio));
+    Navigator.of(context).pop(_NumeroParcela(_numeroLimpio, _letraManual));
   }
 }
 
@@ -400,6 +527,7 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
   final _superficie = TextEditingController();
 
   bool _nueva = true;
+  String? _letraManual;
   Lote? _elegida;
   List<Lote> _libres = const [];
   List<Lote> _todas = const [];
@@ -441,7 +569,7 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
   }
 
   void _alCambiarNumero() {
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _letraManual = null);
   }
 
   List<Lote> get _ocupantes {
@@ -499,6 +627,13 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
                   if (_limpio(_numero) != null) ...[
                     const SizedBox(height: 12),
                     _resumenNumero(context),
+                    const SizedBox(height: 12),
+                    _selectorLetra(
+                      valor: _letraManual,
+                      ocupantes: _ocupantes,
+                      alCambiar: (letra) =>
+                          setState(() => _letraManual = letra),
+                    ),
                   ],
                   const SizedBox(height: 12),
                   TextFormField(
@@ -585,6 +720,7 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
       Navigator.of(context).pop(
         _Eleccion.nueva(
           numero: _limpio(_numero),
+          letra: _letraManual,
           superficie: double.tryParse(
             (_limpio(_superficie) ?? '').replaceAll(',', '.'),
           ),
@@ -608,17 +744,6 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
     final tema = Theme.of(context);
     final ocupantes = _ocupantes;
     final lleno = ocupantes.length >= 8;
-    final cantidadConSistema = ocupantes
-        .where((lote) => lote.estado == EstadoLote.conSistema)
-        .length;
-    final proxima = lleno
-        ? null
-        : String.fromCharCode(
-            65 +
-                (_estado == EstadoLote.conSistema
-                    ? cantidadConSistema
-                    : ocupantes.length),
-          );
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -631,15 +756,13 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            ocupantes.isEmpty
-                ? 'Número disponible: el lote quedará sin letra y el código del productor no cambiará.'
-                : lleno
+            lleno
                 ? 'Ya tiene ocho productores (A-H).'
-                : _estado == EstadoLote.conSistema
-                ? 'Ya tiene ${ocupantes.length} productor(es). Como esta clasificación es Sistema, se asignará la letra $proxima y se reordenarán las demás.'
-                : cantidadConSistema > 0
-                ? 'Ya tiene ${ocupantes.length} productor(es). Quienes tienen Sistema conservan las primeras letras; se asignará la letra $proxima.'
-                : 'Ya tiene ${ocupantes.length} productor(es). Se asignará la letra $proxima.',
+                : _letraManual != null
+                ? 'La letra $_letraManual quedará reservada para este productor.'
+                : ocupantes.isEmpty
+                ? 'Número disponible: el lote quedará sin letra hasta que otro productor comparta este número.'
+                : 'Ya tiene ${ocupantes.length} productor(es). La letra automática se asignará entre las disponibles, dando prioridad a Sistema.',
             style: tema.textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w600,
             ),

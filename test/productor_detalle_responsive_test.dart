@@ -8,11 +8,80 @@ import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/padron_scope.dart';
 import 'package:fede/ui/productores/productor_detalle_pagina.dart';
 import 'package:fede/ui/productores/imagenes_productor.dart';
+import 'package:fede/core/sesion_controlador.dart';
+import 'package:fede/ui/sesion_scope.dart';
 
 const _central = 'CENTRAL REGIONAL DE PRODUCTORES TRECE DE JUNIO';
 const _sindicato = 'SINDICATO AGRARIO PRIMERO DE MAYO DE CARRASCO TROPICAL';
 
 void main() {
+  testWidgets(
+    'usuario de central gestiona fotos, observa y cambia número sin SIE ni clasificación',
+    (tester) async {
+      tester.view.physicalSize = const Size(1100, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final api = _ApiDetalle(
+        conFoto: true,
+        conLote: true,
+        revisionSiePendiente: true,
+      );
+      final sesion = SesionControlador(AutenticacionRepository(api));
+      sesion.sesion = Sesion(
+        token: 'prueba',
+        usuario: 'central',
+        nombreCompleto: 'Fotógrafo',
+        rol: 'OPERADOR',
+        roles: {'REGISTRO_CENTRAL'},
+        centralId: 3,
+        permisos: {
+          'PRODUCTORES_VER',
+          'FOTOS_PRODUCTORES_EDITAR',
+          'PRODUCTORES_OBSERVAR',
+          'NUMERO_LOTE_EDITAR',
+        },
+        expiraEn: DateTime.now().add(const Duration(hours: 1)),
+      );
+      final tema = PreferenciaTema();
+      addTearDown(tema.dispose);
+      addTearDown(sesion.dispose);
+      await tester.pumpWidget(
+        TemaScope(
+          preferencia: tema,
+          child: SesionScope(
+            controlador: sesion,
+            child: PadronScope(
+              padron: Padron(api: api),
+              child: const MaterialApp(
+                home: ProductorDetallePagina(productorId: 42),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Reemplazar'), findsOneWidget);
+      expect(find.text('Borrar'), findsOneWidget);
+      expect(find.text('Cambiar número'), findsOneWidget);
+      expect(find.byTooltip('Marcar como observado'), findsOneWidget);
+      expect(find.byTooltip('Editar'), findsNothing);
+      expect(find.byTooltip('Verificar con SIE'), findsNothing);
+      expect(find.byTooltip('Ver e imprimir la credencial'), findsNothing);
+      expect(find.text('Cambiar'), findsNothing);
+      expect(find.text('Quitarle la parcela'), findsNothing);
+      expect(api.creaciones, isEmpty);
+      await tester.tap(find.text('Cambiar número'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), '25');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar número'));
+      await tester.pumpAndSettle();
+      expect(api.ultimaRuta, '/productores/42/numero-lote');
+      expect(api.ultimoCuerpo, {'numero': '25', 'loteId': 9});
+      expect(api.creaciones, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('destaca nombres, apellidos, cédula y lote en tres líneas', (
     tester,
   ) async {
@@ -243,7 +312,38 @@ void main() {
 }
 
 class _ApiDetalle extends ApiClient {
-  _ApiDetalle({this.conFoto = false, this.conLote = false});
+  _ApiDetalle({
+    this.conFoto = false,
+    this.conLote = false,
+    this.revisionSiePendiente = false,
+  });
+  final bool revisionSiePendiente;
+  final creaciones = <String>[];
+  String? ultimaRuta;
+  Object? ultimoCuerpo;
+  @override
+  Future<Object?> crear(String ruta, Object cuerpo) async {
+    creaciones.add(ruta);
+    return <String, dynamic>{};
+  }
+
+  @override
+  Future<Object?> reemplazar(
+    String ruta,
+    Object cuerpo, {
+    Map<String, dynamic>? query,
+  }) async {
+    ultimaRuta = ruta;
+    ultimoCuerpo = cuerpo;
+    return {
+      'id': 9,
+      'numero': '25',
+      'estado': 'CON_SISTEMA',
+      'sindicatoId': 7,
+      'sindicatoNombre': _sindicato,
+    };
+  }
+
   final bool conFoto;
   final bool conLote;
   Future<void>? esperaDetalle;
@@ -263,6 +363,7 @@ class _ApiDetalle extends ApiClient {
           'sindicatoNombre': _sindicato,
           'centralId': 3,
           'centralNombre': _central,
+          'revisionSiePendiente': revisionSiePendiente,
           'auditoria': {'estado': false},
         },
         'lotes': [

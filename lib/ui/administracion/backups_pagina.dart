@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/guardar_archivo.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../sesion_scope.dart';
 import '../widgets/boton_tema.dart';
 import '../widgets/estados.dart';
 
@@ -16,15 +17,10 @@ class BackupsPagina extends StatefulWidget {
 }
 
 class _BackupsPaginaState extends State<BackupsPagina> {
-  final _usuario = TextEditingController(text: 'admin');
-  final _contrasena = TextEditingController();
-  Sesion? _sesion;
   List<Backup> _respaldos = const [];
-  bool _iniciando = true;
-  bool _autenticando = false;
+  bool _iniciada = false;
   bool _cargando = false;
   bool _creando = false;
-  Object? _error;
   Timer? _consulta;
 
   Padron get _padron => PadronScope.of(context);
@@ -32,66 +28,22 @@ class _BackupsPaginaState extends State<BackupsPagina> {
   @override
   void initState() {
     super.initState();
-    _restaurarSesion();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_iniciada) return;
+    _iniciada = true;
+    if (SesionScope.of(context).puede('RESPALDOS_ADMINISTRAR')) {
+      _recargar();
+    }
   }
 
   @override
   void dispose() {
     _consulta?.cancel();
-    _usuario.dispose();
-    _contrasena.dispose();
     super.dispose();
-  }
-
-  Future<void> _restaurarSesion() async {
-    try {
-      final sesion = await _padron.autenticacion.restaurar();
-      if (!mounted) return;
-      setState(() {
-        _sesion = sesion;
-        _iniciando = false;
-      });
-      if (sesion?.esAdministrador == true) await _recargar();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _iniciando = false;
-        _error = e;
-      });
-    }
-  }
-
-  Future<void> _iniciarSesion() async {
-    if (_usuario.text.trim().isEmpty || _contrasena.text.isEmpty) {
-      mostrarAviso(context, 'Ingresá el usuario y la contraseña.');
-      return;
-    }
-    setState(() => _autenticando = true);
-    try {
-      final sesion = await _padron.autenticacion.iniciarSesion(
-        _usuario.text,
-        _contrasena.text,
-      );
-      if (!mounted) return;
-      _contrasena.clear();
-      setState(() => _sesion = sesion);
-      if (sesion.esAdministrador) await _recargar();
-    } catch (e) {
-      if (mounted) mostrarError(context, e);
-    } finally {
-      if (mounted) setState(() => _autenticando = false);
-    }
-  }
-
-  Future<void> _cerrarSesion() async {
-    _consulta?.cancel();
-    await _padron.autenticacion.cerrarSesion();
-    if (!mounted) return;
-    setState(() {
-      _sesion = null;
-      _respaldos = const [];
-      _error = null;
-    });
   }
 
   Future<void> _recargar({bool silencioso = false}) async {
@@ -102,7 +54,6 @@ class _BackupsPaginaState extends State<BackupsPagina> {
       if (!mounted) return;
       setState(() {
         _respaldos = respaldos;
-        _error = null;
       });
       if (respaldos.any((b) => b.enProceso)) {
         _consulta = Timer(
@@ -112,7 +63,6 @@ class _BackupsPaginaState extends State<BackupsPagina> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e);
       if (!silencioso) mostrarError(context, e);
     } finally {
       if (mounted && !silencioso) setState(() => _cargando = false);
@@ -181,107 +131,17 @@ class _BackupsPaginaState extends State<BackupsPagina> {
 
   @override
   Widget build(BuildContext context) {
+    final permitido = SesionScope.of(context).puede('RESPALDOS_ADMINISTRAR');
     return Scaffold(
       appBar: AppBar(
         title: const Text('Copias de seguridad'),
-        actions: [
-          if (_sesion != null)
-            IconButton(
-              tooltip: 'Cerrar sesión administrativa',
-              onPressed: _cerrarSesion,
-              icon: const Icon(Icons.logout),
-            ),
-          const BotonTema(),
-        ],
+        actions: const [BotonTema()],
       ),
-      body: switch ((_iniciando, _sesion)) {
-        (true, _) => const Center(child: CircularProgressIndicator()),
-        (false, null) => _formularioLogin(),
-        (false, final sesion?) when !sesion.esAdministrador => _sinPermiso(
-          sesion,
-        ),
-        _ => _contenido(),
-      },
+      body: permitido ? _contenido() : _sinPermiso(),
     );
   }
 
-  Widget _formularioLogin() {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: AutofillGroup(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Icon(Icons.admin_panel_settings_outlined, size: 48),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Acceso administrativo',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Los respaldos contienen todo el padrón. Iniciá sesión con una cuenta administradora.',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    TextField(
-                      controller: _usuario,
-                      autofillHints: const [AutofillHints.username],
-                      decoration: const InputDecoration(
-                        labelText: 'Usuario',
-                        prefixIcon: Icon(Icons.person_outline),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _contrasena,
-                      obscureText: true,
-                      autofillHints: const [AutofillHints.password],
-                      onSubmitted: (_) => _iniciarSesion(),
-                      decoration: const InputDecoration(
-                        labelText: 'Contraseña',
-                        prefixIcon: Icon(Icons.lock_outline),
-                      ),
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        'No se pudo comprobar la sesión: $_error',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: _autenticando ? null : _iniciarSesion,
-                      icon: _autenticando
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.login),
-                      label: const Text('Ingresar'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _sinPermiso(Sesion sesion) {
+  Widget _sinPermiso() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -294,13 +154,8 @@ class _BackupsPaginaState extends State<BackupsPagina> {
               color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: 16),
-            Text(
-              'La cuenta ${sesion.usuario} no tiene permiso de administrador.',
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton(
-              onPressed: _cerrarSesion,
-              child: const Text('Cambiar cuenta'),
+            const Text(
+              'Tu cuenta no tiene permiso para administrar respaldos.',
             ),
           ],
         ),

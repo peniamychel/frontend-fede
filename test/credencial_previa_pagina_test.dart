@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:fede/models/diseno_credencial.dart';
 import 'package:fede/ui/credenciales/fuentes_bajo_demanda.dart';
 
 import 'package:fede/core/preferencia_tema.dart';
@@ -32,6 +31,7 @@ void main() {
   Map<String, dynamic> previa({
     required bool completa,
     List<Map<String, String>> faltantes = const [],
+    Map<String, dynamic>? bloqueo,
   }) => {
     'productorId': 1,
     'centralId': 5,
@@ -62,6 +62,7 @@ void main() {
     },
     'secretarioGeneralSindicato': null,
     'faltantes': faltantes,
+    'bloqueo': bloqueo,
     'completa': completa,
   };
 
@@ -157,6 +158,32 @@ void main() {
     expect(find.text('2. Imprimir reverso'), findsOneWidget);
   });
 
+  testWidgets('vetado: muestra la credencial y oculta toda impresión', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      pantalla(
+        previa(
+          completa: false,
+          bloqueo: const {
+            'titulo': 'Observado por la asamblea',
+            'motivo': 'Decisión del sindicato',
+            'reunion': 'Asamblea ordinaria',
+            'desde': '2026-09-20',
+            'comoSeLevanta': 'Debe levantarse en otra reunión.',
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('JUAN MORALES'), findsOneWidget);
+    expect(find.text('Observado por la asamblea'), findsOneWidget);
+    expect(find.textContaining('solamente informativa'), findsOneWidget);
+    expect(find.text('1. Imprimir anverso'), findsNothing);
+    expect(find.text('2. Imprimir reverso'), findsNothing);
+  });
+
   testWidgets('Android conserva la vista previa sin botones de impresión', (
     tester,
   ) async {
@@ -172,20 +199,20 @@ void main() {
     expect(find.text('1. Imprimir anverso'), findsNothing);
   });
 
-  testWidgets('Windows no imprime una credencial si no hay fase activa', (
+  testWidgets('Windows permite la impresión manual sin fase activa', (
     tester,
   ) async {
     await tester.pumpWidget(pantalla(previa(completa: true), conFase: false));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Primero habilitá una fase'), findsOneWidget);
+    expect(find.textContaining('Impresión manual sin fase activa'), findsOneWidget);
     final boton = tester.widget<FilledButton>(
       find.ancestor(
         of: find.text('1. Imprimir anverso'),
         matching: find.byType(FilledButton),
       ),
     );
-    expect(boton.onPressed, isNull);
+    expect(boton.onPressed, isNotNull);
   });
 
   testWidgets('usa las plantillas personalizadas devueltas por el editor', (

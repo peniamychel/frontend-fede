@@ -6,6 +6,32 @@ import 'package:fede/ui/productores/fila_productor.dart';
 import 'package:fede/ui/productores/productor_detalle_pagina.dart';
 
 void main() {
+  testWidgets('mantiene visible el motivo cuando se abre el teclado móvil', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 800);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      PadronScope(
+        padron: Padron(api: _ApiObservacion()),
+        child: const MaterialApp(home: ProductorDetallePagina(productorId: 42)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Marcar como observado'));
+    await tester.pumpAndSettle();
+
+    final campo = find.byType(TextFormField);
+    expect(campo, findsOneWidget);
+    expect(tester.getRect(campo).bottom, lessThanOrEqualTo(500));
+    expect(find.text('Guardar observación'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('permite observar con motivo y quitar la observación', (
     tester,
   ) async {

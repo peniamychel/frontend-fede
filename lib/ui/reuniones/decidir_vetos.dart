@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../vetos/registro_productor_vetado.dart';
 import '../widgets/estados.dart';
 
 /// Poner y quitar vetos, desde la reunión que lo decide.
@@ -63,6 +64,140 @@ Future<bool> vetarEnLaReunion(BuildContext context, Reunion reunion) async {
     if (context.mounted) mostrarError(context, e);
     return false;
   }
+}
+
+/// Veta directamente desde la administración de un sindicato.
+Future<bool> vetarEnSindicato(BuildContext context, Sindicato sindicato) async {
+  final padron = PadronScope.of(context);
+  bool registrado = false;
+  final elegido = await showDialog<_Decision<Productor>>(
+    context: context,
+    builder: (_) => _DialogoDecision<Productor>(
+      titulo: 'Vetar productor',
+      explicacion:
+          'El productor dejará de aparecer en las listas normales y su cédula '
+          'quedará bloqueada en todo el sistema hasta que se levante el veto.',
+      buscar: (texto) async => (await padron.productores.listar(
+        sindicatoId: sindicato.id,
+        texto: texto,
+      )).contenido,
+      fila: (p) => _Fila(
+        titulo: p.nombreCompleto.isEmpty ? p.nombres : p.nombreCompleto,
+        detalle: [
+          if (p.ci != null) 'CI ${p.ci}',
+          if (p.codigoPadron != null) p.codigoPadron!,
+        ].join(' · '),
+      ),
+      sinResultados:
+          'Nadie con ese nombre, cédula ni código en este sindicato.',
+      registrarNuevo: (dialogo, busqueda) async {
+        registrado = await registrarProductorVetado(
+          dialogo,
+          sindicato,
+          ciInicial: RegExp(r'\d').hasMatch(busqueda) && !busqueda.contains(' ')
+              ? busqueda
+              : null,
+        );
+        return registrado;
+      },
+      etiquetaMotivo: 'Motivo del veto *',
+      textoAceptar: 'Vetar',
+    ),
+  );
+  if (registrado) return true;
+  if (elegido == null || !context.mounted) return false;
+  try {
+    await padron.vetos.vetar(
+      VetoRequest(productorId: elegido.item.id, motivo: elegido.motivo),
+    );
+    if (context.mounted) {
+      mostrarExito(context, '${elegido.item.nombreCompleto} quedó vetado');
+    }
+    return true;
+  } catch (e) {
+    if (context.mounted) mostrarError(context, e);
+    return false;
+  }
+}
+
+/// Levanta directamente un veto desde el sindicato.
+Future<bool> levantarEnSindicato(BuildContext context, Veto veto) async {
+  final motivo = await showDialog<String>(
+    context: context,
+    builder: (_) => _DialogoMotivoLevantamiento(nombre: veto.productorNombre),
+  );
+  if (motivo == null || !context.mounted) return false;
+  try {
+    await PadronScope.of(
+      context,
+    ).vetos.levantar(veto.id, LevantarVetoRequest(motivo: motivo));
+    if (context.mounted) {
+      mostrarExito(
+        context,
+        '${veto.productorNombre} salió de la lista de vetados',
+      );
+    }
+    return true;
+  } catch (e) {
+    if (context.mounted) mostrarError(context, e);
+    return false;
+  }
+}
+
+class _DialogoMotivoLevantamiento extends StatefulWidget {
+  const _DialogoMotivoLevantamiento({required this.nombre});
+  final String nombre;
+
+  @override
+  State<_DialogoMotivoLevantamiento> createState() =>
+      _DialogoMotivoLevantamientoState();
+}
+
+class _DialogoMotivoLevantamientoState
+    extends State<_DialogoMotivoLevantamiento> {
+  final _controlador = TextEditingController();
+
+  @override
+  void dispose() {
+    _controlador.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Levantar veto'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(widget.nombre),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _controlador,
+          autofocus: true,
+          maxLength: 1000,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            labelText: 'Motivo *',
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(
+        onPressed: _controlador.text.trim().isEmpty
+            ? null
+            : () => Navigator.pop(context, _controlador.text.trim()),
+        child: const Text('Levantar veto'),
+      ),
+    ],
+  );
 }
 
 /// Saca a alguien de la lista en esta reunión. Devuelve true si se guardó.
@@ -151,6 +286,7 @@ class _DialogoDecision<T> extends StatefulWidget {
     required this.buscar,
     required this.fila,
     required this.sinResultados,
+    this.registrarNuevo,
     required this.etiquetaMotivo,
     required this.textoAceptar,
   });
@@ -160,6 +296,8 @@ class _DialogoDecision<T> extends StatefulWidget {
   final Future<List<T>> Function(String texto) buscar;
   final _Fila Function(T item) fila;
   final String sinResultados;
+  final Future<bool> Function(BuildContext dialogo, String busqueda)?
+  registrarNuevo;
   final String etiquetaMotivo;
   final String textoAceptar;
 
@@ -334,11 +472,30 @@ class _DialogoDecisionState<T> extends State<_DialogoDecision<T>> {
       return const SizedBox.shrink();
     }
     if (_resultados.isEmpty) {
-      return Text(
-        widget.sinResultados,
-        style: tema.textTheme.bodySmall?.copyWith(
-          color: tema.colorScheme.outline,
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.sinResultados,
+            style: tema.textTheme.bodySmall?.copyWith(
+              color: tema.colorScheme.outline,
+            ),
+          ),
+          if (widget.registrarNuevo != null) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () async {
+                final creado = await widget.registrarNuevo!(
+                  context,
+                  _busqueda.text.trim(),
+                );
+                if (creado && context.mounted) Navigator.of(context).pop();
+              },
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+              label: const Text('Registrar cédula y vetar'),
+            ),
+          ],
+        ],
       );
     }
 

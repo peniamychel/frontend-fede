@@ -38,7 +38,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.decision, isTrue);
     expect(find.text('Corrección SIE aceptada'), findsWidgets);
-    expect(find.text('JOSÉ PEÑA MUÑOZ'), findsOneWidget);
+    expect(find.text('JOSÉ'), findsOneWidget);
+    expect(find.text('PEÑA MUÑOZ'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Recargar'));
     await tester.pumpAndSettle();
@@ -81,7 +82,8 @@ void main() {
         }
         await tester.pumpAndSettle();
         expect(api.decision, rechazar ? isFalse : isNull);
-        expect(find.text('JOSE PENA MUNOZ'), findsOneWidget);
+        expect(find.text('JOSE'), findsOneWidget);
+        expect(find.text('PENA MUNOZ'), findsOneWidget);
         await tester.tap(find.byTooltip('Recargar'));
         await tester.pumpAndSettle();
         expect(api.revisiones, 1);
@@ -112,6 +114,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.revisiones, 0);
+    await tester.drag(find.byType(ListView), const Offset(0, -400));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Aceptar sugerencia SIE'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Aceptar corrección'));
@@ -120,7 +124,46 @@ void main() {
     expect(api.decision, isTrue);
     expect(api.revisiones, 0);
     expect(find.text('Corrección SIE aceptada'), findsWidgets);
-    expect(find.text('JOSÉ PEÑA MUÑOZ'), findsOneWidget);
+    expect(find.text('JOSÉ'), findsOneWidget);
+    expect(find.text('PEÑA MUÑOZ'), findsOneWidget);
+  });
+
+  testWidgets('permite aprobar los datos existentes sin aceptar SIE', (
+    tester,
+  ) async {
+    final api = _ApiRevisionSie()..sugerenciaGuardada = true;
+    final tema = PreferenciaTema();
+    addTearDown(tema.dispose);
+    await tester.pumpWidget(
+      TemaScope(
+        preferencia: tema,
+        child: PadronScope(
+          padron: Padron(api: api),
+          child: const MaterialApp(
+            home: ProductorDetallePagina(productorId: 42),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(ListView), const Offset(0, -450));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Aprobar datos existentes'));
+    await tester.pumpAndSettle();
+    expect(find.text('¿Aprobar los datos actuales?'), findsOneWidget);
+    expect(
+      find.textContaining('No se aplicará la sugerencia de SIE'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Aprobar datos actuales'));
+    await tester.pumpAndSettle();
+
+    expect(api.aprobacionesManuales, 1);
+    expect(api.decision, isNull);
+    expect(find.text('Datos aprobados manualmente'), findsOneWidget);
+    expect(find.text('Aceptar sugerencia SIE'), findsNothing);
+    expect(find.textContaining('No se puede imprimir'), findsNothing);
   });
 
   testWidgets(
@@ -164,7 +207,7 @@ void main() {
   );
 
   testWidgets(
-    'la impresora queda gris con SIE pendiente aunque exista fase activa',
+    'la revisión SIE pendiente se muestra roja y bloquea la impresión',
     (tester) async {
       final productor = Productor.desdeJson({
         'id': 42,
@@ -195,7 +238,13 @@ void main() {
       );
       expect(
         tester.widget<Icon>(icono).color,
-        Theme.of(tester.element(icono)).colorScheme.outline,
+        Theme.of(tester.element(icono)).colorScheme.error,
+      );
+      final aviso = find.text('Revisión SIE pendiente');
+      expect(aviso, findsOneWidget);
+      expect(
+        tester.widget<Text>(aviso).style?.color,
+        Theme.of(tester.element(aviso)).colorScheme.error,
       );
     },
   );

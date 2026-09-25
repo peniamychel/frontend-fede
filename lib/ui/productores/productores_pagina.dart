@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import '../../repositories/padron.dart';
 import '../importacion/importacion_pagina.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../widgets/boton_tema.dart';
 import '../widgets/estados.dart';
 import '../widgets/lista_paginada.dart';
 import 'fila_productor.dart';
+import 'papelera_productores_pagina.dart';
 import 'productor_detalle_pagina.dart';
 import 'productor_formulario.dart';
 
@@ -100,17 +102,33 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
   @override
   Widget build(BuildContext context) {
     final padron = PadronScope.of(context);
+    final puedeEditar = context.puede('PRODUCTORES_EDITAR');
+    final puedeImportar = context.puede('IMPORTAR_PADRON');
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Productores'),
         actions: [
           const BotonTema(),
-          IconButton(
-            tooltip: 'Importar desde Excel',
-            onPressed: _importar,
-            icon: const Icon(Icons.upload_file_outlined),
-          ),
+          if (context.puede('PRODUCTORES_ELIMINAR'))
+            IconButton(
+              tooltip: 'Papelera de productores',
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PapeleraProductoresPagina(),
+                  ),
+                );
+                if (context.mounted) _lista.currentState?.refrescar();
+              },
+              icon: const Icon(Icons.delete_outline),
+            ),
+          if (puedeImportar)
+            IconButton(
+              tooltip: 'Importar desde Excel',
+              onPressed: _importar,
+              icon: const Icon(Icons.upload_file_outlined),
+            ),
           IconButton(
             tooltip: 'Recargar',
             onPressed: () => _lista.currentState?.refrescar(),
@@ -118,11 +136,13 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _crear,
-        icon: const Icon(Icons.person_add_alt),
-        label: const Text('Nuevo'),
-      ),
+      floatingActionButton: puedeEditar
+          ? FloatingActionButton.extended(
+              onPressed: _crear,
+              icon: const Icon(Icons.person_add_alt),
+              label: const Text('Nuevo'),
+            )
+          : null,
       body: Column(
         children: [
           _barraFiltros(context),
@@ -152,11 +172,13 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
                         icon: const Icon(Icons.filter_alt_off_outlined),
                         label: const Text('Quitar filtros'),
                       )
-                    : FilledButton.tonalIcon(
+                    : puedeImportar
+                    ? FilledButton.tonalIcon(
                         onPressed: _importar,
                         icon: const Icon(Icons.upload_file_outlined),
                         label: const Text('Importar desde Excel'),
-                      ),
+                      )
+                    : null,
               ),
               constructor: (context, p) => FilaProductor(
                 productor: p,
@@ -195,7 +217,7 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
             onChanged: _alEscribir,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Buscar por nombre, apellido, cédula o carné',
+              hintText: 'Buscar por nombre, apellido, cédula o código',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _buscador.text.isEmpty
                   ? null

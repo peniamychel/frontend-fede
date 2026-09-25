@@ -3,36 +3,49 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/preferencia_tema.dart';
+import '../core/sesion_controlador.dart';
 import '../repositories/padron.dart';
 import 'inicio.dart';
+import 'acceso/acceso_pagina.dart';
 import 'padron_scope.dart';
+import 'sesion_scope.dart';
 
 class PadronApp extends StatefulWidget {
-  const PadronApp({super.key, this.preferenciaTema});
+  const PadronApp({super.key, this.preferenciaTema, this.padron});
 
   /// `main` la entrega ya cargada para que MaterialApp no cambie de tema
   /// mientras Flutter calcula el primer layout de la versión web.
   final PreferenciaTema? preferenciaTema;
+
+  /// Se puede inyectar en pruebas para recorrer el acceso completo sin abrir
+  /// conexiones reales. En la aplicación normal se crea el repositorio aquí.
+  final Padron? padron;
 
   @override
   State<PadronApp> createState() => _PadronAppState();
 }
 
 class _PadronAppState extends State<PadronApp> {
-  final Padron _padron = Padron();
+  late final Padron _padron;
+  late final bool _esPropietariaDelPadron;
   late final PreferenciaTema _tema;
+  late final SesionControlador _sesion;
   final GlobalKey<NavigatorState> _navegador = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
+    _esPropietariaDelPadron = widget.padron == null;
+    _padron = widget.padron ?? Padron();
     _tema = widget.preferenciaTema ?? PreferenciaTema();
+    _sesion = SesionControlador(_padron.autenticacion)..restaurar();
   }
 
   @override
   void dispose() {
-    _padron.cerrar();
+    if (_esPropietariaDelPadron) _padron.cerrar();
     _tema.dispose();
+    _sesion.dispose();
     super.dispose();
   }
 
@@ -40,29 +53,41 @@ class _PadronAppState extends State<PadronApp> {
   Widget build(BuildContext context) {
     return PadronScope(
       padron: _padron,
-      child: TemaScope(
-        preferencia: _tema,
-        child: ValueListenableBuilder<ThemeMode>(
-          valueListenable: _tema,
-          builder: (context, modo, _) => MaterialApp(
-            navigatorKey: _navegador,
-            title: 'PADRÓN FEDERACIÓN CARRASCO TROPICAL',
-            debugShowCheckedModeBanner: false,
-            theme: _construirTema(Brightness.light),
-            darkTheme: _construirTema(Brightness.dark),
-            themeMode: modo,
-            home: const Inicio(),
-            builder: (context, child) {
-              final contenido = child ?? const SizedBox.shrink();
-              // El navegador ya administra su propia tecla Escape. Crear un
-              // foco global durante el arranque de Flutter Web provoca que el
-              // motor intente medir controles antes del primer layout.
-              if (kIsWeb) return contenido;
-              return RetrocesoConEscape(
-                navegador: _navegador,
-                child: contenido,
-              );
-            },
+      child: SesionScope(
+        controlador: _sesion,
+        child: TemaScope(
+          preferencia: _tema,
+          child: ValueListenableBuilder<ThemeMode>(
+            valueListenable: _tema,
+            builder: (context, modo, _) => ListenableBuilder(
+              listenable: _sesion,
+              builder: (context, _) => MaterialApp(
+                navigatorKey: _navegador,
+                title: 'PADRÓN FEDERACIÓN CARRASCO TROPICAL',
+                debugShowCheckedModeBanner: false,
+                theme: _construirTema(Brightness.light),
+                darkTheme: _construirTema(Brightness.dark),
+                themeMode: modo,
+                home: _sesion.restaurando
+                    ? const Scaffold(
+                        body: Center(child: CircularProgressIndicator()),
+                      )
+                    : _sesion.autenticado
+                    ? const Inicio()
+                    : const AccesoPagina(),
+                builder: (context, child) {
+                  final contenido = child ?? const SizedBox.shrink();
+                  // El navegador ya administra su propia tecla Escape. Crear un
+                  // foco global durante el arranque de Flutter Web provoca que el
+                  // motor intente medir controles antes del primer layout.
+                  if (kIsWeb) return contenido;
+                  return RetrocesoConEscape(
+                    navegador: _navegador,
+                    child: contenido,
+                  );
+                },
+              ),
+            ),
           ),
         ),
       ),

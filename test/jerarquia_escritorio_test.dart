@@ -147,6 +147,57 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     }
   });
+
+  testWidgets('conserva el scroll de centrales al entrar y volver', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      TemaScope(
+        preferencia: PreferenciaTema(),
+        child: PadronScope(
+          padron: Padron(api: _ApiScrollCentrales()),
+          child: const MaterialApp(home: JerarquiaPagina()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    const clave = PageStorageKey<String>('jerarquia-centrales');
+    final lista = find.byKey(clave);
+    await tester.drag(lista, const Offset(0, -1100));
+    await tester.pumpAndSettle();
+
+    final desplazamientoAntes = tester
+        .state<ScrollableState>(
+          find.descendant(of: lista, matching: find.byType(Scrollable)),
+        )
+        .position
+        .pixels;
+    expect(desplazamientoAntes, greaterThan(500));
+
+    await tester.tap(find.byType(ListTile).hitTestable().first);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Volver'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Volver'));
+    await tester.pumpAndSettle();
+
+    final listaRestaurada = find.byKey(clave);
+    final desplazamientoDespues = tester
+        .state<ScrollableState>(
+          find.descendant(
+            of: listaRestaurada,
+            matching: find.byType(Scrollable),
+          ),
+        )
+        .position
+        .pixels;
+    expect(desplazamientoDespues, closeTo(desplazamientoAntes, 1));
+  });
 }
 
 class _ApiJerarquia extends ApiClient {
@@ -239,6 +290,50 @@ class _ApiJerarquia extends ApiClient {
       return {
         'content': <dynamic>[],
         'page': {'size': 25, 'number': 0, 'totalElements': 0, 'totalPages': 0},
+      };
+    }
+    return <dynamic>[];
+  }
+}
+
+class _ApiScrollCentrales extends ApiClient {
+  @override
+  Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
+    if (ruta == '/federaciones') {
+      return [
+        {'id': 10, 'nombre': 'CARRASCO TROPICAL'},
+      ];
+    }
+    if (ruta == '/federaciones/10/centrales') {
+      return [
+        for (var numero = 1; numero <= 40; numero++)
+          {
+            'id': 100 + numero,
+            'nombre': 'CENTRAL ${numero.toString().padLeft(2, '0')}',
+            'federacionId': 10,
+            'federacionNombre': 'CARRASCO TROPICAL',
+          },
+      ];
+    }
+    if (RegExp(r'^/centrales/\d+/sindicatos$').hasMatch(ruta)) {
+      return <dynamic>[];
+    }
+    if (RegExp(r'^/centrales/\d+/credenciales/impresion$').hasMatch(ruta)) {
+      final centralId = int.parse(ruta.split('/')[2]);
+      return {
+        'centralId': centralId,
+        'central': 'CENTRAL',
+        'federacion': 'CARRASCO TROPICAL',
+        'sindicatos': 0,
+        'sindicatosSinSello': 0,
+        'total': 0,
+        'impresos': 0,
+        'pendientes': 0,
+        'pendientesConFoto': 0,
+        'sinFoto': 0,
+        'listosParaImprimir': 0,
+        'porcentajeAvance': 0,
+        'detalle': <dynamic>[],
       };
     }
     return <dynamic>[];

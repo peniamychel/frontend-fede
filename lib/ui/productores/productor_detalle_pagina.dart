@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../credenciales/credencial_previa_pagina.dart';
 import '../lotes/lote_pagina.dart';
 import '../widgets/estados.dart';
@@ -108,9 +109,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     }
   }
 
-  /// El borrado se reserva para registros cargados por error. Un productor con
-  /// una parcela vigente no se puede borrar: primero se debe traspasar o
-  /// quitar la parcela desde esta misma ficha.
+  /// La ficha se conserva íntegra en la papelera. La parcela vigente debe
+  /// traspasarse o quitarse antes de retirar al productor del padrón.
   Future<void> _eliminar(ProductorDetalle detalle) async {
     final productor = detalle.productor;
     final nombre = productor.nombreCompleto.isEmpty
@@ -142,12 +142,12 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     final confirmado = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.delete_forever_outlined),
-        title: Text('¿Eliminar a $nombre?'),
+        icon: const Icon(Icons.delete_outline),
+        title: Text('¿Mover a $nombre a la papelera?'),
         content: const Text(
-          'Esta acción es definitiva. Se borrarán su ficha, fotografías, '
-          'cargos, vetos y el historial de tenencias. Los lotes no se '
-          'eliminan.',
+          'Dejará de aparecer en el padrón y su carnet no podrá emitirse. '
+          'Su ficha, fotografías e historial se conservarán y podrá restaurarse '
+          'si su cédula no se registra en otro productor.',
         ),
         actions: [
           TextButton(
@@ -159,8 +159,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
             onPressed: () => Navigator.of(context).pop(true),
-            icon: const Icon(Icons.delete_forever_outlined),
-            label: const Text('Eliminar definitivamente'),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Mover a la papelera'),
           ),
         ],
       ),
@@ -186,13 +186,20 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     setState(() {
       _revisionSie = null;
       _futuro = _cargarDetalleConRevision(padron);
-      _cargos = padron.productores.cargos(widget.productorId);
-      _vetos = padron.vetos.historialDe(widget.productorId);
+      _cargos = context.accesoCentral
+          ? Future.value(<Cargo>[])
+          : padron.productores.cargos(widget.productorId);
+      _vetos = context.accesoCentral
+          ? Future.value(<Veto>[])
+          : padron.vetos.historialDe(widget.productorId);
     });
   }
 
   Future<ProductorDetalle> _cargarDetalleConRevision(Padron padron) async {
     var detalle = await padron.productores.obtener(widget.productorId);
+    if (!mounted) return detalle;
+    final puedeRevisarSie = context.puede('SIE_REVISAR');
+    if (!puedeRevisarSie) return detalle;
     if (!detalle.productor.revisionSiePendiente) return detalle;
 
     var resultado = await padron.productores.revisarImportadoConSie(
@@ -352,6 +359,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     final accion = await showDialog<_AccionObservacion>(
       context: context,
       builder: (context) => AlertDialog(
+        scrollable: true,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         icon: Icon(
           Icons.report_problem_outlined,
           color: Theme.of(context).colorScheme.error,
@@ -379,7 +388,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
           ),
         ),
         actions: [
-          if (productor.observado)
+          if (productor.observado && context.puede('PRODUCTORES_EDITAR'))
             TextButton(
               onPressed: () =>
                   Navigator.of(context).pop(_AccionObservacion.quitar),
@@ -484,19 +493,25 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   }
 
   Future<void> _aprobarDatosActualesSie(Productor productor) async {
-    if (_verificandoSie ||
-        productor.revisionSieEstado !=
-            EstadoRevisionSiePersistida.noEncontrado) {
+    final puedeAprobar =
+        productor.revisionSieEstado ==
+            EstadoRevisionSiePersistida.noEncontrado ||
+        productor.revisionSieEstado ==
+            EstadoRevisionSiePersistida.diferenciaPendiente;
+    if (_verificandoSie || !puedeAprobar) {
       return;
     }
+    final hayDiferencia =
+        productor.revisionSieEstado ==
+        EstadoRevisionSiePersistida.diferenciaPendiente;
     final confirmado = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.how_to_reg_outlined),
         title: const Text('¿Aprobar los datos actuales?'),
-        content: const Text(
-          'Se conservarán los nombres, apellidos y cédula actuales. La '
-          'advertencia de SIE quedará aprobada y dejará de bloquear la '
+        content: Text(
+          'Se conservarán los nombres, apellidos y cédula actuales. ${hayDiferencia ? 'No se aplicará la sugerencia de SIE. ' : ''}'
+          'La advertencia de SIE quedará aprobada y dejará de bloquear la '
           'impresión. Si existe una observación manual independiente, esa '
           'observación seguirá vigente.',
         ),
@@ -588,7 +603,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Observado por la asamblea',
+                          'PRODUCTOR VETADO',
                           style: tema.textTheme.titleMedium?.copyWith(
                             color: tema.colorScheme.onErrorContainer,
                             fontWeight: FontWeight.w600,
@@ -606,8 +621,10 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Decidido en «${vigente.reunion?.titulo ?? ''}» · '
-                    'desde el ${_dia(vigente.desde)}.',
+                    vigente.reunion == null
+                        ? 'Veto registrado desde el ${_dia(vigente.desde)}.'
+                        : 'Registrado en «${vigente.reunion!.titulo}» · '
+                              'desde el ${_dia(vigente.desde)}.',
                     style: tema.textTheme.bodySmall?.copyWith(
                       color: tema.colorScheme.onErrorContainer,
                     ),
@@ -617,18 +634,18 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
                   // atiende al afiliado en la ventanilla tiene que poder
                   // explicarle por qué no se le puede hacer nada.
                   Text(
-                    'Mientras el veto siga: su credencial no se emite, no puede '
-                    'ocupar un cargo, y no se le toma asistencia ni cuenta para '
-                    'el quórum de las reuniones.',
+                    'Mientras el veto esté vigente, el productor queda fuera de '
+                    'las listas y de los conteos del padrón. No se puede imprimir '
+                    'su carnet ni registrarlo en otro sindicato.',
                     style: tema.textTheme.bodySmall?.copyWith(
                       color: tema.colorScheme.onErrorContainer,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Sigue siendo afiliado: conserva su parcela, su código y su '
-                    'historial. Para sacarlo de la lista hace falta otra '
-                    'asamblea que lo decida, con su acta.',
+                    'Para quitar el veto, entrá al menú del sindicato → '
+                    'Productores vetados, pulsá Levantar veto y escribí el '
+                    'motivo. Al levantarlo volverá a aparecer en el padrón.',
                     style: tema.textTheme.bodySmall?.copyWith(
                       color: tema.colorScheme.onErrorContainer,
                     ),
@@ -638,6 +655,17 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
             ),
           ),
         );
+      },
+    );
+  }
+
+  Widget _marcaDeAguaVeto(BuildContext context) {
+    return FutureBuilder<List<Veto>>(
+      future: _vetos,
+      builder: (context, snapshot) {
+        final vetado = snapshot.data?.any((veto) => veto.vigente) ?? false;
+        if (!vetado) return const SizedBox.shrink();
+        return const _MarcaDeAguaVeto();
       },
     );
   }
@@ -656,11 +684,12 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
         appBar: AppBar(
           title: const Text('Ficha del productor'),
           actions: [
-            IconButton(
-              tooltip: 'Ver e imprimir la credencial',
-              onPressed: _verCredencial,
-              icon: const Icon(Icons.badge_outlined),
-            ),
+            if (!context.accesoCentral)
+              IconButton(
+                tooltip: 'Ver e imprimir la credencial',
+                onPressed: _verCredencial,
+                icon: const Icon(Icons.badge_outlined),
+              ),
             IconButton(
               tooltip: 'Recargar',
               onPressed: _recargar,
@@ -668,12 +697,22 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
             ),
           ],
         ),
-        body: SelectionArea(
-          child: CargaAsync<ProductorDetalle>(
-            futuro: _futuro,
-            alReintentar: _recargar,
-            constructor: (context, detalle) => _contenido(context, detalle),
-          ),
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: SelectionArea(
+                child: CargaAsync<ProductorDetalle>(
+                  futuro: _futuro,
+                  alReintentar: _recargar,
+                  constructor: (context, detalle) =>
+                      _contenido(context, detalle),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(child: _marcaDeAguaVeto(context)),
+            ),
+          ],
         ),
       ),
     );
@@ -682,6 +721,15 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   Widget _contenido(BuildContext context, ProductorDetalle detalle) {
     final p = detalle.productor;
     final tieneFotografia = detalle.imagen(TipoImagen.original) != null;
+    final puedeEditar = context.puede('PRODUCTORES_EDITAR');
+    final puedeEliminar = context.puede('PRODUCTORES_ELIMINAR');
+    final puedeSie = context.puede('SIE_REVISAR');
+    final puedeImprimir = context.puede('CARNETS_IMPRIMIR');
+    final puedeLotes =
+        context.puede('LOTES_EDITAR') || context.puede('NUMERO_LOTE_EDITAR');
+    final puedeImagenes =
+        context.puede('IMAGENES_EDITAR') ||
+        context.puede('FOTOS_PRODUCTORES_EDITAR');
     _nombre = p.nombreCompleto;
 
     return ListView(
@@ -692,6 +740,10 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
           productor: p,
           numeroLote: detalle.lotes.isEmpty ? null : detalle.lotes.first.codigo,
           tieneFotografia: tieneFotografia,
+          puedeEditar: puedeEditar,
+          puedeEliminar: puedeEliminar,
+          puedeSie: puedeSie,
+          puedeImprimir: puedeImprimir,
           verificandoSie: _verificandoSie,
           alVerificarConSie: p.tieneSugerenciaSie
               ? () => _aceptarSugerenciaSie(p)
@@ -708,6 +760,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
           _AvisoObservacionManual(
             texto: p.observacion ?? 'Sin detalle',
             alEditar: () => _editarObservacion(p),
+            permitirCambios:
+                puedeEditar || context.puede('PRODUCTORES_OBSERVAR'),
           ),
         ],
         if (p.revisionLotePendiente) ...[
@@ -731,13 +785,14 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
                     'requisitos de impresión siguen vigentes.',
                   ),
                   const SizedBox(height: 8),
-                  FilledButton.icon(
-                    onPressed: () => detalle.lotes.isEmpty
-                        ? _asignarParcela(p)
-                        : _cambiarNumero(detalle.lotes.first),
-                    icon: const Icon(Icons.edit_location_alt_outlined),
-                    label: const Text('Completar número de lote'),
-                  ),
+                  if (puedeLotes)
+                    FilledButton.icon(
+                      onPressed: () => detalle.lotes.isEmpty
+                          ? _asignarParcela(p)
+                          : _cambiarNumero(detalle.lotes.first),
+                      icon: const Icon(Icons.edit_location_alt_outlined),
+                      label: const Text('Completar número de lote'),
+                    ),
                 ],
               ),
             ),
@@ -756,6 +811,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
             alAceptar: () => _aceptarSugerenciaSie(p),
             alAprobarDatos: () => _aprobarDatosActualesSie(p),
             procesando: _verificandoSie,
+            permitirCambios: puedeSie,
           ),
         ],
         _avisoDeVeto(context),
@@ -764,6 +820,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
           _CorreccionPendiente(
             productor: p,
             alConfirmar: () => _confirmarCorreccion(p),
+            permitirCambios: puedeEditar,
           ),
         ],
         const SizedBox(height: 24),
@@ -778,6 +835,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
                 child: ImagenesProductor(
                   productorId: p.id,
                   imagenes: detalle.imagenes,
+                  editable: puedeImagenes,
                   alCambiar: () {
                     _huboCambios = true;
                     _recargar();
@@ -814,11 +872,13 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   Widget _seccionParcela(BuildContext context, ProductorDetalle detalle) {
     final p = detalle.productor;
     final sinParcela = detalle.lotes.isEmpty;
+    final editable = context.puede('LOTES_EDITAR');
+    final numeroEditable = editable || context.puede('NUMERO_LOTE_EDITAR');
 
     return _Seccion(
       titulo: 'Parcela',
       cantidad: detalle.lotes.length,
-      accion: sinParcela
+      accion: sinParcela && numeroEditable
           ? TextButton.icon(
               onPressed: () => _asignarParcela(p),
               icon: const Icon(Icons.add_location_alt_outlined, size: 18),
@@ -836,6 +896,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
                 for (final lote in detalle.lotes)
                   _FilaLote(
                     lote: lote,
+                    editable: editable,
+                    numeroEditable: numeroEditable,
                     alAbrir: () => _abrirLote(lote),
                     alQuitar: () => _quitarParcela(lote, p),
                     alCambiarNumero: () => _cambiarNumero(lote),
@@ -847,6 +909,13 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   }
 
   Future<void> _asignarParcela(Productor p) async {
+    if (!context.puede('LOTES_EDITAR')) {
+      if (await editarSoloNumeroParcela(context, p) && mounted) {
+        _huboCambios = true;
+        _recargar();
+      }
+      return;
+    }
     if (await asignarParcela(context, p) && mounted) {
       _huboCambios = true;
       _recargar();
@@ -868,6 +937,20 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   }
 
   Future<void> _cambiarNumero(Lote lote) async {
+    if (!context.puede('LOTES_EDITAR')) {
+      final detalle = await _futuro;
+      if (!mounted) return;
+      if (await editarSoloNumeroParcela(
+            context,
+            detalle.productor,
+            lote: lote,
+          ) &&
+          mounted) {
+        _huboCambios = true;
+        _recargar();
+      }
+      return;
+    }
     if (await cambiarNumeroParcela(context, lote) && mounted) {
       _huboCambios = true;
       _recargar();
@@ -1058,11 +1141,43 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   }
 }
 
+class _MarcaDeAguaVeto extends StatelessWidget {
+  const _MarcaDeAguaVeto();
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return Center(
+      child: Transform.rotate(
+        angle: -0.32,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'VETADO',
+              style: tema.textTheme.displayLarge?.copyWith(
+                color: tema.colorScheme.error.withValues(alpha: 0.20),
+                fontWeight: FontWeight.w900,
+                letterSpacing: 10,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Encabezado extends StatelessWidget {
   const _Encabezado({
     required this.productor,
     required this.numeroLote,
     required this.tieneFotografia,
+    required this.puedeEditar,
+    required this.puedeEliminar,
+    required this.puedeSie,
+    required this.puedeImprimir,
     required this.verificandoSie,
     required this.alVerificarConSie,
     required this.alEditarObservacion,
@@ -1076,6 +1191,10 @@ class _Encabezado extends StatelessWidget {
   final Productor productor;
   final String? numeroLote;
   final bool tieneFotografia;
+  final bool puedeEditar;
+  final bool puedeEliminar;
+  final bool puedeSie;
+  final bool puedeImprimir;
   final bool verificandoSie;
   final VoidCallback alVerificarConSie;
   final VoidCallback alEditarObservacion;
@@ -1119,24 +1238,27 @@ class _Encabezado extends StatelessWidget {
                 _LineaIdentidad(
                   key: const ValueKey('productor-cedula-lote'),
                   texto:
-                      'CI: ${cedula == null || cedula.isEmpty ? 'Sin cédula' : cedula}   '
-                      'N° lote: ${lote == null || lote.isEmpty ? 'Sin lote' : lote}',
+                      'C.I.: ${cedula == null || cedula.isEmpty ? 'Sin cédula' : cedula}   '
+                      'N.° de lote: ${lote == null || lote.isEmpty ? 'Sin lote' : lote}',
                   estilo: estiloDatoPrincipal,
                 ),
               ],
             );
             final acciones = Wrap(
               children: [
-                IconButton(
-                  tooltip: productor.habilitado ? 'Deshabilitar' : 'Habilitar',
-                  onPressed: alCambiarEstado,
-                  icon: Icon(
-                    productor.habilitado
-                        ? Icons.block
-                        : Icons.check_circle_outline,
+                if (puedeEditar)
+                  IconButton(
+                    tooltip: productor.habilitado
+                        ? 'Deshabilitar'
+                        : 'Habilitar',
+                    onPressed: alCambiarEstado,
+                    icon: Icon(
+                      productor.habilitado
+                          ? Icons.block
+                          : Icons.check_circle_outline,
+                    ),
                   ),
-                ),
-                if (productor.credencialImpresa)
+                if (puedeImprimir && productor.credencialImpresa)
                   IconButton(
                     tooltip: productor.reimpresionFasePendiente
                         ? 'Cancelar reimpresión'
@@ -1156,41 +1278,47 @@ class _Encabezado extends StatelessWidget {
                                 : null,
                           ),
                   ),
-                IconButton(
-                  tooltip: productor.tieneSugerenciaSie
-                      ? 'Aceptar sugerencia SIE'
-                      : 'Verificar con SIE',
-                  onPressed: verificandoSie ? null : alVerificarConSie,
-                  icon: verificandoSie
-                      ? const SizedBox.square(
-                          dimension: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.fact_check_outlined),
-                ),
-                IconButton(
-                  tooltip: productor.observado
-                      ? 'Editar observación'
-                      : 'Marcar como observado',
-                  onPressed: alEditarObservacion,
-                  icon: Icon(
-                    Icons.report_problem_outlined,
-                    color: productor.observado ? tema.colorScheme.error : null,
+                if (puedeSie)
+                  IconButton(
+                    tooltip: productor.tieneSugerenciaSie
+                        ? 'Aceptar sugerencia SIE'
+                        : 'Verificar con SIE',
+                    onPressed: verificandoSie ? null : alVerificarConSie,
+                    icon: verificandoSie
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.fact_check_outlined),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Editar',
-                  onPressed: alEditar,
-                  icon: const Icon(Icons.edit_outlined),
-                ),
-                IconButton(
-                  tooltip: 'Eliminar productor',
-                  onPressed: alEliminar,
-                  icon: Icon(
-                    Icons.delete_outline,
-                    color: tema.colorScheme.error,
+                if (puedeEditar || context.puede('PRODUCTORES_OBSERVAR'))
+                  IconButton(
+                    tooltip: productor.observado
+                        ? 'Editar observación'
+                        : 'Marcar como observado',
+                    onPressed: alEditarObservacion,
+                    icon: Icon(
+                      Icons.report_problem_outlined,
+                      color: productor.observado
+                          ? tema.colorScheme.error
+                          : null,
+                    ),
                   ),
-                ),
+                if (puedeEditar)
+                  IconButton(
+                    tooltip: 'Editar',
+                    onPressed: alEditar,
+                    icon: const Icon(Icons.edit_outlined),
+                  ),
+                if (puedeEliminar)
+                  IconButton(
+                    tooltip: 'Eliminar productor',
+                    onPressed: alEliminar,
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: tema.colorScheme.error,
+                    ),
+                  ),
               ],
             );
             final esMovil = restricciones.maxWidth < 600;
@@ -1340,10 +1468,15 @@ class _EstadoImpresionCredencial extends StatelessWidget {
 enum _AccionObservacion { guardar, quitar }
 
 class _AvisoObservacionManual extends StatelessWidget {
-  const _AvisoObservacionManual({required this.texto, required this.alEditar});
+  const _AvisoObservacionManual({
+    required this.texto,
+    required this.alEditar,
+    required this.permitirCambios,
+  });
 
   final String texto;
   final VoidCallback alEditar;
+  final bool permitirCambios;
 
   @override
   Widget build(BuildContext context) {
@@ -1372,7 +1505,8 @@ class _AvisoObservacionManual extends StatelessWidget {
                     ),
                   ),
                 ),
-                TextButton(onPressed: alEditar, child: const Text('Editar')),
+                if (permitirCambios)
+                  TextButton(onPressed: alEditar, child: const Text('Editar')),
               ],
             ),
             const SizedBox(height: 8),
@@ -1396,6 +1530,7 @@ class _AvisoEstadoSie extends StatelessWidget {
     required this.alAceptar,
     required this.alAprobarDatos,
     required this.procesando,
+    required this.permitirCambios,
   });
 
   final Productor productor;
@@ -1403,6 +1538,7 @@ class _AvisoEstadoSie extends StatelessWidget {
   final VoidCallback alAceptar;
   final VoidCallback alAprobarDatos;
   final bool procesando;
+  final bool permitirCambios;
 
   @override
   Widget build(BuildContext context) {
@@ -1465,7 +1601,7 @@ class _AvisoEstadoSie extends StatelessWidget {
               productor.revisionSieMensaje ?? titulo,
               style: TextStyle(color: sobreColor),
             ),
-            if (sugerido.isNotEmpty) ...[
+            if (permitirCambios && sugerido.isNotEmpty) ...[
               const SizedBox(height: 10),
               Text(
                 'SIE sugiere: $sugerido',
@@ -1477,8 +1613,15 @@ class _AvisoEstadoSie extends StatelessWidget {
                 icon: const Icon(Icons.check),
                 label: const Text('Aceptar sugerencia SIE'),
               ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: procesando ? null : alAprobarDatos,
+                icon: const Icon(Icons.person_outline),
+                label: const Text('Aprobar datos existentes'),
+              ),
             ],
-            if (estado == EstadoRevisionSiePersistida.noEncontrado) ...[
+            if (permitirCambios &&
+                estado == EstadoRevisionSiePersistida.noEncontrado) ...[
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: procesando ? null : alAprobarDatos,
@@ -1600,10 +1743,12 @@ class _CorreccionPendiente extends StatelessWidget {
   const _CorreccionPendiente({
     required this.productor,
     required this.alConfirmar,
+    required this.permitirCambios,
   });
 
   final Productor productor;
   final VoidCallback alConfirmar;
+  final bool permitirCambios;
 
   @override
   Widget build(BuildContext context) {
@@ -1642,11 +1787,13 @@ class _CorreccionPendiente extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 12),
-            FilledButton(
-              onPressed: alConfirmar,
-              child: const Text('Confirmar'),
-            ),
+            if (permitirCambios) ...[
+              const SizedBox(width: 12),
+              FilledButton(
+                onPressed: alConfirmar,
+                child: const Text('Confirmar'),
+              ),
+            ],
           ],
         ),
       ),
@@ -1725,6 +1872,8 @@ class _Nada extends StatelessWidget {
 class _FilaLote extends StatelessWidget {
   const _FilaLote({
     required this.lote,
+    required this.editable,
+    required this.numeroEditable,
     required this.alAbrir,
     required this.alQuitar,
     required this.alCambiarNumero,
@@ -1732,6 +1881,8 @@ class _FilaLote extends StatelessWidget {
   });
 
   final Lote lote;
+  final bool editable;
+  final bool numeroEditable;
   final VoidCallback alAbrir;
   final VoidCallback alQuitar;
   final VoidCallback alCambiarNumero;
@@ -1747,7 +1898,7 @@ class _FilaLote extends StatelessWidget {
           dense: true,
           leading: const Icon(Icons.grid_view_outlined),
           title: Text(lote.codigo.isEmpty ? 'Lote ${lote.id}' : lote.codigo),
-          onTap: alAbrir,
+          onTap: context.accesoCentral ? null : alAbrir,
           subtitle: Text(
             [
               lote.necesitaRevision && lote.estadoOriginal != null
@@ -1792,32 +1943,35 @@ class _FilaLote extends StatelessWidget {
                   style: tema.textTheme.bodySmall,
                 ),
               ),
-              TextButton(
-                onPressed: alCambiarClasificacion,
-                child: const Text('Cambiar'),
-              ),
+              if (editable)
+                TextButton(
+                  onPressed: alCambiarClasificacion,
+                  child: const Text('Cambiar'),
+                ),
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.only(left: 56, right: 16, bottom: 8),
-          child: Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 8,
-            children: [
-              TextButton.icon(
-                onPressed: alCambiarNumero,
-                icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
-                label: const Text('Cambiar número'),
-              ),
-              TextButton.icon(
-                onPressed: alQuitar,
-                icon: const Icon(Icons.link_off, size: 18),
-                label: const Text('Quitarle la parcela'),
-              ),
-            ],
+        if (numeroEditable)
+          Padding(
+            padding: const EdgeInsets.only(left: 56, right: 16, bottom: 8),
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              children: [
+                TextButton.icon(
+                  onPressed: alCambiarNumero,
+                  icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+                  label: const Text('Cambiar número'),
+                ),
+                if (editable)
+                  TextButton.icon(
+                    onPressed: alQuitar,
+                    icon: const Icon(Icons.link_off, size: 18),
+                    label: const Text('Quitarle la parcela'),
+                  ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }

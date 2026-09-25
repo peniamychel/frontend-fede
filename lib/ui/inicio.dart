@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'administracion/backups_pagina.dart';
+import 'administracion/accesos_pagina.dart';
+import 'acceso/cuenta_pagina.dart';
 import 'calidad/calidad_pagina.dart';
 import 'credenciales/editor_credencial_pagina.dart';
 import 'jerarquia/directorio_pagina.dart';
 import 'jerarquia/jerarquia_pagina.dart';
 import 'padron_scope.dart';
+import 'sesion_scope.dart';
 import 'productores/productores_pagina.dart';
 import 'reuniones/reuniones_pagina.dart';
 import 'widgets/estados.dart';
@@ -30,15 +33,6 @@ class _InicioState extends State<Inicio> {
   final JerarquiaControlador _jerarquia = JerarquiaControlador();
   bool _preguntandoSalida = false;
 
-  static const List<_Destino> _destinos = [
-    _Destino('Productores', Icons.people_outline, Icons.people),
-    _Destino('Jerarquía', Icons.account_tree_outlined, Icons.account_tree),
-    _Destino('Reuniones', Icons.event_note_outlined, Icons.event_note),
-    _Destino('Calidad', Icons.fact_check_outlined, Icons.fact_check),
-    _Destino('Carnet', Icons.badge_outlined, Icons.badge),
-    _Destino('Respaldos', Icons.backup_outlined, Icons.backup),
-  ];
-
   /// Secciones que el usuario ya visitó.
   ///
   /// El IndexedStack conserva el scroll y los filtros al ir y volver, que es lo
@@ -53,13 +47,49 @@ class _InicioState extends State<Inicio> {
 
   @override
   Widget build(BuildContext context) {
-    final paginas = [
+    final sesion = SesionScope.maybeOf(context);
+    // `Inicio` se prueba también de forma aislada; sin scope conserva el menú
+    // completo histórico. En la aplicación real siempre existe SesionScope.
+    final administra = sesion == null || sesion.puede('USUARIOS_ADMINISTRAR');
+    final reuniones = sesion == null || sesion.puede('REUNIONES_GESTIONAR');
+    final carnet = sesion == null || sesion.puede('CARNETS_DISENO');
+    final respaldos = sesion == null || sesion.puede('RESPALDOS_ADMINISTRAR');
+    final general = sesion?.sesion?.centralId == null;
+    final destinos = <_Destino>[
+      const _Destino('Productores', Icons.people_outline, Icons.people),
+      const _Destino(
+        'Jerarquía',
+        Icons.account_tree_outlined,
+        Icons.account_tree,
+      ),
+      if (reuniones)
+        const _Destino(
+          'Reuniones',
+          Icons.event_note_outlined,
+          Icons.event_note,
+        ),
+      if (general)
+        const _Destino('Calidad', Icons.fact_check_outlined, Icons.fact_check),
+      if (carnet) const _Destino('Carnet', Icons.badge_outlined, Icons.badge),
+      if (respaldos)
+        const _Destino('Respaldos', Icons.backup_outlined, Icons.backup),
+      if (administra)
+        const _Destino(
+          'Accesos',
+          Icons.manage_accounts_outlined,
+          Icons.manage_accounts,
+        ),
+      const _Destino('Cuenta', Icons.person_outline, Icons.person),
+    ];
+    final paginas = <Widget>[
       const ProductoresPagina(),
       JerarquiaPagina(controlador: _jerarquia),
-      const ReunionesPagina(),
-      const CalidadPagina(),
-      const EditorCredencialPagina(),
-      const BackupsPagina(),
+      if (reuniones) const ReunionesPagina(),
+      if (general) const CalidadPagina(),
+      if (carnet) const EditorCredencialPagina(),
+      if (respaldos) const BackupsPagina(),
+      if (administra) const AccesosPagina(),
+      const CuentaPagina(),
     ];
 
     final contenido = IndexedStack(
@@ -81,7 +111,7 @@ class _InicioState extends State<Inicio> {
               selectedIndex: _seccion,
               onDestinationSelected: _ir,
               destinations: [
-                for (final d in _destinos)
+                for (final d in destinos)
                   NavigationDestination(
                     icon: Icon(d.icono),
                     selectedIcon: Icon(d.iconoActivo),
@@ -102,7 +132,7 @@ class _InicioState extends State<Inicio> {
                 labelType: ancho >= 1100
                     ? NavigationRailLabelType.none
                     : NavigationRailLabelType.all,
-                leading: ancho >= 1100
+                leading: ancho >= 1100 && general
                     ? PopupMenuButton<String>(
                         key: const ValueKey('menu-directorio-federacion'),
                         tooltip: 'Opciones de la federación',
@@ -143,7 +173,7 @@ class _InicioState extends State<Inicio> {
                       )
                     : const SizedBox(height: 8),
                 destinations: [
-                  for (final d in _destinos)
+                  for (final d in destinos)
                     NavigationRailDestination(
                       icon: Icon(d.icono),
                       selectedIcon: Icon(d.iconoActivo),
@@ -179,6 +209,7 @@ class _InicioState extends State<Inicio> {
       // construye como antes y conserva su estado al ir y volver.
       _visitadas.add(indice);
     });
+    if (indice == 1) _jerarquia.refrescarConteos();
   }
 
   Future<void> _abrirDirectorioFederacion() async {

@@ -1,5 +1,6 @@
 import '../core/api_client.dart';
 import 'autenticacion_repository.dart';
+import 'acceso_repository.dart';
 import 'backup_repository.dart';
 import 'central_repository.dart';
 import 'directorio_repository.dart';
@@ -32,6 +33,7 @@ export '../models/importacion.dart';
 export '../models/lote.dart';
 export '../models/lista_fisica_sindicato.dart';
 export '../models/productor.dart';
+export '../models/productor_papelera.dart';
 export '../models/reunion.dart';
 export '../models/sindicato.dart';
 export '../models/sesion.dart';
@@ -39,6 +41,7 @@ export '../models/tenencia.dart';
 export '../models/veto.dart';
 export 'central_repository.dart';
 export 'autenticacion_repository.dart';
+export 'acceso_repository.dart';
 export 'backup_repository.dart';
 export 'directorio_repository.dart';
 export 'diseno_credencial_repository.dart';
@@ -62,6 +65,7 @@ class Padron {
   late final AutenticacionRepository autenticacion = AutenticacionRepository(
     api,
   );
+  late final AccesoRepository accesos = AccesoRepository(api);
   late final BackupRepository backups = BackupRepository(api);
   late final DisenoCredencialRepository disenoCredencial =
       DisenoCredencialRepository(api);

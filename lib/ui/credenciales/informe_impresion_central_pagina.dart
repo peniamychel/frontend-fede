@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/guardar_archivo.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../widgets/descargas.dart';
 import '../widgets/estados.dart';
 
@@ -272,6 +273,8 @@ class _Contenido extends StatelessWidget {
   Widget build(BuildContext context) {
     final informe = datos.avance;
     final tema = Theme.of(context);
+    final puedeDescargar = context.puede('INFORMES_DESCARGAR');
+    final puedeGestionarFases = context.puede('FASES_GESTIONAR');
     return RefreshIndicator(
       onRefresh: alRecargar,
       child: ListView(
@@ -288,17 +291,19 @@ class _Contenido extends StatelessWidget {
           const SizedBox(height: 20),
           _AvanceGeneral(informe: informe),
           const SizedBox(height: 12),
-          _AccionesInformes(
-            descargandoPreImpresion: descargandoPreImpresion,
-            descargandoRevisionPadron: descargandoRevisionPadron,
-            alDescargarGeneral: () =>
-                descargarInformeImpresionCentral(context, central),
-            alDescargarPlanilla: () =>
-                descargarPlanillaRecoleccionDirectorio(context, central),
-            alDescargarPreImpresion: alDescargarPreImpresion,
-            alDescargarRevisionPadron: alDescargarRevisionPadron,
-          ),
-          const SizedBox(height: 12),
+          if (puedeDescargar) ...[
+            _AccionesInformes(
+              descargandoPreImpresion: descargandoPreImpresion,
+              descargandoRevisionPadron: descargandoRevisionPadron,
+              alDescargarGeneral: () =>
+                  descargarInformeImpresionCentral(context, central),
+              alDescargarPlanilla: () =>
+                  descargarPlanillaRecoleccionDirectorio(context, central),
+              alDescargarPreImpresion: alDescargarPreImpresion,
+              alDescargarRevisionPadron: alDescargarRevisionPadron,
+            ),
+            const SizedBox(height: 12),
+          ],
           _PanelFasesImpresion(
             estado: datos.fases,
             cambiando: cambiandoFase,
@@ -306,6 +311,8 @@ class _Contenido extends StatelessWidget {
             alHabilitar: alHabilitarFase,
             alCerrar: alCerrarFase,
             alDescargar: alDescargarFase,
+            puedeGestionar: puedeGestionarFases,
+            puedeDescargar: puedeDescargar,
           ),
           const SizedBox(height: 18),
           Wrap(
@@ -525,6 +532,8 @@ class _PanelFasesImpresion extends StatelessWidget {
     required this.alHabilitar,
     required this.alCerrar,
     required this.alDescargar,
+    required this.puedeGestionar,
+    required this.puedeDescargar,
   });
 
   final EstadoFasesImpresionCentral estado;
@@ -533,6 +542,8 @@ class _PanelFasesImpresion extends StatelessWidget {
   final Future<void> Function(int numero) alHabilitar;
   final Future<void> Function(FaseImpresionCarnet fase) alCerrar;
   final Future<void> Function(FaseImpresionCarnet fase) alDescargar;
+  final bool puedeGestionar;
+  final bool puedeDescargar;
 
   @override
   Widget build(BuildContext context) {
@@ -552,22 +563,23 @@ class _PanelFasesImpresion extends StatelessWidget {
               style: tema.textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
-            if (activa == null)
-              FilledButton.icon(
-                onPressed: cambiando
-                    ? null
-                    : () => alHabilitar(estado.siguienteNumero),
-                icon: cambiando
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.play_arrow_outlined),
-                label: Text(
-                  'Habilitar ${ordinalFase(estado.siguienteNumero)} fase',
+            if (activa == null) ...[
+              if (puedeGestionar)
+                FilledButton.icon(
+                  onPressed: cambiando
+                      ? null
+                      : () => alHabilitar(estado.siguienteNumero),
+                  icon: cambiando
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.play_arrow_outlined),
+                  label: Text(
+                    'Habilitar ${ordinalFase(estado.siguienteNumero)} fase',
+                  ),
                 ),
-              )
-            else
+            ] else
               Card(
                 margin: EdgeInsets.zero,
                 color: Colors.orange.shade50,
@@ -595,11 +607,12 @@ class _PanelFasesImpresion extends StatelessWidget {
                           ],
                         ),
                       ),
-                      OutlinedButton.icon(
-                        onPressed: cambiando ? null : () => alCerrar(activa),
-                        icon: const Icon(Icons.stop_circle_outlined),
-                        label: const Text('Cerrar fase'),
-                      ),
+                      if (puedeGestionar)
+                        OutlinedButton.icon(
+                          onPressed: cambiando ? null : () => alCerrar(activa),
+                          icon: const Icon(Icons.stop_circle_outlined),
+                          label: const Text('Cerrar fase'),
+                        ),
                     ],
                   ),
                 ),
@@ -622,18 +635,22 @@ class _PanelFasesImpresion extends StatelessWidget {
                     '${fase.impresos} impresos · ${fase.pendientes} pendientes '
                     '· ${fase.abierta ? 'Habilitada' : 'Cerrada'}',
                   ),
-                  trailing: IconButton(
-                    tooltip: 'Descargar informe de la fase',
-                    onPressed: descargando.contains(fase.id)
-                        ? null
-                        : () => alDescargar(fase),
-                    icon: descargando.contains(fase.id)
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.picture_as_pdf_outlined),
-                  ),
+                  trailing: puedeDescargar
+                      ? IconButton(
+                          tooltip: 'Descargar informe de la fase',
+                          onPressed: descargando.contains(fase.id)
+                              ? null
+                              : () => alDescargar(fase),
+                          icon: descargando.contains(fase.id)
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.picture_as_pdf_outlined),
+                        )
+                      : null,
                 ),
             ],
           ],

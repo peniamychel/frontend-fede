@@ -36,6 +36,7 @@ class Tenedor {
     required this.desde,
     this.codigoPadron,
     this.letra,
+    this.letraReservada,
   });
 
   final int productorId;
@@ -43,12 +44,14 @@ class Tenedor {
   final DateTime desde;
   final String? codigoPadron;
   final String? letra;
+  final String? letraReservada;
 
   factory Tenedor.desdeJson(Map<String, dynamic> json) => Tenedor(
     productorId: (json['productorId'] as num?)?.toInt() ?? 0,
     nombre: json['nombre'] as String? ?? '',
     codigoPadron: json['codigoPadron'] as String?,
     letra: json['letra'] as String?,
+    letraReservada: json['letraReservada'] as String?,
     desde: DateTime.tryParse('${json['desde']}') ?? DateTime(1970),
   );
 }

@@ -1,6 +1,8 @@
 import '../core/api_client.dart';
 import '../core/api_config.dart';
 import '../models/credencial_previa.dart';
+import '../models/fase_impresion.dart';
+import '../models/informe_impresion_central.dart';
 import '../models/lista_fisica_sindicato.dart';
 import '../models/sindicato.dart';
 
@@ -21,6 +23,30 @@ class SindicatoRepository {
     final datos = await _api.obtener('$_ruta/$id');
     return Sindicato.desdeJson(datos.comoObjeto);
   }
+
+  Future<AvanceImpresionSindicato> avanceImpresion(int id) async {
+    final datos = await _api.obtener('$_ruta/$id/informes/avance');
+    return AvanceImpresionSindicato.desdeJson(datos.comoObjeto);
+  }
+
+  Future<DescargaBinaria> descargarRevisionPadron(int id) =>
+      _api.obtenerBytes('$_ruta/$id/informes/revision-padron.pdf');
+
+  Future<DescargaBinaria> descargarInformePreImpresion(int id) =>
+      _api.obtenerBytes('$_ruta/$id/informes/pre-impresion.pdf');
+
+  Future<DescargaBinaria> descargarNomina(int id) =>
+      _api.obtenerBytes('$_ruta/$id/informes/nomina.pdf');
+
+  Future<List<FaseInformeSindicato>> fasesInforme(int id) async {
+    final datos = await _api.obtener('$_ruta/$id/informes/fases');
+    return datos.comoLista
+        .map(FaseInformeSindicato.desdeJson)
+        .toList(growable: false);
+  }
+
+  Future<DescargaBinaria> descargarInformeFase(int id, int faseId) =>
+      _api.obtenerBytes('$_ruta/$id/informes/fases/$faseId/informe.pdf');
 
   Future<ListaFisicaSindicato> listaFisica(int id) async {
     final datos = await _api.obtener('$_ruta/$id/lista-fisica');
@@ -64,13 +90,6 @@ class SindicatoRepository {
 
   Future<DescargaBinaria> descargarListaFisica(int id) =>
       _api.obtenerBytes('$_ruta/$id/lista-fisica.pdf');
-
-  /// Dirección del informe en PDF: la nómina del sindicato lista para imprimir.
-  ///
-  /// Se devuelve la URL en vez de los bytes porque el backend marca el archivo
-  /// como adjunto, y así el navegador o el sistema lo guardan solos, igual que
-  /// la plantilla de importación.
-  Uri urlInforme(int id) => ApiConfig.uri('$_ruta/$id/informe.pdf');
 
   /// Dirección del pliego de credenciales: las de todos sus productores, en
   /// hojas carta listas para imprimir a doble cara y recortar.

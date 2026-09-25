@@ -6,7 +6,6 @@ import '../widgets/estados.dart';
 import 'llamada_pagina.dart';
 import 'reuniones_pagina.dart' show iconoDeTipo;
 import 'tarjeta_acta.dart';
-import 'tarjeta_vetos.dart';
 
 /// Una reunión, en cuadros.
 ///
@@ -75,8 +74,6 @@ class _ReunionPaginaState extends State<ReunionPagina> {
                     ),
                     const SizedBox(height: 16),
                     TarjetaActa(reunion: datos.reunion, alCambiar: _recargar),
-                    const SizedBox(height: 16),
-                    TarjetaVetos(reunion: datos.reunion, alCambiar: _recargar),
                   ],
                 ),
               ),
@@ -99,9 +96,10 @@ class _ReunionPaginaState extends State<ReunionPagina> {
     if (nota == null || !mounted) return;
 
     try {
-      final llamada = await PadronScope.of(context)
-          .reuniones
-          .abrirLlamada(widget.reunionId, nota: nota.isEmpty ? null : nota);
+      final llamada = await PadronScope.of(context).reuniones.abrirLlamada(
+        widget.reunionId,
+        nota: nota.isEmpty ? null : nota,
+      );
       if (!mounted) return;
       _recargar();
       await _entrarALlamada(llamada);
@@ -150,9 +148,9 @@ class _ReunionPaginaState extends State<ReunionPagina> {
     }
 
     try {
-      await PadronScope.of(context)
-          .reuniones
-          .cambiarCierre(widget.reunionId, cerrar);
+      await PadronScope.of(
+        context,
+      ).reuniones.cambiarCierre(widget.reunionId, cerrar);
       if (!mounted) return;
       mostrarExito(context, cerrar ? 'Lista cerrada.' : 'Lista reabierta.');
       _recargar();
@@ -170,10 +168,11 @@ class _Datos {
   final List<LlamadaLista> llamadas;
 
   static Future<_Datos> cargar(ReunionRepository repo, int id) async {
-    final resultados =
-        await Future.wait([repo.obtener(id), repo.llamadas(id)]);
+    final resultados = await Future.wait([repo.obtener(id), repo.llamadas(id)]);
     return _Datos(
-        resultados[0] as Reunion, resultados[1] as List<LlamadaLista>);
+      resultados[0] as Reunion,
+      resultados[1] as List<LlamadaLista>,
+    );
   }
 }
 
@@ -196,7 +195,10 @@ class _TarjetaEncabezado extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(iconoDeTipo(reunion.tipo), color: tema.colorScheme.primary),
+                Icon(
+                  iconoDeTipo(reunion.tipo),
+                  color: tema.colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(reunion.titulo, style: tema.textTheme.titleLarge),
@@ -204,11 +206,16 @@ class _TarjetaEncabezado extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 4),
-            Text('${reunion.tipo.etiqueta} · ${reunion.convocanteNombre}',
-                style: tema.textTheme.bodyMedium),
-            Text(reunion.tipo.detalle,
-                style: tema.textTheme.bodySmall
-                    ?.copyWith(color: tema.colorScheme.outline)),
+            Text(
+              '${reunion.tipo.etiqueta} · ${reunion.convocanteNombre}',
+              style: tema.textTheme.bodyMedium,
+            ),
+            Text(
+              reunion.tipo.detalle,
+              style: tema.textTheme.bodySmall?.copyWith(
+                color: tema.colorScheme.outline,
+              ),
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 16,
@@ -284,7 +291,10 @@ class _TarjetaLlamadas extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.how_to_reg_outlined, color: tema.colorScheme.primary),
+                Icon(
+                  Icons.how_to_reg_outlined,
+                  color: tema.colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text('Llamar lista', style: tema.textTheme.titleLarge),
@@ -302,8 +312,9 @@ class _TarjetaLlamadas extends StatelessWidget {
               'Se puede llamar lista varias veces en la misma reunión: al '
               'empezar, más tarde para los que llegaron con retraso, y al '
               'final.',
-              style: tema.textTheme.bodySmall
-                  ?.copyWith(color: tema.colorScheme.outline),
+              style: tema.textTheme.bodySmall?.copyWith(
+                color: tema.colorScheme.outline,
+              ),
             ),
             const SizedBox(height: 12),
             _resumen(context),
@@ -330,15 +341,17 @@ class _TarjetaLlamadas extends StatelessWidget {
                     onPressed: alAbrir,
                     icon: const Icon(Icons.add),
                     label: Text(
-                        llamadas.isEmpty ? 'Llamar lista' : 'Otra llamada'),
+                      llamadas.isEmpty ? 'Llamar lista' : 'Otra llamada',
+                    ),
                   ),
                 if (hayAbierta) ...[
                   const SizedBox(width: 8),
                   Flexible(
                     child: Text(
                       'Hay una llamada abierta. Cerrala antes de abrir otra.',
-                      style: tema.textTheme.bodySmall
-                          ?.copyWith(color: tema.colorScheme.outline),
+                      style: tema.textTheme.bodySmall?.copyWith(
+                        color: tema.colorScheme.outline,
+                      ),
                     ),
                   ),
                 ],
@@ -346,8 +359,9 @@ class _TarjetaLlamadas extends StatelessWidget {
                 TextButton.icon(
                   onPressed: () => alCambiarCierre(!reunion.cerrada),
                   icon: Icon(
-                      reunion.cerrada ? Icons.lock_open : Icons.lock_outline,
-                      size: 18),
+                    reunion.cerrada ? Icons.lock_open : Icons.lock_outline,
+                    size: 18,
+                  ),
                   label: Text(reunion.cerrada ? 'Reabrir' : 'Cerrar lista'),
                 ),
               ],

@@ -6,6 +6,7 @@ import '../models/credencial_previa.dart';
 import '../models/imagen.dart';
 import '../models/lado_credencial.dart';
 import '../models/productor.dart';
+import '../models/productor_papelera.dart';
 
 /// Criterios disponibles para ordenar el padrón desde el servidor.
 ///
@@ -137,7 +138,7 @@ class ProductorRepository {
     return RevisionSieProductor.desdeJson(datos.comoObjeto);
   }
 
-  /// Conserva y aprueba la identidad actual cuando SIE no encontró la cédula.
+  /// Conserva y aprueba la identidad actual ante una advertencia de SIE.
   Future<RevisionSieProductor> aprobarDatosActualesSie(int id) async {
     final datos = await _api.crear(
       '$_ruta/$id/revision-sie/aprobacion-manual',
@@ -223,10 +224,21 @@ class ProductorRepository {
     return Productor.desdeJson(datos.comoObjeto);
   }
 
-  /// Elimina el productor y sus datos dependientes (fotos, cargos, vetos e
-  /// historial de tenencias). El backend lo rechaza si todavía tiene una
-  /// parcela vigente: los lotes no se eliminan en cascada.
+  /// Retira el productor del padrón y conserva íntegra su ficha en la papelera.
   Future<void> eliminar(int id) => _api.eliminar('$_ruta/$id');
+
+  Future<void> eliminarDefinitivamente(int id) =>
+      _api.eliminar('$_ruta/papelera/$id');
+
+  Future<List<ProductorPapelera>> papelera() async {
+    final datos = await _api.obtener('$_ruta/papelera');
+    return datos.comoLista.map(ProductorPapelera.desdeJson).toList();
+  }
+
+  Future<Productor> restaurar(int id) async {
+    final datos = await _api.crear('$_ruta/papelera/$id/restaurar', {});
+    return Productor.desdeJson(datos.comoObjeto);
+  }
 
   // ---------- Imágenes ----------
 

@@ -1,6 +1,9 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+
+import '../widgets/camara_windows_pagina.dart';
 
 /// Ofrece la misma elección de origen usada para las fotos de productores.
 Future<PlatformFile?> elegirImagenDirectorio(BuildContext context) async {
@@ -30,11 +33,17 @@ Future<PlatformFile?> elegirImagenDirectorio(BuildContext context) async {
   );
   if (origen == null || !context.mounted) return null;
 
-  final archivo = await ImagePicker().pickImage(
-    source: origen,
-    preferredCameraDevice: CameraDevice.rear,
-    requestFullMetadata: false,
-  );
+  final esCamaraWindows =
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.windows &&
+      origen == ImageSource.camera;
+  final archivo = esCamaraWindows
+      ? await abrirCamaraWindows(context)
+      : await ImagePicker().pickImage(
+          source: origen,
+          preferredCameraDevice: CameraDevice.rear,
+          requestFullMetadata: false,
+        );
   if (archivo == null) return null;
   final bytes = await archivo.readAsBytes();
   return PlatformFile(name: archivo.name, size: bytes.length, bytes: bytes);

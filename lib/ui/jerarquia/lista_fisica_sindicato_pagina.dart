@@ -1,8 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:printing/printing.dart';
 
@@ -10,8 +9,10 @@ import '../../core/api_client.dart' show ArchivoAdjunto, DescargaBinaria;
 import '../../core/guardar_archivo.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../widgets/estados.dart';
 import '../widgets/zona_soltar_archivos.dart';
+import '../widgets/camara_windows_pagina.dart';
 
 const _extensionesListaFisica = {'jpg', 'jpeg', 'png'};
 
@@ -58,10 +59,12 @@ class _ListaFisicaSindicatoPaginaState
   }
 
   Future<void> _tomarFotografia() async {
-    final foto = await ImagePicker().pickImage(
-      source: ImageSource.camera,
-      requestFullMetadata: false,
-    );
+    final foto = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows
+        ? await abrirCamaraWindows(context)
+        : await ImagePicker().pickImage(
+            source: ImageSource.camera,
+            requestFullMetadata: false,
+          );
     if (foto == null) return;
     final bytes = await foto.readAsBytes();
     await _agregar([
@@ -232,7 +235,7 @@ class _ListaFisicaSindicatoPaginaState
         futuro: _carga,
         alReintentar: _recargar,
         constructor: (context, lista) => ZonaSoltarArchivos(
-          habilitada: !_guardando,
+          habilitada: context.puede('IMAGENES_EDITAR') && !_guardando,
           permiteVarios: true,
           extensionesPermitidas: _extensionesListaFisica,
           mensaje: 'Soltá aquí las páginas de la lista física',
@@ -338,16 +341,18 @@ class _ListaFisicaSindicatoPaginaState
               spacing: 8,
               runSpacing: 8,
               children: [
-                FilledButton.icon(
-                  onPressed: _guardando ? null : _elegirFotografias,
-                  icon: const Icon(Icons.add_photo_alternate_outlined),
-                  label: const Text('Agregar fotografías'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _guardando ? null : _tomarFotografia,
-                  icon: const Icon(Icons.photo_camera_outlined),
-                  label: const Text('Usar cámara'),
-                ),
+                if (context.puede('IMAGENES_EDITAR'))
+                  FilledButton.icon(
+                    onPressed: _guardando ? null : _elegirFotografias,
+                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                    label: const Text('Agregar fotografías'),
+                  ),
+                if (context.puede('IMAGENES_EDITAR'))
+                  OutlinedButton.icon(
+                    onPressed: _guardando ? null : _tomarFotografia,
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text('Usar cámara'),
+                  ),
                 if (lista.tienePaginas) ...[
                   OutlinedButton.icon(
                     onPressed: _guardando ? null : _verPdf,
@@ -414,16 +419,18 @@ class _ListaFisicaSindicatoPaginaState
                     ],
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Reemplazar página',
-                  onPressed: _guardando ? null : () => _reemplazar(pagina),
-                  icon: const Icon(Icons.swap_horiz),
-                ),
-                IconButton(
-                  tooltip: 'Quitar página',
-                  onPressed: _guardando ? null : () => _quitar(pagina),
-                  icon: const Icon(Icons.delete_outline),
-                ),
+                if (context.puede('IMAGENES_EDITAR'))
+                  IconButton(
+                    tooltip: 'Reemplazar página',
+                    onPressed: _guardando ? null : () => _reemplazar(pagina),
+                    icon: const Icon(Icons.swap_horiz),
+                  ),
+                if (context.puede('IMAGENES_EDITAR'))
+                  IconButton(
+                    tooltip: 'Quitar página',
+                    onPressed: _guardando ? null : () => _quitar(pagina),
+                    icon: const Icon(Icons.delete_outline),
+                  ),
               ],
             ),
           ),

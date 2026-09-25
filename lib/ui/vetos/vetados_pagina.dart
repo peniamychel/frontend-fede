@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../productores/productor_detalle_pagina.dart';
+import '../reuniones/decidir_vetos.dart';
 import '../widgets/estados.dart';
+import 'registro_productor_vetado.dart';
 
 /// Quiénes están observados por decisión de asamblea.
 ///
@@ -58,9 +61,11 @@ class _VetadosPaginaState extends State<VetadosPagina> {
     final tema = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.sindicato == null
-            ? 'Vetados'
-            : 'Vetados de ${widget.sindicato!.nombre}'),
+        title: Text(
+          widget.sindicato == null
+              ? 'Vetados'
+              : 'Vetados de ${widget.sindicato!.nombre}',
+        ),
         actions: [
           IconButton(
             tooltip: 'Recargar',
@@ -79,7 +84,8 @@ class _VetadosPaginaState extends State<VetadosPagina> {
                   controller: _busqueda,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
-                    labelText: 'Cédula, código de credencial, nombre o apellido',
+                    labelText:
+                        'Cédula, código de credencial, nombre o apellido',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _busqueda.text.isEmpty
                         ? null
@@ -113,6 +119,18 @@ class _VetadosPaginaState extends State<VetadosPagina> {
                     ),
                   ],
                 ),
+                if (widget.sindicato != null &&
+                    context.puede('PRODUCTORES_EDITAR')) ...[
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _registrarYVetar,
+                      icon: const Icon(Icons.person_add_alt_1_outlined),
+                      label: const Text('Registrar cédula y vetar'),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -140,6 +158,12 @@ class _VetadosPaginaState extends State<VetadosPagina> {
                   itemBuilder: (context, i) => _FilaVeto(
                     veto: vetos[i],
                     alAbrir: () => _abrir(vetos[i]),
+                    alLevantar:
+                        vetos[i].vigente &&
+                            widget.sindicato != null &&
+                            context.puede('PRODUCTORES_EDITAR')
+                        ? () => _levantar(vetos[i])
+                        : null,
                   ),
                 );
               },
@@ -147,32 +171,64 @@ class _VetadosPaginaState extends State<VetadosPagina> {
           ),
         ],
       ),
+      floatingActionButton:
+          widget.sindicato != null && context.puede('PRODUCTORES_EDITAR')
+          ? FloatingActionButton.extended(
+              onPressed: _vetar,
+              icon: const Icon(Icons.person_off_outlined),
+              label: const Text('Vetar productor'),
+            )
+          : null,
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
-          'Mientras el veto rige: no se le emite credencial, no ocupa cargo y '
-          'no cuenta para el quórum.',
+          'Un productor vetado queda fuera del padrón y sus conteos, no puede '
+          'imprimir carnet ni registrarse en otro sindicato. Para quitar el '
+          'veto, usá Levantar veto y registrá el motivo.',
           textAlign: TextAlign.center,
-          style: tema.textTheme.bodySmall
-              ?.copyWith(color: tema.colorScheme.outline),
+          style: tema.textTheme.bodySmall?.copyWith(
+            color: tema.colorScheme.outline,
+          ),
         ),
       ),
     );
   }
 
   Future<void> _abrir(Veto veto) async {
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ProductorDetallePagina(productorId: veto.productorId),
-    ));
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ProductorDetallePagina(productorId: veto.productorId),
+      ),
+    );
     if (mounted) _recargar();
+  }
+
+  Future<void> _vetar() async {
+    if (await vetarEnSindicato(context, widget.sindicato!) && mounted) {
+      _recargar();
+    }
+  }
+
+  Future<void> _registrarYVetar() async {
+    final creado = await registrarProductorVetado(context, widget.sindicato!);
+    if (creado && mounted) {
+      _busqueda.clear();
+      _soloVigentes = true;
+      _recargar();
+    }
+  }
+
+  Future<void> _levantar(Veto veto) async {
+    if (await levantarEnSindicato(context, veto) && mounted) _recargar();
   }
 }
 
 class _FilaVeto extends StatelessWidget {
-  const _FilaVeto({required this.veto, required this.alAbrir});
+  const _FilaVeto({required this.veto, required this.alAbrir, this.alLevantar});
 
   final Veto veto;
   final VoidCallback alAbrir;
+  final VoidCallback? alLevantar;
 
   @override
   Widget build(BuildContext context) {
@@ -206,12 +262,20 @@ class _FilaVeto extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: tema.textTheme.bodySmall?.copyWith(
-              color: veto.vigente ? tema.colorScheme.error : tema.colorScheme.outline,
+              color: veto.vigente
+                  ? tema.colorScheme.error
+                  : tema.colorScheme.outline,
             ),
           ),
         ],
       ),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: alLevantar == null
+          ? const Icon(Icons.chevron_right)
+          : IconButton(
+              tooltip: 'Levantar veto',
+              onPressed: alLevantar,
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+            ),
       onTap: alAbrir,
     );
   }

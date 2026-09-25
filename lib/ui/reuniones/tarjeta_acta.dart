@@ -1,7 +1,7 @@
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../core/guardar_archivo.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
@@ -211,7 +211,8 @@ class _TarjetaActaState extends State<TarjetaActa> {
       context,
     ).reuniones.urlHoja(widget.reunion.id, hoja.id);
     try {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+      final archivo = await PadronScope.of(context).api.descargarUrl(url);
+      await guardarArchivo(archivo.bytes, archivo.nombreArchivo, archivo.tipoMime);
     } catch (e) {
       if (mounted) mostrarError(context, e);
     }

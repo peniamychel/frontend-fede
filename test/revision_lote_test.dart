@@ -100,6 +100,53 @@ void main() {
       },
     );
   }
+
+  testWidgets('permite reservar B al registrar el primer lote número 4', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _ApiLote();
+    final tema = PreferenciaTema();
+    addTearDown(tema.dispose);
+    await tester.pumpWidget(
+      TemaScope(
+        preferencia: tema,
+        child: PadronScope(
+          padron: Padron(api: api),
+          child: const MaterialApp(
+            home: ProductorDetallePagina(productorId: 42),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Completar número de lote'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find
+          .descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byType(TextFormField),
+          )
+          .first,
+      '4',
+    );
+    await tester.pumpAndSettle();
+    final selector = find.byType(DropdownButton<String?>);
+    await tester.ensureVisible(selector);
+    await tester.tap(selector);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('B').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Asignar'));
+    await tester.pumpAndSettle();
+
+    expect(api.peticion?['numero'], '4');
+    expect(api.peticion?['letra'], 'B');
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _ApiLote extends ApiClient {

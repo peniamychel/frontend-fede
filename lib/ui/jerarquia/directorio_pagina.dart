@@ -4,6 +4,7 @@ import '../../core/texto_busqueda.dart';
 import '../../repositories/padron.dart';
 import '../credenciales/impresion_credencial.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../productores/productor_detalle_pagina.dart';
 import '../widgets/estados.dart';
 import 'firmas_cargo.dart';
@@ -150,6 +151,8 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
                 child: _TarjetaCargo(
                   puesto: puesto,
                   ocupado: _ocupado,
+                  editable: context.puede('DIRECTORIOS_EDITAR'),
+                  puedeImprimir: context.puede('CARNETS_IMPRIMIR'),
                   alAsignar: () => _asignar(puesto),
                   alTerminar: () => _terminar(puesto),
                   alAbrirProductor: _abrirProductor,
@@ -400,6 +403,8 @@ class _TarjetaCargo extends StatelessWidget {
   const _TarjetaCargo({
     required this.puesto,
     required this.ocupado,
+    required this.editable,
+    required this.puedeImprimir,
     required this.alAsignar,
     required this.alTerminar,
     required this.alAbrirProductor,
@@ -410,6 +415,8 @@ class _TarjetaCargo extends StatelessWidget {
 
   final Puesto puesto;
   final bool ocupado;
+  final bool editable;
+  final bool puedeImprimir;
   final VoidCallback alAsignar;
   final VoidCallback alTerminar;
   final ValueChanged<int> alAbrirProductor;
@@ -488,23 +495,25 @@ class _TarjetaCargo extends StatelessWidget {
                   alCambiar: alCambiarFirmas,
                   permitePieFirmaImagen: permitePieFirmaImagen,
                   firmaObligatoria: firmaObligatoria,
+                  editable: editable,
                 ),
               ],
             ],
             const SizedBox(height: 14),
             Row(
               children: [
-                FilledButton.tonalIcon(
-                  onPressed: ocupado ? null : alAsignar,
-                  icon: Icon(
-                    actual == null ? Icons.person_add_alt : Icons.swap_horiz,
-                    size: 18,
+                if (editable)
+                  FilledButton.tonalIcon(
+                    onPressed: ocupado ? null : alAsignar,
+                    icon: Icon(
+                      actual == null ? Icons.person_add_alt : Icons.swap_horiz,
+                      size: 18,
+                    ),
+                    label: Text(actual == null ? 'Asignar' : 'Cambiar'),
                   ),
-                  label: Text(actual == null ? 'Asignar' : 'Cambiar'),
-                ),
                 if (actual != null) ...[
                   const SizedBox(width: 4),
-                  if (impresionDeCredencialesDisponible)
+                  if (puedeImprimir && impresionDeCredencialesDisponible)
                     IconButton(
                       tooltip: 'Imprimir la credencial de dirigente',
                       onPressed: () => mostrarPanelImpresionCredencial(
@@ -517,14 +526,15 @@ class _TarjetaCargo extends StatelessWidget {
                       ),
                       icon: const Icon(Icons.badge_outlined, size: 20),
                     ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: ocupado ? null : alTerminar,
-                    child: Text(
-                      'Dejar vacante',
-                      style: TextStyle(color: tema.colorScheme.error),
+                  if (editable) const Spacer(),
+                  if (editable)
+                    TextButton(
+                      onPressed: ocupado ? null : alTerminar,
+                      child: Text(
+                        'Dejar vacante',
+                        style: TextStyle(color: tema.colorScheme.error),
+                      ),
                     ),
-                  ),
                 ],
               ],
             ),
@@ -562,7 +572,10 @@ class _SelectorProductorState extends State<_SelectorProductor> {
         ? widget.candidatos
         : widget.candidatos
               .where(
-                (p) => textoParaBusqueda(p.nombreCompleto).contains(filtro),
+                (p) => textoParaBusqueda(
+                  '${p.nombreCompleto} ${p.ci ?? ''} '
+                  '${p.codigoPadron ?? ''} ${p.codigo ?? ''}',
+                ).contains(filtro),
               )
               .toList();
 
@@ -583,7 +596,7 @@ class _SelectorProductorState extends State<_SelectorProductor> {
               autofocus: true,
               onChanged: (v) => setState(() => _busqueda = v),
               decoration: const InputDecoration(
-                hintText: 'Buscar por nombre',
+                hintText: 'Buscar por nombre, cédula o código',
                 prefixIcon: Icon(Icons.search),
               ),
             ),

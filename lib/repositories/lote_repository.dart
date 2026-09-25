@@ -12,15 +12,28 @@ class LoteRepository {
   /// Lotes filtrados por productor o por sindicato. Sin filtros devuelve todos,
   /// y este listado no está paginado en el backend.
   Future<List<Lote>> listar({int? productorId, int? sindicatoId}) async {
-    final datos = await _api.obtener(_ruta, query: {
-      'productorId': productorId,
-      'sindicatoId': sindicatoId,
-    });
+    final datos = await _api.obtener(
+      _ruta,
+      query: {'productorId': productorId, 'sindicatoId': sindicatoId},
+    );
     return datos.comoLista.map(Lote.desdeJson).toList(growable: false);
   }
 
   Future<Lote> obtener(int id) async {
     final datos = await _api.obtener('$_ruta/$id');
+    return Lote.desdeJson(datos.comoObjeto);
+  }
+
+  Future<Lote> guardarNumeroProductor(
+    int productorId,
+    String numero, {
+    int? loteId,
+    String? letra,
+  }) async {
+    final datos = await _api.reemplazar(
+      '/productores/$productorId/numero-lote',
+      {'numero': numero, 'loteId': loteId, 'letra': letra},
+    );
     return Lote.desdeJson(datos.comoObjeto);
   }
 
@@ -71,8 +84,10 @@ class LoteRepository {
 
   /// Los lotes de un sindicato que ya tienen punto, para dibujarlos juntos.
   Future<List<Lote>> conUbicacion(int sindicatoId) async {
-    final datos = await _api
-        .obtener('$_ruta/con-ubicacion', query: {'sindicatoId': sindicatoId});
+    final datos = await _api.obtener(
+      '$_ruta/con-ubicacion',
+      query: {'sindicatoId': sindicatoId},
+    );
     return datos.comoLista.map(Lote.desdeJson).toList(growable: false);
   }
 
@@ -105,11 +120,14 @@ class SistemaRepository {
 
   /// Los dos filtros son excluyentes: [disponibles] son los que no están en
   /// ningún lote, y [sindicatoId] acota a los instalados en ese sindicato.
-  Future<List<Sistema>> listar({bool disponibles = false, int? sindicatoId}) async {
-    final datos = await _api.obtener(_ruta, query: {
-      if (disponibles) 'disponibles': true,
-      'sindicatoId': sindicatoId,
-    });
+  Future<List<Sistema>> listar({
+    bool disponibles = false,
+    int? sindicatoId,
+  }) async {
+    final datos = await _api.obtener(
+      _ruta,
+      query: {if (disponibles) 'disponibles': true, 'sindicatoId': sindicatoId},
+    );
     return datos.comoLista.map(Sistema.desdeJson).toList(growable: false);
   }
 
@@ -135,7 +153,11 @@ class SistemaRepository {
   }
 
   /// Instala el sistema en un lote, o lo retira si [loteId] va en null.
-  Future<Sistema> trasladar(int id, int? loteId, TraspasoRequest request) async {
+  Future<Sistema> trasladar(
+    int id,
+    int? loteId,
+    TraspasoRequest request,
+  ) async {
     final datos = await _api.reemplazar(
       '$_ruta/$id/traslado',
       request.aJson(),

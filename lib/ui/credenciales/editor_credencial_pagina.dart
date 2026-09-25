@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/credencial_previa.dart';
 import '../../models/diseno_credencial.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../widgets/estados.dart';
 import '../widgets/zona_soltar_archivos.dart';
 import 'tarjeta_previa.dart';
@@ -115,6 +116,7 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
 
   @override
   Widget build(BuildContext context) {
+    final editable = context.puede('CARNETS_DISENO');
     final diseno = _diseno;
     if (_error != null) {
       return Scaffold(
@@ -131,7 +133,7 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
         title: const Text('Editor del carnet'),
         actions: [
           TextButton.icon(
-            onPressed: _restablecer,
+            onPressed: editable ? _restablecer : null,
             icon: const Icon(Icons.restore),
             label: const Text('Restablecer'),
           ),
@@ -139,7 +141,7 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: FilledButton.icon(
-              onPressed: _guardando ? null : _guardar,
+              onPressed: !editable || _guardando ? null : _guardar,
               icon: _guardando
                   ? const SizedBox.square(
                       dimension: 16,
@@ -219,7 +221,9 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
                   runSpacing: 8,
                   children: [
                     FilledButton.tonalIcon(
-                      onPressed: _guardandoPlantilla ? null : _elegirPlantilla,
+                      onPressed: !editable || _guardandoPlantilla
+                          ? null
+                          : _elegirPlantilla,
                       icon: const Icon(Icons.wallpaper_outlined),
                       label: Text(
                         'Cambiar plantilla de ${_cara == CaraCredencial.cara ? 'la cara' : 'el reverso'}',
@@ -227,14 +231,14 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
                     ),
                     if (_editor!.plantillaUrl(_cara) != null)
                       OutlinedButton.icon(
-                        onPressed: _guardandoPlantilla
+                        onPressed: !editable || _guardandoPlantilla
                             ? null
                             : _restablecerPlantilla,
                         icon: const Icon(Icons.restore_page_outlined),
                         label: const Text('Usar plantilla original'),
                       ),
                     ZonaSoltarArchivos(
-                      habilitada: !_guardandoImagen,
+                      habilitada: editable && !_guardandoImagen,
                       extensionesPermitidas: extensionesImagen,
                       mensaje: 'Soltá aquí la imagen que querés insertar',
                       alSoltar: (archivos) async {
@@ -244,7 +248,9 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
                         await _subirImagen(archivo);
                       },
                       child: OutlinedButton.icon(
-                        onPressed: _guardandoImagen ? null : _elegirImagen,
+                        onPressed: !editable || _guardandoImagen
+                            ? null
+                            : _elegirImagen,
                         icon: const Icon(Icons.add_photo_alternate_outlined),
                         label: const Text('Agregar imagen'),
                       ),
@@ -259,7 +265,9 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
                   'Arrastrá una caja para moverla. Usá el punto de la esquina '
                   'superior derecha para cambiar su ancho y alto. Si la '
                   'plantilla PNG tiene un hueco para la foto, dejá el objeto '
-                  'Fotografía debajo de Plantilla.',
+                  'Fotografía debajo de Plantilla. Para evitar deformaciones, '
+                  'usá una imagen horizontal de 1355 × 851 px o de la misma '
+                  'proporción. PNG conserva transparencias; JPG no.',
                   style: Theme.of(context).textTheme.bodySmall,
                   textAlign: TextAlign.center,
                 ),
@@ -506,9 +514,12 @@ class _LienzoEditable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final elementos = diseno.elementos.where(
-      (e) => e.cara == cara && e.tipo != TipoElementoCredencial.plantilla,
-    );
+    final elementos = diseno.elementos
+        .where(
+          (e) => e.cara == cara && e.tipo != TipoElementoCredencial.plantilla,
+        )
+        .toList();
+    final seleccionado = elementos.where((e) => e.id == seleccion).firstOrNull;
     return SizedBox(
       width: ancho,
       height: TarjetaPrevia.altoPt * escala,
@@ -522,73 +533,175 @@ class _LienzoEditable extends StatelessWidget {
             diseno: diseno,
             plantillaUrl: plantillaUrl,
           ),
-          for (final e in elementos) _caja(context, e),
+          for (final e in elementos)
+            _CajaMovible(
+              key: ValueKey('caja-${e.id}'),
+              elemento: e,
+              diseno: diseno,
+              escala: escala,
+              elegido: seleccion == e.id,
+              alSeleccionar: alSeleccionar,
+              alCambiar: alCambiar,
+            ),
+          if (seleccionado != null)
+            _ControlRedimension(
+              key: ValueKey('redimension-${seleccionado.id}'),
+              elemento: seleccionado,
+              diseno: diseno,
+              escala: escala,
+              alCambiar: alCambiar,
+            ),
         ],
       ),
     );
   }
+}
 
-  Widget _caja(BuildContext context, ElementoDisenoCredencial e) {
-    final elegido = seleccion == e.id;
+class _CajaMovible extends StatefulWidget {
+  const _CajaMovible({
+    super.key,
+    required this.elemento,
+    required this.diseno,
+    required this.escala,
+    required this.elegido,
+    required this.alSeleccionar,
+    required this.alCambiar,
+  });
+
+  final ElementoDisenoCredencial elemento;
+  final DisenoCredencial diseno;
+  final double escala;
+  final bool elegido;
+  final ValueChanged<String> alSeleccionar;
+  final ValueChanged<ElementoDisenoCredencial> alCambiar;
+
+  @override
+  State<_CajaMovible> createState() => _CajaMovibleState();
+}
+
+class _CajaMovibleState extends State<_CajaMovible> {
+  ElementoDisenoCredencial? _inicio;
+  Offset _recorrido = Offset.zero;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.elemento;
     return Positioned(
-      left: e.x * escala,
-      bottom: e.y * escala,
-      width: e.ancho * escala,
-      height: math.max(e.alto, e.tamanoFuente) * escala,
+      left: e.x * widget.escala,
+      bottom: e.y * widget.escala,
+      width: e.ancho * widget.escala,
+      height: math.max(e.alto, e.tamanoFuente) * widget.escala,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => alSeleccionar(e.id),
-        onPanStart: (_) => alSeleccionar(e.id),
-        onPanUpdate: (detalle) {
-          final nx = (e.x + detalle.delta.dx / escala).clamp(
-            0.0,
-            diseno.ancho - e.ancho,
-          );
-          final ny = (e.y - detalle.delta.dy / escala).clamp(
-            0.0,
-            diseno.alto - e.alto,
-          );
-          alCambiar(e.copiar(x: nx, y: ny));
+        onTap: () => widget.alSeleccionar(e.id),
+        onPanStart: (_) {
+          _inicio = e;
+          _recorrido = Offset.zero;
+          widget.alSeleccionar(e.id);
         },
+        onPanUpdate: (detalle) {
+          final base = _inicio ?? e;
+          _recorrido += detalle.delta;
+          final nx = (base.x + _recorrido.dx / widget.escala).clamp(
+            0.0,
+            widget.diseno.ancho - base.ancho,
+          );
+          final ny = (base.y - _recorrido.dy / widget.escala).clamp(
+            0.0,
+            widget.diseno.alto - base.alto,
+          );
+          widget.alCambiar(base.copiar(x: nx, y: ny));
+        },
+        onPanEnd: (_) => _inicio = null,
+        onPanCancel: () => _inicio = null,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: elegido
+            color: widget.elegido
                 ? Theme.of(context).colorScheme.primary.withValues(alpha: .08)
                 : Colors.transparent,
             border: Border.all(
-              color: elegido
+              color: widget.elegido
                   ? Theme.of(context).colorScheme.primary
                   : Colors.transparent,
               width: 1.5,
             ),
           ),
-          child: elegido
-              ? Align(
-                  alignment: Alignment.topRight,
-                  child: Transform.translate(
-                    offset: const Offset(7, -7),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onPanUpdate: (detalle) {
-                        final anchoNuevo = (e.ancho + detalle.delta.dx / escala)
-                            .clamp(2.0, diseno.ancho - e.x);
-                        final altoNuevo = (e.alto - detalle.delta.dy / escala)
-                            .clamp(2.0, diseno.alto - e.y);
-                        alCambiar(e.copiar(ancho: anchoNuevo, alto: altoNuevo));
-                      },
-                      child: Container(
-                        width: 14,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-              : null,
+        ),
+      ),
+    );
+  }
+}
+
+class _ControlRedimension extends StatefulWidget {
+  const _ControlRedimension({
+    super.key,
+    required this.elemento,
+    required this.diseno,
+    required this.escala,
+    required this.alCambiar,
+  });
+
+  static const double areaAgarre = 40;
+  static const double diametroVisible = 18;
+
+  final ElementoDisenoCredencial elemento;
+  final DisenoCredencial diseno;
+  final double escala;
+  final ValueChanged<ElementoDisenoCredencial> alCambiar;
+
+  @override
+  State<_ControlRedimension> createState() => _ControlRedimensionState();
+}
+
+class _ControlRedimensionState extends State<_ControlRedimension> {
+  ElementoDisenoCredencial? _inicio;
+  Offset _recorrido = Offset.zero;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.elemento;
+    final altoVisible = math.max(e.alto, e.tamanoFuente);
+    const mitad = _ControlRedimension.areaAgarre / 2;
+    return Positioned(
+      left: (e.x + e.ancho) * widget.escala - mitad,
+      bottom: (e.y + altoVisible) * widget.escala - mitad,
+      width: _ControlRedimension.areaAgarre,
+      height: _ControlRedimension.areaAgarre,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeUpRightDownLeft,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (_) {
+            _inicio = e;
+            _recorrido = Offset.zero;
+          },
+          onPanUpdate: (detalle) {
+            final base = _inicio ?? e;
+            _recorrido += detalle.delta;
+            final anchoNuevo = (base.ancho + _recorrido.dx / widget.escala)
+                .clamp(2.0, widget.diseno.ancho - base.x);
+            final altoNuevo = (base.alto - _recorrido.dy / widget.escala).clamp(
+              2.0,
+              widget.diseno.alto - base.y,
+            );
+            widget.alCambiar(base.copiar(ancho: anchoNuevo, alto: altoNuevo));
+          },
+          onPanEnd: (_) => _inicio = null,
+          onPanCancel: () => _inicio = null,
+          child: Center(
+            child: Container(
+              width: _ControlRedimension.diametroVisible,
+              height: _ControlRedimension.diametroVisible,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x55000000), blurRadius: 3),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -1,28 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../core/guardar_archivo.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import 'estados.dart';
 
-/// Descargas de PDF: la nómina del sindicato y las credenciales.
+/// Descargas de PDF de informes y credenciales.
 ///
-/// Todas abren la URL en vez de traer los bytes con el cliente HTTP. El backend
-/// manda los archivos como adjunto, así que el navegador o el sistema los
-/// guardan solos, sin tener que resolver a mano dónde escribirlos en cada
-/// plataforma. Es el mismo camino que usa la plantilla de importación.
-
-/// Nómina del sindicato, para imprimir y entregar.
-Future<void> descargarInformeSindicato(
-  BuildContext context,
-  Sindicato sindicato,
-) {
-  return _abrir(
-    context,
-    PadronScope.of(context).sindicatos.urlInforme(sindicato.id),
-    'Generando la nómina de «${sindicato.nombre}»…',
-  );
-}
+/// El cliente HTTP incluye la sesión y el guardado funciona en web y móvil
+/// además de escritorio. Abrir directamente la URL pierde la autorización.
 
 /// Informe consolidado del avance de impresión de una central.
 Future<void> descargarInformeImpresionCentral(
@@ -100,13 +86,13 @@ Future<void> descargarCredencialesSindicato(
 
 Future<void> _abrir(BuildContext context, Uri url, String aviso) async {
   try {
-    final abierta = await launchUrl(url, mode: LaunchMode.externalApplication);
-    if (!context.mounted) return;
-    if (abierta) {
-      mostrarExito(context, aviso);
-    } else {
-      mostrarAviso(context, 'No se pudo abrir la descarga: $url');
-    }
+    mostrarExito(context, aviso);
+    final archivo = await PadronScope.of(context).api.descargarUrl(url);
+    await guardarArchivo(
+      archivo.bytes,
+      archivo.nombreArchivo,
+      archivo.tipoMime,
+    );
   } catch (e) {
     if (context.mounted) mostrarError(context, e);
   }

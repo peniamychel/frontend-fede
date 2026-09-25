@@ -77,3 +77,23 @@ String ordinalFase(int numero) => switch (numero) {
   3 => '3ra',
   _ => '${numero}ta',
 };
+
+/// Fase disponible para descargar el informe de un solo sindicato.
+class FaseInformeSindicato {
+  const FaseInformeSindicato({
+    required this.id,
+    required this.numero,
+    required this.abierta,
+  });
+
+  final int id;
+  final int numero;
+  final bool abierta;
+
+  factory FaseInformeSindicato.desdeJson(Map<String, dynamic> json) =>
+      FaseInformeSindicato(
+        id: (json['id'] as num).toInt(),
+        numero: (json['numero'] as num).toInt(),
+        abierta: json['abierta'] == true,
+      );
+}

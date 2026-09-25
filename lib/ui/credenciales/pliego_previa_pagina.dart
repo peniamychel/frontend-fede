@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../widgets/estados.dart';
 import 'impresion_credencial.dart';
 import 'tarjeta_previa.dart';
@@ -87,7 +88,9 @@ class _PliegoPreviaPaginaState extends State<PliegoPreviaPagina> {
           panel: datos.$1,
           editor: datos.$2,
           sindicato: widget.sindicato,
-          permiteImprimir: impresionDeCredencialesDisponible,
+          permiteImprimir:
+              impresionDeCredencialesDisponible &&
+              context.puede('CARNETS_IMPRIMIR'),
           alCambiar: _recargar,
         ),
       ),

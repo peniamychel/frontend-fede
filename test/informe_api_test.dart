@@ -29,28 +29,39 @@ void main() {
   setUpAll(() async {
     padron = Padron();
     final existentes = await padron.sindicatos.listar();
-    expect(existentes, isNotEmpty,
-        reason: 'hace falta al menos una central donde colgar el sindicato');
+    expect(
+      existentes,
+      isNotEmpty,
+      reason: 'hace falta al menos una central donde colgar el sindicato',
+    );
 
-    sindicato = await padron.sindicatos.crear(SindicatoRequest(
-      nombre: 'ZZZ PRUEBA INFORME',
-      centralId: existentes.first.centralId,
-    ));
+    sindicato = await padron.sindicatos.crear(
+      SindicatoRequest(
+        nombre: 'ZZZ PRUEBA INFORME',
+        centralId: existentes.first.centralId,
+      ),
+    );
 
     for (final nombre in ['ZZZ ANA', 'ZZZ BRUNO', 'ZZZ CARLA']) {
-      productores.add(await padron.productores.crear(ProductorRequest(
-        nombres: nombre,
-        apellidos: 'DEL INFORME',
-        sindicatoId: sindicato.id,
-      )));
+      productores.add(
+        await padron.productores.crear(
+          ProductorRequest(
+            nombres: nombre,
+            apellidos: 'DEL INFORME',
+            sindicatoId: sindicato.id,
+          ),
+        ),
+      );
     }
     // Un lote y una observación, para que el informe tenga esas dos columnas
     // con algo adentro.
-    lote = await padron.lotes.crear(LoteRequest(
-      sindicatoId: sindicato.id,
-      productorId: productores.first.id,
-      numero: '99',
-    ));
+    lote = await padron.lotes.crear(
+      LoteRequest(
+        sindicatoId: sindicato.id,
+        productorId: productores.first.id,
+        numero: '99',
+      ),
+    );
   });
 
   tearDownAll(() async {
@@ -65,7 +76,7 @@ void main() {
   });
 
   Future<http.Response> bajar(int id) =>
-      http.get(padron.sindicatos.urlInforme(id));
+      http.get(ApiConfig.uri('/sindicatos/$id/informes/nomina.pdf'));
 
   test('devuelve un PDF de verdad', () async {
     final respuesta = await bajar(sindicato.id);
@@ -96,10 +107,12 @@ void main() {
   });
 
   test('un sindicato sin productores igual genera su informe', () async {
-    final vacio = await padron.sindicatos.crear(SindicatoRequest(
-      nombre: 'ZZZ PRUEBA VACIO',
-      centralId: sindicato.centralId,
-    ));
+    final vacio = await padron.sindicatos.crear(
+      SindicatoRequest(
+        nombre: 'ZZZ PRUEBA VACIO',
+        centralId: sindicato.centralId,
+      ),
+    );
     try {
       final respuesta = await bajar(vacio.id);
 

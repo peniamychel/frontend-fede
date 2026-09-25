@@ -8,6 +8,7 @@ import '../../core/guardar_archivo.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/estados.dart';
+import '../widgets/camara_windows_pagina.dart';
 import '../widgets/zona_soltar_archivos.dart';
 import 'recortador_imagen.dart';
 import 'visor_imagen.dart';
@@ -24,6 +25,7 @@ class ImagenesProductor extends StatefulWidget {
     required this.productorId,
     required this.imagenes,
     required this.alCambiar,
+    this.editable = true,
   });
 
   final int productorId;
@@ -32,6 +34,7 @@ class ImagenesProductor extends StatefulWidget {
   final List<Imagen> imagenes;
 
   final VoidCallback alCambiar;
+  final bool editable;
 
   @override
   State<ImagenesProductor> createState() => _ImagenesProductorState();
@@ -62,7 +65,7 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
     final foto = _original;
 
     return ZonaSoltarArchivos(
-      habilitada: !_ocupado,
+      habilitada: widget.editable && !_ocupado,
       extensionesPermitidas: extensionesImagen,
       alSoltar: (archivos) => _previsualizarYSubir(archivos.first),
       child: Row(
@@ -117,33 +120,34 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
             _dato(context, 'Archivo', foto.nombreOriginal!),
         ],
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          children: [
-            FilledButton.tonalIcon(
-              onPressed: _ocupado ? null : _elegirYSubir,
-              icon: Icon(
-                foto == null ? Icons.add_a_photo_outlined : Icons.swap_horiz,
-                size: 18,
-              ),
-              label: Text(foto == null ? 'Subir foto' : 'Reemplazar'),
-            ),
-            if (foto != null)
-              TextButton.icon(
-                onPressed: _ocupado ? null : _borrar,
+        if (widget.editable)
+          Wrap(
+            spacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: _ocupado ? null : _elegirYSubir,
                 icon: Icon(
-                  Icons.delete_outline,
+                  foto == null ? Icons.add_a_photo_outlined : Icons.swap_horiz,
                   size: 18,
-                  color: tema.colorScheme.error,
                 ),
-                label: Text(
-                  'Borrar',
-                  style: TextStyle(color: tema.colorScheme.error),
-                ),
+                label: Text(foto == null ? 'Subir foto' : 'Reemplazar'),
               ),
-          ],
-        ),
-        const AyudaArrastrarArchivo(),
+              if (foto != null)
+                TextButton.icon(
+                  onPressed: _ocupado ? null : _borrar,
+                  icon: Icon(
+                    Icons.delete_outline,
+                    size: 18,
+                    color: tema.colorScheme.error,
+                  ),
+                  label: Text(
+                    'Borrar',
+                    style: TextStyle(color: tema.colorScheme.error),
+                  ),
+                ),
+            ],
+          ),
+        if (widget.editable) const AyudaArrastrarArchivo(),
       ],
     );
   }
@@ -173,7 +177,7 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
   Widget _vacia(BuildContext context) {
     final tema = Theme.of(context);
     return InkWell(
-      onTap: _elegirYSubir,
+      onTap: widget.editable ? _elegirYSubir : null,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -284,11 +288,17 @@ class _ImagenesProductorState extends State<ImagenesProductor> {
     if (origen == null || !mounted) return;
 
     try {
-      final archivo = await _selectorImagenes.pickImage(
-        source: origen,
-        preferredCameraDevice: CameraDevice.rear,
-        requestFullMetadata: false,
-      );
+      final esCamaraWindows =
+          !kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.windows &&
+          origen == ImageSource.camera;
+      final archivo = esCamaraWindows
+          ? await abrirCamaraWindows(context)
+          : await _selectorImagenes.pickImage(
+              source: origen,
+              preferredCameraDevice: CameraDevice.rear,
+              requestFullMetadata: false,
+            );
       if (archivo == null || !mounted) return;
       await _previsualizarYSubir(archivo);
     } catch (e) {

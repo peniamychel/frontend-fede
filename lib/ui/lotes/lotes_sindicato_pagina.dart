@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../widgets/estados.dart';
 import 'lote_formulario.dart';
 import 'lote_pagina.dart';
@@ -40,6 +41,7 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
 
   @override
   Widget build(BuildContext context) {
+    final editable = context.puede('LOTES_EDITAR');
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -62,11 +64,11 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: editable ? FloatingActionButton.extended(
         onPressed: _crear,
         icon: const Icon(Icons.add),
         label: const Text('Nueva parcela'),
-      ),
+      ) : null,
       body: CargaAsync<List<Lote>>(
         futuro: _futuro,
         alReintentar: _recargar,
