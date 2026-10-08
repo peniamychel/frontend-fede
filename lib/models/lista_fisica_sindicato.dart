@@ -46,6 +46,7 @@ class PaginaListaFisica {
     required this.tipoMime,
     required this.tamanoBytes,
     required this.url,
+    this.giros = 0,
   });
 
   final int id;
@@ -54,6 +55,7 @@ class PaginaListaFisica {
   final String tipoMime;
   final int tamanoBytes;
   final String url;
+  final int giros;
 
   factory PaginaListaFisica.desdeJson(Map<String, dynamic> json) =>
       PaginaListaFisica(
@@ -63,5 +65,6 @@ class PaginaListaFisica {
         tipoMime: json['tipoMime'] as String? ?? 'image/jpeg',
         tamanoBytes: (json['tamanoBytes'] as num?)?.toInt() ?? 0,
         url: json['url'] as String? ?? '',
+        giros: (json['giros'] as num?)?.toInt() ?? 0,
       );
 }

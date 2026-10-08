@@ -1019,7 +1019,7 @@ const _muestra = CredencialPrevia(
   nombres: 'MARÍA',
   apellidos: 'QUISPE MAMANI',
   ci: '4487439',
-  lotes: '12-A',
+  lotes: '12',
   codigoPadron: '2IVI1',
   codigoQr: 'MUESTRA',
   ejecutivoFederacion: FirmantePrevio(

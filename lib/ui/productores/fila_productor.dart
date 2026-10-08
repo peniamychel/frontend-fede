@@ -35,6 +35,8 @@ class FilaProductor extends StatelessWidget {
 
     final subtitulos = [
       if (documentos.isNotEmpty) documentos,
+      if (productor.numeroLote?.isNotEmpty ?? false)
+        'N° lote: ${productor.numeroLote}',
       if (mostrarRuta) productor.ruta,
       if (productor.revisionLotePendiente) productor.resumenRevisionLote,
       if (productor.observado)

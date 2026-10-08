@@ -7,7 +7,7 @@ import '../productores/asignar_parcela.dart';
 import '../widgets/estados.dart';
 import 'participantes_parcela.dart';
 
-/// Ficha de una parcela: dónde está, cuánto mide, quién la tiene y su historial.
+/// Ficha de una parcela: su número, tenedor e historial.
 class LotePagina extends StatefulWidget {
   const LotePagina({super.key, required this.loteId});
 
@@ -68,7 +68,6 @@ class _LotePaginaState extends State<LotePagina> {
                     children: [
                       _Encabezado(
                         lote: datos.lote,
-                        alMedir: () => _medir(datos.lote),
                         alTraspasar: () => _traspasar(datos.lote),
                         alCambiarNumero: () => _cambiarNumero(datos.lote),
                         alCambiarClasificacion: () =>
@@ -192,35 +191,6 @@ class _LotePaginaState extends State<LotePagina> {
       _recargar();
     }
   }
-
-  Future<void> _medir(Lote lote) async {
-    final hectareas = await showDialog<double?>(
-      context: context,
-      builder: (context) => _DialogoSuperficie(actual: lote.superficie),
-    );
-    // null es cancelar; un valor —incluido el que borra la medida— se guarda.
-    if (hectareas == null || !mounted) return;
-
-    try {
-      await PadronScope.of(context).lotes.actualizar(
-        lote.id,
-        LoteRequest(
-          sindicatoId: lote.sindicatoId,
-          numero: lote.numero,
-          extension: lote.extension,
-          estado: lote.estadoOriginal,
-          mercado: lote.mercado?.valor,
-          superficie: hectareas < 0 ? null : hectareas,
-        ),
-      );
-      if (!mounted) return;
-      _huboCambios = true;
-      mostrarExito(context, 'Superficie guardada');
-      _recargar();
-    } catch (e) {
-      if (mounted) mostrarError(context, e);
-    }
-  }
 }
 
 /// Las consultas de la pantalla, pedidas juntas.
@@ -250,14 +220,12 @@ class _Datos {
 class _Encabezado extends StatelessWidget {
   const _Encabezado({
     required this.lote,
-    required this.alMedir,
     required this.alTraspasar,
     required this.alCambiarNumero,
     required this.alCambiarClasificacion,
   });
 
   final Lote lote;
-  final VoidCallback alMedir;
   final VoidCallback alTraspasar;
   final VoidCallback alCambiarNumero;
   final VoidCallback alCambiarClasificacion;
@@ -293,11 +261,6 @@ class _Encabezado extends StatelessWidget {
               runSpacing: 14,
               children: [
                 _Dato(
-                  etiqueta: 'Superficie',
-                  valor: lote.superficieTexto,
-                  atenuado: lote.superficie == null,
-                ),
-                _Dato(
                   etiqueta: 'Estado',
                   valor: lote.estado.etiqueta,
                   atenuado: lote.necesitaRevision,
@@ -323,13 +286,6 @@ class _Encabezado extends StatelessWidget {
                     lote.tieneTenedor
                         ? 'Vender o traspasar'
                         : 'Asignar tenedor',
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: alMedir,
-                  icon: const Icon(Icons.straighten, size: 18),
-                  label: Text(
-                    lote.superficie == null ? 'Poner medida' : 'Cambiar medida',
                   ),
                 ),
                 OutlinedButton.icon(
@@ -696,76 +652,6 @@ class _DialogoTraspasoState extends State<_DialogoTraspaso> {
         desde: _desde,
         observaciones: obs.isEmpty ? null : obs,
       ),
-    );
-  }
-}
-
-/// Pide la superficie en hectáreas.
-///
-/// Devuelve el valor, o -1 para borrar la medida, o null si se canceló. El
-/// controlador vive en el State, por lo mismo que en el resto de los diálogos:
-/// desecharlo apenas vuelve `showDialog` rompe la aplicación, porque la ruta
-/// todavía está animando su salida.
-class _DialogoSuperficie extends StatefulWidget {
-  const _DialogoSuperficie({this.actual});
-
-  final double? actual;
-
-  @override
-  State<_DialogoSuperficie> createState() => _DialogoSuperficieState();
-}
-
-class _DialogoSuperficieState extends State<_DialogoSuperficie> {
-  late final TextEditingController _controlador = TextEditingController(
-    text: widget.actual == null ? '' : '${widget.actual}',
-  );
-  String? _error;
-
-  @override
-  void dispose() {
-    _controlador.dispose();
-    super.dispose();
-  }
-
-  void _aceptar() {
-    final texto = _controlador.text.trim().replaceAll(',', '.');
-    if (texto.isEmpty) {
-      // Vaciar el campo borra la medida: una parcela sin medir es un estado
-      // real, distinto de una de cero hectáreas.
-      Navigator.of(context).pop(-1.0);
-      return;
-    }
-    final valor = double.tryParse(texto);
-    if (valor == null || valor <= 0) {
-      setState(() => _error = 'Escribí un número mayor que cero');
-      return;
-    }
-    Navigator.of(context).pop(valor);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Superficie de la parcela'),
-      content: TextField(
-        controller: _controlador,
-        autofocus: true,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: InputDecoration(
-          labelText: 'Hectáreas',
-          hintText: '12.5',
-          errorText: _error,
-          helperText: 'Dejalo vacío para quitar la medida',
-        ),
-        onSubmitted: (_) => _aceptar(),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(onPressed: _aceptar, child: const Text('Guardar')),
-      ],
     );
   }
 }

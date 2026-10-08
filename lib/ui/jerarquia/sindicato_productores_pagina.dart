@@ -11,6 +11,7 @@ import '../productores/productor_detalle_pagina.dart';
 import '../productores/productor_formulario.dart';
 import '../widgets/estados.dart';
 import '../widgets/lista_paginada.dart';
+import 'edicion_productores_sindicato_pagina.dart';
 
 /// Productores de un sindicato concreto.
 ///
@@ -27,6 +28,13 @@ class SindicatoProductoresControlador {
 
   Future<void> refrescarTotal() async => _estado?._recargarTotal();
 
+  void actualizarProductor(Productor productor) {
+    _estado?._lista.currentState?.actualizarElemento(
+      productor,
+      coincide: (fila) => fila.id == productor.id,
+    );
+  }
+
   void _conectar(_SindicatoProductoresPaginaState estado) => _estado = estado;
 
   void _desconectar(_SindicatoProductoresPaginaState estado) {
@@ -40,11 +48,15 @@ class SindicatoProductoresPagina extends StatefulWidget {
     required this.sindicato,
     this.controlador,
     this.alCambiarProductores,
+    this.alAbrirProductor,
+    this.antesDeEditarLista,
   });
 
   final Sindicato sindicato;
   final SindicatoProductoresControlador? controlador;
   final VoidCallback? alCambiarProductores;
+  final Future<bool> Function(Productor productor)? alAbrirProductor;
+  final Future<bool> Function()? antesDeEditarLista;
 
   @override
   State<SindicatoProductoresPagina> createState() =>
@@ -140,6 +152,16 @@ class _SindicatoProductoresPaginaState
           ],
         ),
         actions: [
+          if (context.puede('PRODUCTORES_EDITAR') ||
+              context.puede('NUMERO_LOTE_EDITAR') ||
+              context.puede('LOTES_EDITAR') ||
+              context.puede('SIE_REVISAR') ||
+              context.puede('PRODUCTORES_OBSERVAR'))
+            IconButton(
+              tooltip: 'Edición rápida de productores',
+              onPressed: _editarLista,
+              icon: const Icon(Icons.table_view_outlined),
+            ),
           PopupMenuButton<OrdenProductores>(
             tooltip: 'Ordenar productores',
             initialValue: _orden,
@@ -266,9 +288,23 @@ class _SindicatoProductoresPaginaState
   }
 
   Future<void> _abrir(Productor p) async {
+    if (widget.alAbrirProductor case final abrir?) {
+      final abierto = await abrir(p);
+      if (abierto && mounted) {
+        setState(() => _productorSeleccionadoId = p.id);
+      }
+      return;
+    }
+    setState(() => _productorSeleccionadoId = p.id);
     final cambio = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => ProductorDetallePagina(productorId: p.id),
+        builder: (_) => ProductorDetallePagina(
+          productorId: p.id,
+          alActualizar: (productor) => _lista.currentState?.actualizarElemento(
+            productor,
+            coincide: (fila) => fila.id == productor.id,
+          ),
+        ),
       ),
     );
     if (!mounted) return;
@@ -288,6 +324,25 @@ class _SindicatoProductoresPaginaState
     );
     if (mounted) {
       await _lista.currentState?.refrescarConservandoPosicion();
+    }
+  }
+
+  Future<void> _editarLista() async {
+    if (widget.antesDeEditarLista != null &&
+        !await widget.antesDeEditarLista!()) {
+      return;
+    }
+    if (!mounted) return;
+    final cambio = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) =>
+            EdicionProductoresSindicatoPagina(sindicato: widget.sindicato),
+      ),
+    );
+    if (cambio == true && mounted) {
+      await _lista.currentState?.refrescarConservandoPosicion();
+      await _recargarTotal();
+      if (mounted) widget.alCambiarProductores?.call();
     }
   }
 

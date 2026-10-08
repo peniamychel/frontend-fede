@@ -64,11 +64,13 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
           ),
         ],
       ),
-      floatingActionButton: editable ? FloatingActionButton.extended(
-        onPressed: _crear,
-        icon: const Icon(Icons.add),
-        label: const Text('Nueva parcela'),
-      ) : null,
+      floatingActionButton: editable
+          ? FloatingActionButton.extended(
+              onPressed: _crear,
+              icon: const Icon(Icons.add),
+              label: const Text('Nueva parcela'),
+            )
+          : null,
       body: CargaAsync<List<Lote>>(
         futuro: _futuro,
         alReintentar: _recargar,
@@ -187,7 +189,7 @@ class _LotesSindicatoPaginaState extends State<LotesSindicatoPagina> {
   }
 }
 
-/// Cuántas hay, cuánto suman y cuántas están sin dueño.
+/// Cuántas parcelas hay y cuántas están sin dueño.
 class _Resumen extends StatelessWidget {
   const _Resumen({
     required this.lotes,
@@ -201,13 +203,7 @@ class _Resumen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tema = Theme.of(context);
     final sinTenedor = lotes.where((l) => !l.tieneTenedor).length;
-    final medidas = lotes.where((l) => l.superficie != null);
-    final hectareas = medidas.fold<double>(
-      0,
-      (suma, l) => suma + (l.superficie ?? 0),
-    );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -219,14 +215,6 @@ class _Resumen extends StatelessWidget {
             runSpacing: 8,
             children: [
               _Cifra(valor: '${lotes.length}', etiqueta: 'parcelas'),
-              _Cifra(
-                valor: medidas.isEmpty
-                    ? '—'
-                    : hectareas.toStringAsFixed(1).replaceFirst('.0', ''),
-                etiqueta: medidas.length == lotes.length
-                    ? 'hectáreas'
-                    : 'ha (${medidas.length} de ${lotes.length} medidas)',
-              ),
               _Cifra(valor: '$sinTenedor', etiqueta: 'sin tenedor'),
             ],
           ),
@@ -236,16 +224,6 @@ class _Resumen extends StatelessWidget {
               label: Text('Solo las que no tiene nadie ($sinTenedor)'),
               selected: soloSinTenedor,
               onSelected: alFiltrar,
-            ),
-          ],
-          if (lotes.isNotEmpty && medidas.length < lotes.length) ...[
-            const SizedBox(height: 6),
-            Text(
-              'Sin medir no es lo mismo que cero: el padrón original no trae la '
-              'superficie.',
-              style: tema.textTheme.bodySmall?.copyWith(
-                color: tema.colorScheme.outline,
-              ),
             ),
           ],
         ],
@@ -316,7 +294,7 @@ class _Fila extends StatelessWidget {
                 ),
               ),
               Text(
-                [lote.superficieTexto, lote.estado.etiqueta].join(' · '),
+                lote.estado.etiqueta,
                 style: tema.textTheme.bodySmall,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

@@ -31,7 +31,29 @@ class _InicioState extends State<Inicio> {
   int _seccion = 0;
   final List<int> _historialSecciones = [];
   final JerarquiaControlador _jerarquia = JerarquiaControlador();
+  final ProductoresControlador _productores = ProductoresControlador();
+  final _claveContenido = GlobalKey();
   bool _preguntandoSalida = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _jerarquia.addListener(_actualizarMesaDeTrabajo);
+    _productores.addListener(_actualizarMesaDeTrabajo);
+  }
+
+  void _actualizarMesaDeTrabajo() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _jerarquia.removeListener(_actualizarMesaDeTrabajo);
+    _jerarquia.dispose();
+    _productores.removeListener(_actualizarMesaDeTrabajo);
+    _productores.dispose();
+    super.dispose();
+  }
 
   /// Secciones que el usuario ya visitó.
   ///
@@ -82,7 +104,7 @@ class _InicioState extends State<Inicio> {
       const _Destino('Cuenta', Icons.person_outline, Icons.person),
     ];
     final paginas = <Widget>[
-      const ProductoresPagina(),
+      ProductoresPagina(controlador: _productores),
       JerarquiaPagina(controlador: _jerarquia),
       if (reuniones) const ReunionesPagina(),
       if (general) const CalidadPagina(),
@@ -93,6 +115,7 @@ class _InicioState extends State<Inicio> {
     ];
 
     final contenido = IndexedStack(
+      key: _claveContenido,
       index: _seccion,
       children: [
         for (var i = 0; i < paginas.length; i++)
@@ -103,6 +126,10 @@ class _InicioState extends State<Inicio> {
     final armazon = LayoutBuilder(
       builder: (context, restricciones) {
         final ancho = restricciones.maxWidth;
+        final menuComprimido =
+            (_seccion == 1 && _jerarquia.fichaAbierta) ||
+            (_seccion == 0 && _productores.fichaAbierta && ancho < 1350);
+        final menuExtendido = ancho >= 1100 && !menuComprimido;
 
         if (ancho < 700) {
           return Scaffold(
@@ -128,11 +155,11 @@ class _InicioState extends State<Inicio> {
               NavigationRail(
                 selectedIndex: _seccion,
                 onDestinationSelected: _ir,
-                extended: ancho >= 1100,
-                labelType: ancho >= 1100
+                extended: menuExtendido,
+                labelType: menuComprimido || menuExtendido
                     ? NavigationRailLabelType.none
                     : NavigationRailLabelType.all,
-                leading: ancho >= 1100 && general
+                leading: menuExtendido && general
                     ? PopupMenuButton<String>(
                         key: const ValueKey('menu-directorio-federacion'),
                         tooltip: 'Opciones de la federación',
@@ -192,7 +219,11 @@ class _InicioState extends State<Inicio> {
     return PopScope(
       // En la raíz, web conserva el historial normal del navegador. Android
       // intercepta siempre el último retroceso para confirmar antes de salir.
-      canPop: kIsWeb && _seccion == 0 && _historialSecciones.isEmpty,
+      canPop:
+          kIsWeb &&
+          _seccion == 0 &&
+          !_productores.fichaAbierta &&
+          _historialSecciones.isEmpty,
       onPopInvokedWithResult: (fueDescartado, _) {
         if (!fueDescartado) _retroceder();
       },
@@ -227,6 +258,7 @@ class _InicioState extends State<Inicio> {
   }
 
   Future<void> _retroceder() async {
+    if (_seccion == 0 && _productores.retroceder()) return;
     if (_seccion == 1 && _jerarquia.retroceder()) return;
 
     if (_historialSecciones.isNotEmpty) {

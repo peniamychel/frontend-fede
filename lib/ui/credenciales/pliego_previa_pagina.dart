@@ -98,7 +98,7 @@ class _PliegoPreviaPaginaState extends State<PliegoPreviaPagina> {
   }
 }
 
-class _Panel extends StatelessWidget {
+class _Panel extends StatefulWidget {
   const _Panel({
     required this.panel,
     required this.editor,
@@ -112,6 +112,18 @@ class _Panel extends StatelessWidget {
   final Sindicato sindicato;
   final bool permiteImprimir;
   final VoidCallback alCambiar;
+
+  @override
+  State<_Panel> createState() => _PanelState();
+}
+
+class _PanelState extends State<_Panel> {
+  bool _procesandoReversos = false;
+  PanelImpresionSindicato get panel => widget.panel;
+  EditorDisenoCredencial get editor => widget.editor;
+  Sindicato get sindicato => widget.sindicato;
+  bool get permiteImprimir => widget.permiteImprimir;
+  VoidCallback get alCambiar => widget.alCambiar;
 
   @override
   Widget build(BuildContext context) {
@@ -232,11 +244,20 @@ class _Panel extends StatelessWidget {
                 label: const Text('Revisar última impresión'),
               ),
               OutlinedButton.icon(
-                onPressed: faseHabilitada
+                onPressed: faseHabilitada && !_procesandoReversos
                     ? () => _imprimirReversos(context)
                     : null,
-                icon: const Icon(Icons.flip_outlined),
-                label: const Text('Imprimir reversos'),
+                icon: _procesandoReversos
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.flip_outlined),
+                label: Text(
+                  _procesandoReversos
+                      ? 'Procesando reversos…'
+                      : 'Imprimir reversos',
+                ),
               ),
             ],
           ),
@@ -362,16 +383,22 @@ class _Panel extends StatelessWidget {
   );
 
   Future<void> _imprimirReversos(BuildContext context) async {
-    final cantidad = await _pedirCantidad(
-      context,
-      maximo: 500,
-      titulo: 'Cantidad de reversos',
-      descripcion:
-          'Indicá cuántas tarjetas necesitan el reverso del sindicato.',
-      mostrarTodos: false,
-    );
-    if (cantidad != null && context.mounted) {
-      await _enviarReversos(context, cantidad);
+    if (_procesandoReversos) return;
+    setState(() => _procesandoReversos = true);
+    try {
+      final cantidad = await _pedirCantidad(
+        context,
+        maximo: 500,
+        titulo: 'Cantidad de reversos',
+        descripcion:
+            'Indicá cuántas tarjetas necesitan el reverso del sindicato.',
+        mostrarTodos: false,
+      );
+      if (cantidad != null && context.mounted) {
+        await _enviarReversos(context, cantidad);
+      }
+    } finally {
+      if (mounted) setState(() => _procesandoReversos = false);
     }
   }
 
@@ -385,11 +412,58 @@ class _Panel extends StatelessWidget {
     );
     if (!continuar || !context.mounted) return;
     try {
-      final descarga = await PadronScope.of(
+      final repositorio = PadronScope.of(context).sindicatos;
+      final muestra = await ejecutarConProgresoImpresion(
         context,
-      ).sindicatos.descargarReversos(sindicato.id, cantidad);
+        mensaje: 'Preparando un reverso de muestra para la vista previa…',
+        accion: () => repositorio.descargarReversos(sindicato.id, 1),
+      );
       if (!context.mounted) return;
-      await imprimirTrabajoCredencialesWindows(context, descarga);
+      final confirmado = await confirmarVistaPreviaReverso(
+        context,
+        muestra,
+        cantidad: cantidad,
+      );
+      if (!confirmado || !context.mounted) return;
+      // El PDF con todas las tarjetas se genera solo después de confirmar.
+      // La vista previa nunca descarga ni rasteriza páginas repetidas.
+      final descarga = cantidad == 1
+          ? muestra
+          : await ejecutarConProgresoImpresion(
+              context,
+              mensaje:
+                  'Preparando $cantidad reversos para enviar a la impresora…',
+              accion: () =>
+                  repositorio.descargarReversos(sindicato.id, cantidad),
+            );
+      if (!context.mounted) return;
+      final enviado = await imprimirTrabajoCredencialesWindows(
+        context,
+        descarga,
+      );
+      if (!context.mounted) return;
+      if (!enviado) {
+        mostrarAviso(context, 'La impresión fue cancelada.');
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Trabajo enviado a Windows'),
+          content: Text(
+            'Se enviaron $cantidad reversos a la cola de impresión. '
+            'La impresora puede tardar en comenzar mientras Windows procesa las tarjetas. '
+            'No vuelvas a enviar el mismo trabajo. Podés revisar su estado en la cola de impresión de Windows.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
     } catch (error) {
       if (context.mounted) mostrarError(context, error);
     }

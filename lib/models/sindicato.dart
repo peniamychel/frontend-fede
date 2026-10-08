@@ -13,6 +13,8 @@ class Sindicato {
     this.ubicacionActualizadaEn,
     this.totalProductores,
     this.porcentajeImpresion,
+    this.datosCompletos,
+    this.huboFaseImpresion = false,
     this.auditoria = Auditoria.habilitado,
   });
 
@@ -40,6 +42,17 @@ class Sindicato {
   /// No forma parte de los datos editables del sindicato.
   final int? totalProductores;
   final double? porcentajeImpresion;
+  final int? datosCompletos;
+  final bool huboFaseImpresion;
+
+  double get porcentajeDatosCompletos =>
+      totalProductores == null || totalProductores == 0
+      ? 0
+      : (datosCompletos ?? 0) * 100 / totalProductores!;
+
+  String get resumenPorcentaje => huboFaseImpresion
+      ? '${(porcentajeImpresion ?? 0).round()}% Impresión'
+      : '${porcentajeDatosCompletos.round()}% Datos completos';
 
   bool get tieneUbicacion => latitud != null && longitud != null;
 
@@ -69,6 +82,8 @@ class Sindicato {
   Sindicato conResumenImpresion({
     required int totalProductores,
     required double porcentajeImpresion,
+    required int datosCompletos,
+    required bool huboFaseImpresion,
   }) => Sindicato(
     id: id,
     nombre: nombre,
@@ -80,6 +95,8 @@ class Sindicato {
     ubicacionActualizadaEn: ubicacionActualizadaEn,
     totalProductores: totalProductores,
     porcentajeImpresion: porcentajeImpresion,
+    datosCompletos: datosCompletos,
+    huboFaseImpresion: huboFaseImpresion,
     auditoria: auditoria,
   );
 

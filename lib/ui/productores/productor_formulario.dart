@@ -11,7 +11,12 @@ import 'productor_detalle_pagina.dart';
 /// gastar una petición, pero además vuelca los errores que sí devuelve el
 /// servidor sobre el campo que los provocó.
 class ProductorFormulario extends StatefulWidget {
-  const ProductorFormulario({super.key, this.productor, this.sindicatoFijo});
+  const ProductorFormulario({
+    super.key,
+    this.productor,
+    this.sindicatoFijo,
+    this.abrirFichaAlCrear = true,
+  });
 
   /// Null en alta; el productor a modificar en edición.
   final Productor? productor;
@@ -24,6 +29,10 @@ class ProductorFormulario extends StatefulWidget {
   /// Solo aplica al alta: en edición hacen falta los desplegables, porque
   /// cambiar de sindicato es justamente una de las cosas que se editan.
   final Sindicato? sindicatoFijo;
+
+  /// La edición rápida vuelve a su tabla al terminar el alta. Los demás
+  /// puntos de entrada conservan la apertura de la ficha para cargar la foto.
+  final bool abrirFichaAlCrear;
 
   @override
   State<ProductorFormulario> createState() => _ProductorFormularioState();
@@ -46,7 +55,6 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
 
   _OpcionParcela _opcionParcela = _OpcionParcela.ninguna;
   late final TextEditingController _parcelaNumero;
-  late final TextEditingController _parcelaSuperficie;
   Lote? _parcelaExistente;
 
   /// Parcelas del sindicato elegido que hoy no tiene nadie. Son las únicas que
@@ -96,7 +104,6 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     if (!_esEdicion) _ci.addListener(_alCambiarCedula);
     _parcelaNumero = TextEditingController();
     _parcelaNumero.addListener(_alCambiarNumeroParcela);
-    _parcelaSuperficie = TextEditingController();
     _marcado = p?.marcado ?? false;
     _sindicatoBloqueado = p == null && widget.sindicatoFijo != null;
 
@@ -128,7 +135,6 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     _ci.dispose();
     _parcelaNumero.removeListener(_alCambiarNumeroParcela);
     _parcelaNumero.dispose();
-    _parcelaSuperficie.dispose();
     super.dispose();
   }
 
@@ -442,6 +448,14 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     if (mounted) Navigator.of(context).pop(true);
   }
 
+  Future<void> _finalizarAlta(Productor p) async {
+    if (widget.abrirFichaAlCrear) {
+      await _abrirFicha(p);
+    } else {
+      Navigator.of(context).pop(true);
+    }
+  }
+
   // ------------------------------------------------ la sección de parcela
 
   List<Widget> _seccionParcela(BuildContext context) {
@@ -484,13 +498,6 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
           obligatorio: true,
         ),
         if (_texto(_parcelaNumero) != null) _resumenNumeroCompartido(context),
-        _campo(
-          controlador: _parcelaSuperficie,
-          etiqueta: 'Superficie en hectáreas',
-          ayuda: 'Opcional. Se puede medir después.',
-          campoServidor: 'superficie',
-          maximo: 12,
-        ),
       ],
       if (_opcionParcela == _OpcionParcela.existente) ...[
         const SizedBox(height: 12),
@@ -642,9 +649,6 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
             productorId: productor.id,
             numero: _texto(_parcelaNumero),
             estado: _clasificacionParcela.valor,
-            superficie: double.tryParse(
-              (_texto(_parcelaSuperficie) ?? '').replaceAll(',', '.'),
-            ),
           ),
         );
         break;
@@ -760,14 +764,14 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                 ? '${e.descripcion} Se la podés dar desde su ficha.'
                 : 'Se la podés dar desde su ficha.',
           );
-          await _abrirFicha(creado);
+          await _finalizarAlta(creado);
           return;
         }
       }
       if (!mounted) return;
       await _avisarIncorporacionAFase(creado);
       if (!mounted) return;
-      await _abrirFicha(creado);
+      await _finalizarAlta(creado);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {

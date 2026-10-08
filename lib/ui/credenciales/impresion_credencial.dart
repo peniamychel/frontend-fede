@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
@@ -10,6 +12,120 @@ import '../widgets/estados.dart';
 typedef CargarLadoCredencial =
     Future<DescargaBinaria> Function(LadoCredencial lado);
 typedef RegistrarAnversoImpreso = Future<void> Function();
+
+/// El controlador de Windows no informa un porcentaje de envío.
+/// Mantiene visible la espera y bloquea nuevas acciones hasta que responda.
+Future<T> ejecutarConProgresoImpresion<T>(
+  BuildContext context, {
+  required String mensaje,
+  required Future<T> Function() accion,
+}) async {
+  final navegador = Navigator.of(context, rootNavigator: true);
+  final ruta = DialogRoute<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => PopScope(
+      canPop: false,
+      child: AlertDialog(
+        title: const Text('Impresión en proceso'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const LinearProgressIndicator(),
+            const SizedBox(height: 20),
+            Text(mensaje),
+            const SizedBox(height: 12),
+            const Text(
+              'Esperá a que termine el envío. No vuelvas a imprimir este trabajo.',
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  unawaited(navegador.push(ruta));
+  try {
+    await WidgetsBinding.instance.endOfFrame;
+    return await accion();
+  } finally {
+    if (ruta.isActive) navegador.removeRoute(ruta);
+  }
+}
+
+/// Una sola tarjeta de muestra; la cantidad corresponde al trabajo a imprimir,
+/// no al número de imágenes que debe cargar la vista previa.
+Future<bool> confirmarVistaPreviaReverso(
+  BuildContext context,
+  DescargaBinaria descarga, {
+  int cantidad = 1,
+}) async =>
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _VistaPreviaImpresionReverso(
+          descarga: descarga,
+          cantidad: cantidad,
+        ),
+      ),
+    ) ??
+    false;
+
+class _VistaPreviaImpresionReverso extends StatelessWidget {
+  const _VistaPreviaImpresionReverso({
+    required this.descarga,
+    required this.cantidad,
+  });
+
+  final DescargaBinaria descarga;
+  final int cantidad;
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = Uint8List.fromList(descarga.bytes);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Vista previa de impresión del reverso'),
+      ),
+      body: PdfPreview(
+        build: (_) async => bytes,
+        pages: const [0],
+        maxPageWidth: 400,
+        pdfFileName: descarga.nombreArchivo,
+        allowPrinting: false,
+        allowSharing: false,
+        canChangeOrientation: false,
+        canChangePageFormat: false,
+        canDebug: false,
+        useActions: false,
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Cantidad a imprimir: $cantidad ${cantidad == 1 ? 'reverso' : 'reversos'}',
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(context, true),
+                icon: const Icon(Icons.print_outlined),
+                label: const Text('Imprimir reverso'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// La impresión física se ofrece solo en el ejecutable de Windows.
 @visibleForTesting
@@ -230,8 +346,8 @@ class _PanelImpresionCredencialState extends State<PanelImpresionCredencial> {
   }
 
   Future<void> _imprimir(LadoCredencial lado) async {
-    if (lado == LadoCredencial.reverso && !await _confirmarReverso()) return;
-
+    if (_imprimiendo || !widget.habilitada) return;
+    // Bloquear desde el primer clic, incluso mientras se espera la decisión.
     setState(() => _imprimiendo = true);
     try {
       if (lado == LadoCredencial.anverso &&
@@ -243,8 +359,20 @@ class _PanelImpresionCredencialState extends State<PanelImpresionCredencial> {
         mostrarExito(context, 'La impresión anterior quedó registrada.');
         return;
       }
-      final descarga = await widget.cargar(lado);
+      final confirmado = await _confirmarImpresion(lado);
+      if (!confirmado || !mounted) return;
+      final descarga = lado == LadoCredencial.reverso
+          ? await ejecutarConProgresoImpresion(
+              context,
+              mensaje: 'Preparando el reverso para la vista previa…',
+              accion: () => widget.cargar(lado),
+            )
+          : await widget.cargar(lado);
       if (!mounted) return;
+      if (lado == LadoCredencial.reverso) {
+        final confirmado = await confirmarVistaPreviaReverso(context, descarga);
+        if (!confirmado || !mounted) return;
+      }
       final enviada = await _ImpresionWindows.imprimir(
         context,
         descarga,
@@ -279,18 +407,41 @@ class _PanelImpresionCredencialState extends State<PanelImpresionCredencial> {
     }
   }
 
-  Future<bool> _confirmarReverso() async {
+  Future<bool> _confirmarImpresion(LadoCredencial lado) async {
+    final reverso = lado == LadoCredencial.reverso;
     final confirmado = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.flip_outlined),
-        title: const Text('Preparar el reverso'),
-        content: Text(
-          '${_anversoEnviado ? 'El anverso ya fue enviado. ' : ''}'
-          'Retirá la tarjeta de la Zebra y volvé a introducirla con la cara '
-          'sin imprimir en la posición de impresión indicada por tu modelo. '
-          'La dirección exacta del giro depende de la Zebra; hacé la primera '
-          'calibración con una tarjeta de prueba.',
+        scrollable: true,
+        icon: const Icon(Icons.warning_amber_rounded),
+        title: Text(
+          '¿Imprimir ${reverso ? 'el reverso' : 'la cara'} del carnet?',
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.nombre,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Se enviará una impresión ${reverso ? 'del reverso' : 'de la cara'} '
+              'a la impresora. Confirmá solo si querés imprimir este carnet.',
+            ),
+            if (reverso) ...[
+              const SizedBox(height: 12),
+              Text(
+                '${_anversoEnviado ? 'La cara ya fue enviada. ' : ''}'
+                'Retirá la tarjeta de la Zebra y volvé a introducirla con la cara '
+                'sin imprimir en la posición indicada por tu modelo. '
+                'La dirección del giro depende de la Zebra; hacé la primera '
+                'calibración con una tarjeta de prueba.',
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
@@ -299,7 +450,7 @@ class _PanelImpresionCredencialState extends State<PanelImpresionCredencial> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Tarjeta reinsertada'),
+            child: Text(reverso ? 'Imprimir reverso' : 'Imprimir cara'),
           ),
         ],
       ),
@@ -384,6 +535,7 @@ class _ImpresionWindows {
     required bool vertical,
   }) async {
     final impresora = await seleccionar(context);
+    if (!context.mounted) return false;
     final bytes = Uint8List.fromList(descarga.bytes);
     final formato = vertical
         ? const PdfPageFormat(
@@ -397,25 +549,33 @@ class _ImpresionWindows {
             marginAll: 0,
           );
 
-    if (impresora == null) {
-      return Printing.layoutPdf(
-        onLayout: (_) => bytes,
-        name: descarga.nombreArchivo,
-        format: formato,
-        dynamicLayout: false,
-        usePrinterSettings: true,
-        windowsModernDialog: true,
-      );
-    }
+    return ejecutarConProgresoImpresion<bool>(
+      context,
+      mensaje:
+          'Enviando el trabajo a ${impresora?.name ?? 'la impresora'}… '
+          'Si son muchas tarjetas, Windows puede tardar en procesarlas antes de empezar a imprimir.',
+      accion: () async {
+        if (impresora == null) {
+          return Printing.layoutPdf(
+            onLayout: (_) => bytes,
+            name: descarga.nombreArchivo,
+            format: formato,
+            dynamicLayout: false,
+            usePrinterSettings: true,
+            windowsModernDialog: true,
+          );
+        }
 
-    return Printing.directPrintPdf(
-      printer: impresora,
-      onLayout: (_) => bytes,
-      name: descarga.nombreArchivo,
-      format: formato,
-      dynamicLayout: false,
-      usePrinterSettings: true,
-      windowsModernDialog: true,
+        return Printing.directPrintPdf(
+          printer: impresora,
+          onLayout: (_) => bytes,
+          name: descarga.nombreArchivo,
+          format: formato,
+          dynamicLayout: false,
+          usePrinterSettings: true,
+          windowsModernDialog: true,
+        );
+      },
     );
   }
 

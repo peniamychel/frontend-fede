@@ -11,7 +11,6 @@ void main() {
   ) async {
     tester.view.physicalSize = const Size(390, 800);
     tester.view.devicePixelRatio = 1;
-    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(
@@ -22,7 +21,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byTooltip('Marcar como observado'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Marcar como observado'));
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     await tester.pumpAndSettle();
 
     final campo = find.byType(TextFormField);

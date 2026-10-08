@@ -32,6 +32,13 @@ class _ListaFisicaSindicatoPaginaState
   late Future<ListaFisicaSindicato> _carga;
   bool _inicializada = false;
   bool _guardando = false;
+  EdgeDraggingAutoScroller? _autoScroll;
+
+  @override
+  void dispose() {
+    _autoScroll?.stopAutoScroll();
+    super.dispose();
+  }
 
   SindicatoRepository get _repositorio => PadronScope.of(context).sindicatos;
 
@@ -135,6 +142,40 @@ class _ListaFisicaSindicatoPaginaState
       () =>
           _repositorio.quitarPaginaListaFisica(widget.sindicato.id, pagina.id),
       'La página fue eliminada y las restantes se renumeraron.',
+    );
+  }
+
+  Future<void> _girar(PaginaListaFisica pagina, int giro) => _mutar(
+    () => _repositorio.girarPaginaListaFisica(
+      widget.sindicato.id,
+      pagina.id,
+      giro,
+    ),
+    'Orientación guardada.',
+  );
+
+  Future<void> _moverPagina(
+    ListaFisicaSindicato lista,
+    int origen,
+    int destino,
+  ) async {
+    if (_guardando || origen == destino) return;
+    final ids = lista.detallePaginas.map((pagina) => pagina.id).toList();
+    final anterior = ids.indexOf(origen);
+    final nuevo = ids.indexOf(destino);
+    if (anterior < 0 || nuevo < 0) return;
+    ids.insert(nuevo, ids.removeAt(anterior));
+    await _mutar(
+      () => _repositorio.ordenarListaFisica(widget.sindicato.id, ids),
+      'Orden de las páginas guardado.',
+    );
+  }
+
+  void _verImagen(PaginaListaFisica pagina) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _VisorPaginaListaFisica(pagina: pagina),
+      ),
     );
   }
 
@@ -288,8 +329,11 @@ class _ListaFisicaSindicatoPaginaState
                           childAspectRatio: .72,
                         ),
                         itemCount: lista.detallePaginas.length,
-                        itemBuilder: (context, indice) =>
-                            _tarjeta(lista.detallePaginas[indice]),
+                        itemBuilder: (context, indice) => _paginaArrastrable(
+                          context,
+                          lista,
+                          lista.detallePaginas[indice],
+                        ),
                       );
                     },
                   ),
@@ -370,9 +414,110 @@ class _ListaFisicaSindicatoPaginaState
             const AyudaArrastrarArchivo(
               texto: 'También podés arrastrar varias imágenes aquí.',
             ),
+            if (context.puede('IMAGENES_EDITAR') && lista.paginas > 1)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Arrastrá una imagen sobre otra para cambiar su posición. '
+                  'En el móvil, mantenela presionada antes de arrastrar. '
+                  'El orden se guarda automáticamente.',
+                ),
+              ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _paginaArrastrable(
+    BuildContext contexto,
+    ListaFisicaSindicato lista,
+    PaginaListaFisica pagina,
+  ) {
+    final tarjeta = _tarjeta(pagina);
+    if (!context.puede('IMAGENES_EDITAR') || _guardando || lista.paginas < 2) {
+      return tarjeta;
+    }
+    return LayoutBuilder(
+      builder: (context, medidas) {
+        final feedback = Material(
+          elevation: 8,
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            width: medidas.maxWidth,
+            height: medidas.maxHeight,
+            child: _tarjeta(pagina),
+          ),
+        );
+        void iniciar() {
+          final scrollable = Scrollable.maybeOf(contexto);
+          _autoScroll?.stopAutoScroll();
+          _autoScroll = scrollable == null
+              ? null
+              : EdgeDraggingAutoScroller(scrollable, velocityScalar: 30);
+        }
+
+        void actualizar(DragUpdateDetails detalles) {
+          final autoScroll = _autoScroll;
+          if (autoScroll == null) return;
+          final caja =
+              autoScroll.scrollable.context.findRenderObject() as RenderBox;
+          autoScroll.startAutoScrollIfNecessary(
+            Rect.fromCenter(
+              center: caja.globalToLocal(detalles.globalPosition),
+              width: 32,
+              height: 64,
+            ),
+          );
+        }
+
+        return DragTarget<int>(
+          onWillAcceptWithDetails: (detalles) =>
+              detalles.data != pagina.id && !_guardando,
+          onAcceptWithDetails: (detalles) {
+            _autoScroll?.stopAutoScroll();
+            _moverPagina(lista, detalles.data, pagina.id);
+          },
+          builder: (context, candidatos, rechazados) {
+            final destino = DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: candidatos.isEmpty
+                    ? null
+                    : Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 3,
+                      ),
+              ),
+              child: tarjeta,
+            );
+            final movil =
+                defaultTargetPlatform == TargetPlatform.android ||
+                defaultTargetPlatform == TargetPlatform.iOS;
+            final atenuada = Opacity(opacity: .3, child: tarjeta);
+            if (movil) {
+              return LongPressDraggable<int>(
+                data: pagina.id,
+                feedback: feedback,
+                childWhenDragging: atenuada,
+                onDragStarted: iniciar,
+                onDragUpdate: actualizar,
+                onDragEnd: (_) => _autoScroll?.stopAutoScroll(),
+                child: destino,
+              );
+            }
+            return Draggable<int>(
+              data: pagina.id,
+              feedback: feedback,
+              childWhenDragging: atenuada,
+              onDragStarted: iniciar,
+              onDragUpdate: actualizar,
+              onDragEnd: (_) => _autoScroll?.stopAutoScroll(),
+              child: destino,
+            );
+          },
+        );
+      },
     );
   }
 
@@ -384,13 +529,19 @@ class _ListaFisicaSindicatoPaginaState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: ColoredBox(
-              color: tema.colorScheme.surfaceContainerHighest,
-              child: Image.network(
-                ApiConfig.urlAbsoluta(pagina.url),
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => const Center(
-                  child: Icon(Icons.broken_image_outlined, size: 44),
+            child: InkWell(
+              onTap: () => _verImagen(pagina),
+              child: ColoredBox(
+                color: tema.colorScheme.surfaceContainerHighest,
+                child: RotatedBox(
+                  quarterTurns: pagina.giros,
+                  child: Image.network(
+                    ApiConfig.urlAbsoluta(pagina.url),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => const Center(
+                      child: Icon(Icons.broken_image_outlined, size: 44),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -419,21 +570,38 @@ class _ListaFisicaSindicatoPaginaState
                     ],
                   ),
                 ),
-                if (context.puede('IMAGENES_EDITAR'))
+              ],
+            ),
+          ),
+          if (context.puede('IMAGENES_EDITAR'))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                children: [
+                  IconButton(
+                    tooltip: 'Girar a la izquierda',
+                    onPressed: _guardando ? null : () => _girar(pagina, -1),
+                    icon: const Icon(Icons.rotate_left),
+                  ),
+                  IconButton(
+                    tooltip: 'Girar a la derecha',
+                    onPressed: _guardando ? null : () => _girar(pagina, 1),
+                    icon: const Icon(Icons.rotate_right),
+                  ),
                   IconButton(
                     tooltip: 'Reemplazar página',
                     onPressed: _guardando ? null : () => _reemplazar(pagina),
                     icon: const Icon(Icons.swap_horiz),
                   ),
-                if (context.puede('IMAGENES_EDITAR'))
                   IconButton(
                     tooltip: 'Quitar página',
                     onPressed: _guardando ? null : () => _quitar(pagina),
                     icon: const Icon(Icons.delete_outline),
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -444,6 +612,51 @@ class _ListaFisicaSindicatoPaginaState
     return '${dos(fecha.day)}/${dos(fecha.month)}/${fecha.year} '
         '${dos(fecha.hour)}:${dos(fecha.minute)}';
   }
+}
+
+class _VisorPaginaListaFisica extends StatelessWidget {
+  const _VisorPaginaListaFisica({required this.pagina});
+
+  final PaginaListaFisica pagina;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFFADB3B0),
+    appBar: AppBar(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Página ${pagina.orden}'),
+          Text(
+            pagina.nombre,
+            style: Theme.of(context).textTheme.bodySmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    ),
+    body: SizedBox.expand(
+      child: InteractiveViewer(
+        minScale: 1,
+        maxScale: 8,
+        child: Center(
+          child: RotatedBox(
+            quarterTurns: pagina.giros,
+            child: Image.network(
+              ApiConfig.urlAbsoluta(pagina.url),
+              fit: BoxFit.contain,
+              loadingBuilder: (_, imagen, progreso) => progreso == null
+                  ? imagen
+                  : const Center(child: CircularProgressIndicator()),
+              errorBuilder: (_, _, _) =>
+                  const Center(child: Text('No se pudo cargar la imagen.')),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _VisorListaFisicaPdf extends StatelessWidget {

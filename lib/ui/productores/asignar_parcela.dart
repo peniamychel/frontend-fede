@@ -74,7 +74,6 @@ Future<bool> asignarParcela(BuildContext context, Productor productor) async {
           sindicatoId: productor.sindicatoId,
           productorId: productor.id,
           numero: elegido.numero,
-          superficie: elegido.superficie,
           estado: elegido.estado?.valor,
           letra: elegido.letra,
         ),
@@ -259,25 +258,19 @@ Future<bool> cambiarClasificacionParcela(
 
 /// Lo que devuelve un diálogo: crear algo nuevo, o tomar uno que ya existe.
 class _Eleccion {
-  const _Eleccion.nueva({
-    this.numero,
-    this.superficie,
-    this.letra,
-    required this.estado,
-  }) : nuevo = true,
-       existenteId = null;
+  const _Eleccion.nueva({this.numero, this.letra, required this.estado})
+    : nuevo = true,
+      existenteId = null;
 
   const _Eleccion.existente(this.existenteId, {required this.estado})
     : nuevo = false,
       numero = null,
-      superficie = null,
       letra = null;
 
   final bool nuevo;
   final int? existenteId;
 
   final String? numero;
-  final double? superficie;
   final String? letra;
   final EstadoLote? estado;
 }
@@ -524,7 +517,6 @@ class _DialogoParcela extends StatefulWidget {
 class _DialogoParcelaState extends State<_DialogoParcela> {
   final _formulario = GlobalKey<FormState>();
   final _numero = TextEditingController();
-  final _superficie = TextEditingController();
 
   bool _nueva = true;
   String? _letraManual;
@@ -548,7 +540,6 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
   void dispose() {
     _numero.removeListener(_alCambiarNumero);
     _numero.dispose();
-    _superficie.dispose();
     super.dispose();
   }
 
@@ -635,14 +626,6 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
                           setState(() => _letraManual = letra),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _superficie,
-                    decoration: const InputDecoration(
-                      labelText: 'Superficie en hectáreas',
-                      helperText: 'Opcional. Se puede medir después.',
-                    ),
-                  ),
                 ] else if (_cargando)
                   const LinearProgressIndicator()
                 else if (_libres.isEmpty)
@@ -721,9 +704,6 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
         _Eleccion.nueva(
           numero: _limpio(_numero),
           letra: _letraManual,
-          superficie: double.tryParse(
-            (_limpio(_superficie) ?? '').replaceAll(',', '.'),
-          ),
           estado: _estado,
         ),
       );

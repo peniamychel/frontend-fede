@@ -35,7 +35,8 @@ RUN --mount=type=cache,target=/home/constructor/.pub-cache,uid=1000,gid=1000 \
 
 COPY --chown=constructor:constructor . .
 RUN --mount=type=cache,target=/home/constructor/.pub-cache,uid=1000,gid=1000 \
-    flutter build web --release --no-web-resources-cdn
+    flutter pub get \
+    && flutter build web --release --no-web-resources-cdn
 
 FROM nginx:1.29-alpine AS ejecucion
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf

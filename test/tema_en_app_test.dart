@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:fede/ui/app.dart';
 import 'package:fede/ui/widgets/boton_tema.dart';
+import 'app_autenticada_prueba.dart';
 
 /// El cambio de tema dentro de la app completa.
 ///
@@ -18,7 +18,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(const PadronApp());
+    await arrancarAppAutenticada(tester);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
   }
@@ -28,7 +28,9 @@ void main() {
 
     await tester.tap(find.byType(BotonTema).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Oscuro'));
+    await tester.tap(
+      find.widgetWithText(CheckedPopupMenuItem<ThemeMode>, 'Oscuro'),
+    );
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -40,7 +42,9 @@ void main() {
     for (final opcion in ['Oscuro', 'Claro', 'Igual que el sistema']) {
       await tester.tap(find.byType(BotonTema).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text(opcion));
+      await tester.tap(
+        find.widgetWithText(CheckedPopupMenuItem<ThemeMode>, opcion),
+      );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: opcion);
     }
@@ -51,7 +55,9 @@ void main() {
 
     await tester.tap(find.byType(BotonTema).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Oscuro'));
+    await tester.tap(
+      find.widgetWithText(CheckedPopupMenuItem<ThemeMode>, 'Oscuro'),
+    );
     await tester.pumpAndSettle();
 
     // El IndexedStack conserva las cuatro secciones vivas: si el cambio de
@@ -68,12 +74,16 @@ void main() {
 
     await tester.tap(find.byType(BotonTema).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Oscuro'));
+    await tester.tap(
+      find.widgetWithText(CheckedPopupMenuItem<ThemeMode>, 'Oscuro'),
+    );
     await tester.pumpAndSettle();
 
     // Acá es donde saltaría el assert de InheritedElement: al desmontar el
     // TemaScope mientras los botones de tema todavía dependen de él.
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: SizedBox())),
+    );
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);

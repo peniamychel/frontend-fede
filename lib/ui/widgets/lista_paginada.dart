@@ -86,6 +86,13 @@ class ListaPaginadaState<T> extends State<ListaPaginada<T>> {
   /// abajo, y lo que hay que llamar después de crear o borrar un registro.
   Future<void> refrescar() => _reiniciar();
 
+  /// Sustituye una fila ya cargada sin reiniciar la paginación ni el scroll.
+  void actualizarElemento(T elemento, {required bool Function(T) coincide}) {
+    final indice = _elementos.indexWhere(coincide);
+    if (indice < 0) return;
+    setState(() => _elementos[indice] = elemento);
+  }
+
   /// Actualiza todas las páginas que el usuario ya alcanzó sin vaciar la lista
   /// ni perder su posición. Se usa al volver de una ficha editada: los datos
   /// deben cambiar, pero el usuario debe continuar donde estaba trabajando.

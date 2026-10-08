@@ -30,9 +30,6 @@ class _LoteFormularioState extends State<LoteFormulario> {
   late final TextEditingController _numero = TextEditingController(
     text: widget.lote?.numero ?? '',
   );
-  late final TextEditingController _superficie = TextEditingController(
-    text: widget.lote?.superficie == null ? '' : '${widget.lote!.superficie}',
-  );
   late final TextEditingController _estado = TextEditingController(
     text: widget.lote?.estadoOriginal ?? '',
   );
@@ -60,7 +57,6 @@ class _LoteFormularioState extends State<LoteFormulario> {
   @override
   void dispose() {
     _numero.dispose();
-    _superficie.dispose();
     _estado.dispose();
     super.dispose();
   }
@@ -100,28 +96,6 @@ class _LoteFormularioState extends State<LoteFormulario> {
                             'Si se repite, las letras A-H se asignan automáticamente',
                         border: OutlineInputBorder(),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _superficie,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Superficie (hectáreas)',
-                        hintText: '12.5',
-                        helperText: 'Dejalo vacío si todavía no se midió',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) {
-                        final texto = (v ?? '').trim().replaceAll(',', '.');
-                        if (texto.isEmpty) return null;
-                        final n = double.tryParse(texto);
-                        if (n == null || n <= 0) {
-                          return 'Escribí un número mayor que cero';
-                        }
-                        return null;
-                      },
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -223,9 +197,6 @@ class _LoteFormularioState extends State<LoteFormulario> {
   Future<void> _guardar() async {
     if (!_formulario.currentState!.validate()) return;
 
-    final superficie = double.tryParse(
-      _superficie.text.trim().replaceAll(',', '.'),
-    );
     final numero = _texto(_numero);
 
     final peticion = LoteRequest(
@@ -238,7 +209,7 @@ class _LoteFormularioState extends State<LoteFormulario> {
       extension: numero == widget.lote?.numero ? widget.lote?.extension : null,
       estado: _texto(_estado),
       mercado: _mercado?.valor,
-      superficie: superficie,
+      superficie: widget.lote?.superficie,
     );
 
     setState(() => _guardando = true);

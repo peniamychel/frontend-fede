@@ -25,7 +25,10 @@ void main() {
       expect(find.byIcon(Icons.map_outlined), findsNothing);
       expect(find.text('Cambiar número'), findsOneWidget);
       expect(find.text('Cambiar clasificación'), findsOneWidget);
-      expect(find.text('Poner medida'), findsOneWidget);
+      expect(find.text('Poner medida'), findsNothing);
+      expect(find.text('Cambiar medida'), findsNothing);
+      expect(find.text('Superficie'), findsNothing);
+      expect(find.text('12.5 ha'), findsNothing);
       expect(find.text('Vender o traspasar'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -57,6 +60,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.ultimaClasificacion, 'CON_SISTEMA');
+    expect(api.ultimaSuperficie, 12.5);
     expect(api.consultoSistemas, isFalse);
     expect(find.text('Elegí el sistema que se instalará'), findsNothing);
   });
@@ -90,7 +94,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('se recalcularán automáticamente'),
+      find.textContaining('Las letras automáticas dan prioridad'),
       findsOneWidget,
     );
     expect(find.textContaining('OTRA PRODUCTORA'), findsOneWidget);
@@ -110,12 +114,14 @@ class _ApiLote extends ApiClient {
   String estado = 'BLANCO';
   String? ultimoNumero;
   String? ultimaClasificacion;
+  double? ultimaSuperficie;
 
   Map<String, dynamic> get _lote => {
     'id': 66,
     'numero': numero,
     'codigo': numero,
     'estado': estado,
+    'superficie': 12.5,
     'sindicatoId': 7,
     'sindicatoNombre': '1RO DE MAYO',
     if (ubicado) ...{'latitud': -17.2, 'longitud': -65.1},
@@ -164,11 +170,18 @@ class _ApiLote extends ApiClient {
     Object cuerpo, {
     Map<String, dynamic>? query,
   }) async {
+    if (ruta == '/productores/5/numero-lote') {
+      final datos = cuerpo as Map<String, dynamic>;
+      ultimoNumero = datos['numero'] as String?;
+      numero = ultimoNumero ?? numero;
+      return _lote;
+    }
     if (ruta == '/lotes/66') {
       final datos = cuerpo as Map<String, dynamic>;
       ultimoNumero = datos['numero'] as String?;
       numero = ultimoNumero ?? numero;
       ultimaClasificacion = datos['estado'] as String?;
+      ultimaSuperficie = (datos['superficie'] as num?)?.toDouble();
       estado = ultimaClasificacion ?? estado;
       return _lote;
     }

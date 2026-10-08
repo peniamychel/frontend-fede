@@ -44,6 +44,7 @@ class Productor {
     this.credencialLista = false,
     this.clasificacion,
     this.revisionLotePendiente = false,
+    this.numeroLote,
     this.faseImpresionPendiente = false,
     this.reimpresionFasePendiente = false,
     this.auditoria = Auditoria.habilitado,
@@ -91,6 +92,7 @@ class Productor {
   /// Clasificación conservada del Excel o de su parcela actual.
   final EstadoLote? clasificacion;
   final bool revisionLotePendiente;
+  final String? numeroLote;
   final bool faseImpresionPendiente;
   final bool reimpresionFasePendiente;
 
@@ -197,6 +199,7 @@ class Productor {
         ? null
         : EstadoLote.desde(json['clasificacion']),
     revisionLotePendiente: json['revisionLotePendiente'] as bool? ?? false,
+    numeroLote: json['numeroLote'] as String?,
     faseImpresionPendiente: json['faseImpresionPendiente'] as bool? ?? false,
     reimpresionFasePendiente:
         json['reimpresionFasePendiente'] as bool? ?? false,

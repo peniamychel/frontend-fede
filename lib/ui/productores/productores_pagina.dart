@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
@@ -15,8 +16,24 @@ import 'productor_detalle_pagina.dart';
 import 'productor_formulario.dart';
 
 /// Listado del padrón: búsqueda por texto, filtros en cascada y paginación.
+class ProductoresControlador extends ChangeNotifier {
+  _ProductoresPaginaState? _estado;
+
+  bool get fichaAbierta => _estado?._fichaProductorId != null;
+
+  bool retroceder() {
+    if (!fichaAbierta) return false;
+    _estado?._controladorFicha.cerrar();
+    return true;
+  }
+
+  void _notificarFicha() => notifyListeners();
+}
+
 class ProductoresPagina extends StatefulWidget {
-  const ProductoresPagina({super.key});
+  const ProductoresPagina({super.key, this.controlador});
+
+  final ProductoresControlador? controlador;
 
   @override
   State<ProductoresPagina> createState() => _ProductoresPaginaState();
@@ -25,6 +42,11 @@ class ProductoresPagina extends StatefulWidget {
 class _ProductoresPaginaState extends State<ProductoresPagina> {
   final TextEditingController _buscador = TextEditingController();
   final GlobalKey<ListaPaginadaState<Productor>> _lista = GlobalKey();
+  final _clavePanelLista = GlobalKey();
+  final _controladorFicha = ProductorDetalleControlador();
+  GlobalKey _claveFicha = GlobalKey();
+  int? _fichaProductorId;
+  bool _cambiandoFicha = false;
 
   Timer? _rebote;
   String _texto = '';
@@ -40,11 +62,26 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
   @override
   void initState() {
     super.initState();
+    widget.controlador?._estado = this;
     _cargarCentrales();
   }
 
   @override
+  void didUpdateWidget(covariant ProductoresPagina oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controlador, widget.controlador)) {
+      if (identical(oldWidget.controlador?._estado, this)) {
+        oldWidget.controlador?._estado = null;
+      }
+      widget.controlador?._estado = this;
+    }
+  }
+
+  @override
   void dispose() {
+    if (identical(widget.controlador?._estado, this)) {
+      widget.controlador?._estado = null;
+    }
     _rebote?.cancel();
     _buscador.dispose();
     super.dispose();
@@ -101,11 +138,61 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
 
   @override
   Widget build(BuildContext context) {
+    final pagina = LayoutBuilder(
+      builder: (context, restricciones) {
+        final ancho = restricciones.maxWidth;
+        final fichaLateral =
+            ancho >= 820 &&
+            (kIsWeb ||
+                defaultTargetPlatform == TargetPlatform.windows ||
+                defaultTargetPlatform == TargetPlatform.macOS ||
+                defaultTargetPlatform == TargetPlatform.linux);
+        final lista = _panelLista(fichaLateral: fichaLateral);
+        if (_fichaProductorId == null) return lista;
+        final ficha = ProductorDetallePagina(
+          key: _claveFicha,
+          productorId: _fichaProductorId!,
+          controlador: _controladorFicha,
+          alCerrar: _alCerrarFicha,
+          alActualizar: _actualizarProductor,
+        );
+        if (fichaLateral) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(width: (ancho * 0.36).clamp(350.0, 500.0), child: lista),
+              const VerticalDivider(width: 1),
+              Expanded(child: ficha),
+            ],
+          );
+        }
+        // Al estrechar la ventana se oculta la lista sin perder su scroll
+        // ni sus filtros; reaparece en el mismo lugar al cerrar la ficha.
+        return Stack(
+          children: [
+            Positioned.fill(child: Offstage(offstage: true, child: lista)),
+            Positioned.fill(child: ficha),
+          ],
+        );
+      },
+    );
+    if (widget.controlador != null) return pagina;
+    return PopScope(
+      canPop: _fichaProductorId == null,
+      onPopInvokedWithResult: (fueDescartado, _) {
+        if (!fueDescartado) _controladorFicha.cerrar();
+      },
+      child: pagina,
+    );
+  }
+
+  Widget _panelLista({required bool fichaLateral}) {
     final padron = PadronScope.of(context);
     final puedeEditar = context.puede('PRODUCTORES_EDITAR');
     final puedeImportar = context.puede('IMPORTAR_PADRON');
 
     return Scaffold(
+      key: _clavePanelLista,
       appBar: AppBar(
         title: const Text('Productores'),
         actions: [
@@ -145,7 +232,10 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
           : null,
       body: Column(
         children: [
-          _barraFiltros(context),
+          _barraFiltros(
+            context,
+            enPanelLateral: _fichaProductorId != null && fichaLateral,
+          ),
           const Divider(height: 1),
           Expanded(
             child: ListaPaginada<Productor>(
@@ -183,7 +273,7 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
               constructor: (context, p) => FilaProductor(
                 productor: p,
                 seleccionado: p.id == _productorSeleccionadoId,
-                alTocar: () => _abrir(p),
+                alTocar: () => _abrir(p, fichaLateral: fichaLateral),
               ),
             ),
           ),
@@ -205,7 +295,7 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
     });
   }
 
-  Widget _barraFiltros(BuildContext context) {
+  Widget _barraFiltros(BuildContext context, {required bool enPanelLateral}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: LayoutBuilder(
@@ -276,7 +366,9 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Ordenar por'),
             items: [
-              for (final orden in OrdenProductores.values)
+              for (final orden in OrdenProductores.values.where(
+                (orden) => orden != OrdenProductores.numeroLote,
+              ))
                 DropdownMenuItem(value: orden, child: Text(orden.etiqueta)),
             ],
             onChanged: (orden) {
@@ -299,7 +391,7 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
             );
           }
 
-          return Row(
+          final busquedaCompacta = Row(
             children: [
               Expanded(child: buscador),
               const SizedBox(width: 8),
@@ -309,7 +401,9 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
                 icon: const Icon(Icons.sort_by_alpha),
                 onSelected: (orden) => setState(() => _orden = orden),
                 itemBuilder: (context) => [
-                  for (final orden in OrdenProductores.values)
+                  for (final orden in OrdenProductores.values.where(
+                    (orden) => orden != OrdenProductores.numeroLote,
+                  ))
                     PopupMenuItem(
                       value: orden,
                       child: Row(
@@ -327,15 +421,52 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
               ),
             ],
           );
+          if (!enPanelLateral) return busquedaCompacta;
+          return Column(
+            children: [
+              busquedaCompacta,
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: filtroCentral),
+                  const SizedBox(width: 8),
+                  Expanded(child: filtroSindicato),
+                ],
+              ),
+            ],
+          );
         },
       ),
     );
   }
 
-  Future<void> _abrir(Productor p) async {
+  Future<void> _abrir(Productor p, {required bool fichaLateral}) async {
+    if (fichaLateral) {
+      if (_fichaProductorId == p.id || _cambiandoFicha) return;
+      _cambiandoFicha = true;
+      try {
+        if (_fichaProductorId != null && !await _controladorFicha.cerrar()) {
+          return;
+        }
+        if (!mounted) return;
+        setState(() {
+          _claveFicha = GlobalKey();
+          _fichaProductorId = p.id;
+          _productorSeleccionadoId = p.id;
+        });
+        widget.controlador?._notificarFicha();
+      } finally {
+        _cambiandoFicha = false;
+      }
+      return;
+    }
     final cambio = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => ProductorDetallePagina(productorId: p.id),
+        builder: (_) => ProductorDetallePagina(
+          productorId: p.id,
+          alActualizar: _actualizarProductor,
+        ),
       ),
     );
     if (!mounted) return;
@@ -343,6 +474,22 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
     if (cambio == true) {
       await _lista.currentState?.refrescarConservandoPosicion();
     }
+  }
+
+  Future<void> _alCerrarFicha(bool huboCambios) async {
+    if (!mounted) return;
+    setState(() => _fichaProductorId = null);
+    widget.controlador?._notificarFicha();
+    if (huboCambios) {
+      await _lista.currentState?.refrescarConservandoPosicion();
+    }
+  }
+
+  void _actualizarProductor(Productor productor) {
+    _lista.currentState?.actualizarElemento(
+      productor,
+      coincide: (fila) => fila.id == productor.id,
+    );
   }
 
   Future<void> _crear() async {

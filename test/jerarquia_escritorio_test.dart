@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,10 +7,188 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fede/core/preferencia_tema.dart';
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/jerarquia/jerarquia_pagina.dart';
+import 'package:fede/ui/jerarquia/sindicato_productores_pagina.dart';
+import 'package:fede/ui/inicio.dart';
+import 'package:fede/ui/productores/productor_detalle_pagina.dart';
+import 'package:fede/ui/productores/fila_productor.dart';
+import 'package:fede/ui/productores/imagenes_productor.dart';
 import 'package:fede/ui/padron_scope.dart';
+import 'miniatura_prueba.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final ancho in [1700, 1200, 430]) {
+    testWidgets('ficha del productor adaptativa a $ancho px', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      try {
+        tester.view.physicalSize = Size(ancho.toDouble(), 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final api = _ApiFichaJerarquia();
+        await tester.pumpWidget(
+          TemaScope(
+            preferencia: PreferenciaTema(),
+            child: PadronScope(
+              padron: Padron(api: api),
+              child: const MaterialApp(home: Inicio()),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Jerarquía'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('CENTRAL DE PRUEBA'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('SINDICATO UNO'));
+        await tester.pumpAndSettle();
+        final lista = find.byType(SindicatoProductoresPagina);
+        await tester.tap(find.byType(FilaProductor).first);
+        await tester.pumpAndSettle();
+        final ficha = find.byType(ProductorDetallePagina);
+        expect(ficha, findsOneWidget);
+        expect(find.text('MARÍA'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        if (ancho == 430) {
+          expect(lista, findsNothing);
+          await tester.binding.handlePopRoute();
+          await tester.pumpAndSettle();
+          expect(lista, findsOneWidget);
+          expect(ficha, findsNothing);
+          return;
+        }
+
+        expect(
+          tester.getRect(lista).right,
+          lessThan(tester.getRect(ficha).left),
+        );
+        expect(
+          tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+          isFalse,
+        );
+        if (ancho == 1700) {
+          expect(find.text('Sindicatos de CENTRAL DE PRUEBA'), findsOneWidget);
+          final estadoLista = tester.state(lista);
+          final estadoFicha = tester.state(ficha);
+          tester.view.physicalSize = const Size(1200, 1000);
+          await tester.pumpAndSettle();
+          expect(tester.state(lista), same(estadoLista));
+          expect(tester.state(ficha), same(estadoFicha));
+        }
+        expect(
+          find.byTooltip('Cambiar sindicato: SINDICATO UNO'),
+          findsOneWidget,
+        );
+
+        // Cambiar de productor no debe conservar el contenido de la ficha anterior.
+        await tester.tap(find.byType(FilaProductor).last);
+        await tester.pumpAndSettle();
+        expect(find.text('JUAN'), findsOneWidget);
+        expect(find.text('MARÍA'), findsNothing);
+        expect(tester.takeException(), isNull);
+
+        if (ancho == 1700) {
+          await tester.tap(find.byTooltip('Marcar como observado'));
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byType(TextFormField), 'Revisar datos');
+          await tester.tap(find.text('Guardar observación'));
+          await tester.pumpAndSettle();
+          expect(
+            tester
+                .widget<FilaProductor>(find.byType(FilaProductor).last)
+                .productor
+                .observado,
+            isTrue,
+          );
+          expect(ficha, findsOneWidget);
+          final estadoLista = tester.state(lista);
+          await prepararMiniaturaPrueba(tester, '/miniatura-nueva-42.png');
+          api.fotoActualizada = true;
+          tester
+              .widget<ImagenesProductor>(find.byType(ImagenesProductor))
+              .alCambiar();
+          await tester.pumpAndSettle();
+          final filaConFoto = tester.widget<FilaProductor>(
+            find.byType(FilaProductor).last,
+          );
+          expect(filaConFoto.productor.nombres, 'JUAN ACTUALIZADO');
+          expect(filaConFoto.productor.miniaturaUrl, '/miniatura-nueva-42.png');
+          expect(tester.state(lista), same(estadoLista));
+          expect(ficha, findsOneWidget);
+        }
+
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(ficha, findsNothing);
+        expect(lista, findsOneWidget);
+        if (ancho == 1700) {
+          final fila = tester.widget<FilaProductor>(
+            find.byType(FilaProductor).last,
+          );
+          expect(fila.productor.observado, isTrue);
+          expect(fila.seleccionado, isTrue);
+        }
+        expect(find.text('Sindicatos de CENTRAL DE PRUEBA'), findsOneWidget);
+        expect(
+          tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+          isTrue,
+        );
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+  }
+
+  for (final ancho in [900, 950, 988, 1099, 1100, 1120, 1156, 1200, 1400]) {
+    testWidgets('abre el sindicato con menú lateral a $ancho px', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      try {
+        tester.view.physicalSize = Size(ancho.toDouble(), 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final api = _ApiJerarquia();
+        await tester.pumpWidget(
+          TemaScope(
+            preferencia: PreferenciaTema(),
+            child: PadronScope(
+              padron: Padron(api: api),
+              child: const MaterialApp(home: Inicio()),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Jerarquía'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('CENTRAL DE PRUEBA'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('SINDICATO UNO'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SindicatoProductoresPagina), findsOneWidget);
+        expect(api.ultimoSindicatoConsultado, 30);
+        expect(tester.takeException(), isNull);
+
+        if (ancho == 1400) {
+          // Un sindicato abierto también debe seguir visible al estrechar la ventana.
+          tester.view.physicalSize = const Size(950, 1000);
+          await tester.pumpAndSettle();
+          expect(find.byType(SindicatoProductoresPagina), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await tester.binding.handlePopRoute();
+        } else {
+          await tester.binding.handlePopRoute();
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(SindicatoProductoresPagina), findsNothing);
+        expect(find.text('SINDICATO UNO'), findsOneWidget);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+  }
 
   testWidgets('trabaja solo con Carrasco Tropical y muestra productores', (
     tester,
@@ -104,17 +283,20 @@ void main() {
       await tester.tap(find.text('CENTRAL DE PRUEBA'));
       await tester.pumpAndSettle();
 
-      expect(find.byTooltip('Lista física del sindicato'), findsNWidgets(2));
+      expect(find.byTooltip('Lista física del sindicato'), findsNothing);
+      expect(find.byTooltip('Directorio del sindicato'), findsNothing);
       expect(find.byTooltip('Parcelas del sindicato'), findsNothing);
       expect(find.textContaining('ubicación'), findsNothing);
       expect(find.text('2 sindicatos · 16 productores'), findsOneWidget);
-      expect(find.text('Total: 10 · 40% Impresión'), findsOneWidget);
-      expect(find.text('Total: 6 · 50% Impresión'), findsOneWidget);
+      expect(find.text('Total: 10'), findsOneWidget);
+      expect(find.text('Total: 6'), findsOneWidget);
       expect(find.text('Ver sus productores'), findsNothing);
 
       await tester.tap(find.byTooltip('Acciones').last);
       await tester.pumpAndSettle();
       expect(find.text('Parcelas'), findsOneWidget);
+      expect(find.text('Directorio'), findsOneWidget);
+      expect(find.text('Lista física del sindicato'), findsOneWidget);
       await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();
 
@@ -131,11 +313,11 @@ void main() {
       );
       expect(find.text('Sindicatos de CENTRAL DE PRUEBA'), findsOneWidget);
       expect(
-        find.text('Buscar por nombre, apellido, cédula o carné'),
+        find.text('Buscar por nombre, apellido, cédula o código'),
         findsOneWidget,
       );
       expect(
-        find.text('Central CENTRAL DE PRUEBA · 10 productores'),
+        find.text('Central CENTRAL DE PRUEBA · 0 productores'),
         findsOneWidget,
       );
       expect(api.ultimoSindicatoConsultado, 30);
@@ -146,6 +328,45 @@ void main() {
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }
+  });
+
+  testWidgets('muestra ambos avances al pasar sobre centrales y sindicatos', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _ApiJerarquia()..faseIniciada = true;
+    await tester.pumpWidget(
+      TemaScope(
+        preferencia: PreferenciaTema(),
+        child: PadronScope(
+          padron: Padron(api: api),
+          child: const MaterialApp(home: JerarquiaPagina()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(find.text('CENTRAL DE PRUEBA')));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Datos completos: 63% (10/16)\nAvance de impresión: 44%'),
+      findsOneWidget,
+    );
+    await mouse.removePointer();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('CENTRAL DE PRUEBA'));
+    await tester.pumpAndSettle();
+    expect(find.text('Total: 10'), findsOneWidget);
+    expect(find.text('Total: 6'), findsOneWidget);
+    expect(
+      find.byTooltip('Datos completos: 70% (7/10)\nAvance de impresión: 40%'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('conserva el scroll de centrales al entrar y volver', (
@@ -202,6 +423,7 @@ void main() {
 
 class _ApiJerarquia extends ApiClient {
   int? ultimoSindicatoConsultado;
+  bool faseIniciada = false;
 
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
@@ -257,6 +479,11 @@ class _ApiJerarquia extends ApiClient {
         'sinFoto': 5,
         'listosParaImprimir': 4,
         'porcentajeAvance': 43.8,
+        'avancesFase': faseIniciada
+            ? [
+                {'numeroFase': 1, 'porcentajeAvance': 43.8},
+              ]
+            : [],
         'detalle': [
           {
             'sindicatoId': 30,
@@ -268,6 +495,7 @@ class _ApiJerarquia extends ApiClient {
             'pendientesConFoto': 3,
             'sinFoto': 3,
             'listosParaImprimir': 3,
+            'datosCompletos': 7,
             'porcentajeAvance': 40,
           },
           {
@@ -280,6 +508,7 @@ class _ApiJerarquia extends ApiClient {
             'pendientesConFoto': 1,
             'sinFoto': 2,
             'listosParaImprimir': 1,
+            'datosCompletos': 3,
             'porcentajeAvance': 50,
           },
         ],
@@ -293,6 +522,58 @@ class _ApiJerarquia extends ApiClient {
       };
     }
     return <dynamic>[];
+  }
+}
+
+class _ApiFichaJerarquia extends _ApiJerarquia {
+  bool observado = false;
+  bool fotoActualizada = false;
+  Map<String, dynamic> _productor(int id) => {
+    'id': id,
+    'nombres': id == 41
+        ? 'MARÍA'
+        : (fotoActualizada ? 'JUAN ACTUALIZADO' : 'JUAN'),
+    'apellidos': 'PÉREZ',
+    'nombreCompleto': id == 41
+        ? 'MARÍA PÉREZ'
+        : (fotoActualizada ? 'JUAN ACTUALIZADO PÉREZ' : 'JUAN PÉREZ'),
+    'miniaturaUrl': id == 42 && fotoActualizada
+        ? '/miniatura-nueva-42.png'
+        : null,
+    'ci': '$id',
+    'sindicatoId': 30,
+    'sindicatoNombre': 'SINDICATO UNO',
+    'centralId': 20,
+    'centralNombre': 'CENTRAL DE PRUEBA',
+    'observado': id == 42 && observado,
+    'observacion': id == 42 && observado ? 'Revisar datos' : null,
+  };
+
+  @override
+  Future<Object?> parchear(String ruta, {Object? cuerpo}) async {
+    if (ruta == '/productores/42/observacion') {
+      observado = true;
+      return _productor(42);
+    }
+    throw StateError('PATCH inesperado: $ruta');
+  }
+
+  @override
+  Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
+    if (ruta == '/productores') {
+      return {
+        'content': [_productor(41), _productor(42)],
+        'page': {'size': 25, 'number': 0, 'totalElements': 2, 'totalPages': 1},
+      };
+    }
+    if (ruta == '/productores/41' || ruta == '/productores/42') {
+      return {
+        'productor': _productor(int.parse(ruta.split('/').last)),
+        'lotes': [],
+        'imagenes': [],
+      };
+    }
+    return super.obtener(ruta, query: query);
   }
 }
 

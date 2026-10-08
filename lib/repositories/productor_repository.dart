@@ -15,7 +15,8 @@ import '../models/productor_papelera.dart';
 enum OrdenProductores {
   recientes('Modificados recientemente', ['updatedAt,desc', 'id,desc']),
   apellidos('Apellidos (A–Z)', ['apellidos,asc', 'nombres,asc']),
-  nombres('Nombres (A–Z)', ['nombres,asc', 'apellidos,asc']);
+  nombres('Nombres (A–Z)', ['nombres,asc', 'apellidos,asc']),
+  numeroLote('Número de lote', ['numeroLote,asc']);
 
   const OrdenProductores(this.etiqueta, this.parametros);
 
@@ -214,6 +215,15 @@ class ProductorRepository {
   /// Actualiza los datos, o mueve el productor a otro sindicato.
   Future<Productor> actualizar(int id, ProductorRequest request) async {
     final datos = await _api.reemplazar('$_ruta/$id', request.aJson());
+    return Productor.desdeJson(datos.comoObjeto);
+  }
+
+  /// Guarda solo el campo editado, sin sobrescribir el resto de la ficha.
+  Future<Productor> actualizarCampo(int id, String campo, String valor) async {
+    final datos = await _api.parchear(
+      '$_ruta/$id/campo',
+      cuerpo: {'campo': campo, 'valor': valor},
+    );
     return Productor.desdeJson(datos.comoObjeto);
   }
 

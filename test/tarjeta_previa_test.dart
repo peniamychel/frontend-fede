@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fede/models/credencial_previa.dart';
 import 'package:fede/models/diseno_credencial.dart';
 import 'package:fede/ui/credenciales/tarjeta_previa.dart';
+import 'package:fede/ui/credenciales/fuentes_bajo_demanda.dart';
 
 /// La tarjeta de la vista previa tiene que verse como el PDF.
 ///
@@ -49,7 +50,7 @@ void main() {
     nombres: 'CANDIDO',
     apellidos: apellidos,
     ci: '3692655',
-    lotes: '12-A',
+    lotes: '12',
     codigoPadron: codigoPadron,
     codigoQr: 'AB12CD34EF',
     // Sin foto: cargar una imagen de red en una prueba de widget fallaría.
@@ -96,6 +97,7 @@ void main() {
 
   testWidgets('la tarjeta mide lo que una cédula', (tester) async {
     await tester.pumpWidget(banco(reverso: false));
+    await tester.pumpAndSettle();
 
     final caja = tester.getSize(find.byType(TarjetaPrevia));
     expect(caja.width, anchoDelDoble);
@@ -266,7 +268,7 @@ void main() {
       'CARRASCO',
       'IVIRGARZAMA',
       'ALTO SAN SALVADOR',
-      '12-A',
+      '12',
       '2IVI1',
     ]) {
       expect(find.text(esperado), findsOneWidget, reason: 'falta «$esperado»');
@@ -276,6 +278,9 @@ void main() {
   testWidgets('la vista previa aplica la fuente elegida al texto', (
     tester,
   ) async {
+    await tester.runAsync(
+      () => cargarFuenteCredencial(FuenteCredencial.merriweather),
+    );
     final base = DisenoCredencial.predeterminado();
     final editado = DisenoCredencial(
       ancho: base.ancho,
@@ -289,6 +294,7 @@ void main() {
     );
 
     await tester.pumpWidget(banco(reverso: false, diseno: editado));
+    await tester.pumpAndSettle();
 
     final nombre = tester.widget<Text>(
       find.text('CANDIDO COLQUECHAMBI MAMANI'),

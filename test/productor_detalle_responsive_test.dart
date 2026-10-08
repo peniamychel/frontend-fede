@@ -77,12 +77,12 @@ void main() {
       await tester.tap(find.text('Guardar número'));
       await tester.pumpAndSettle();
       expect(api.ultimaRuta, '/productores/42/numero-lote');
-      expect(api.ultimoCuerpo, {'numero': '25', 'loteId': 9});
+      expect(api.ultimoCuerpo, {'numero': '25', 'loteId': 9, 'letra': ''});
       expect(api.creaciones, isEmpty);
       expect(tester.takeException(), isNull);
     },
   );
-  testWidgets('destaca nombres, apellidos, cédula y lote en tres líneas', (
+  testWidgets('destaca nombres, apellidos, cédula y lote en líneas separadas', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 900);
@@ -111,18 +111,24 @@ void main() {
       of: find.byKey(const ValueKey('productor-apellidos')),
       matching: find.byType(Text),
     );
-    final cedulaLote = find.descendant(
-      of: find.byKey(const ValueKey('productor-cedula-lote')),
+    final cedula = find.descendant(
+      of: find.byKey(const ValueKey('productor-cedula')),
+      matching: find.byType(Text),
+    );
+    final lote = find.descendant(
+      of: find.byKey(const ValueKey('productor-lote')),
       matching: find.byType(Text),
     );
     expect(find.text('MARÍA'), findsOneWidget);
     expect(find.text('PÉREZ'), findsOneWidget);
-    expect(find.text('C.I.: 123456   N.° de lote: 15 A'), findsOneWidget);
+    expect(find.text('C.I.: 123456'), findsOneWidget);
+    expect(find.text('N.° de lote: 15 A'), findsOneWidget);
 
     final textos = [
       tester.widget<Text>(nombres),
       tester.widget<Text>(apellidos),
-      tester.widget<Text>(cedulaLote),
+      tester.widget<Text>(cedula),
+      tester.widget<Text>(lote),
     ];
     expect(textos.map((texto) => texto.style?.fontSize).toSet(), hasLength(1));
     expect(textos.every((texto) => texto.maxLines == 1), isTrue);
@@ -132,7 +138,11 @@ void main() {
     );
     expect(
       tester.getTopLeft(apellidos).dy,
-      lessThan(tester.getTopLeft(cedulaLote).dy),
+      lessThan(tester.getTopLeft(cedula).dy),
+    );
+    expect(
+      tester.getTopLeft(cedula).dy,
+      lessThan(tester.getTopLeft(lote).dy),
     );
     expect(tester.takeException(), isNull);
   });

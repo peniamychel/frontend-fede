@@ -11,12 +11,14 @@ class VisorImagen extends StatefulWidget {
     required this.titulo,
     this.subtitulo,
     this.alDescargar,
+    this.giros = 0,
   });
 
   final String url;
   final String titulo;
   final String? subtitulo;
   final Future<void> Function()? alDescargar;
+  final int giros;
 
   static Future<void> mostrar(
     BuildContext context, {
@@ -24,6 +26,7 @@ class VisorImagen extends StatefulWidget {
     required String titulo,
     String? subtitulo,
     Future<void> Function()? alDescargar,
+    int giros = 0,
   }) {
     return showDialog<void>(
       context: context,
@@ -33,6 +36,7 @@ class VisorImagen extends StatefulWidget {
         titulo: titulo,
         subtitulo: subtitulo,
         alDescargar: alDescargar,
+        giros: giros,
       ),
     );
   }
@@ -125,30 +129,35 @@ class _VisorImagenState extends State<VisorImagen> {
                   child: InteractiveViewer(
                     minScale: 1,
                     maxScale: 5,
-                    child: Image.network(
-                      widget.url,
-                      fit: BoxFit.contain,
-                      loadingBuilder: (context, hijo, progreso) =>
-                          progreso == null
-                          ? hijo
-                          : const SizedBox(
-                              height: 240,
-                              child: Center(child: CircularProgressIndicator()),
-                            ),
-                      errorBuilder: (context, error, _) => Container(
-                        padding: const EdgeInsets.all(32),
-                        color: fondoVisor,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.broken_image_outlined,
-                              size: 40,
-                              color: tema.colorScheme.error,
-                            ),
-                            const SizedBox(height: 8),
-                            const Text('No se pudo cargar la imagen.'),
-                          ],
+                    child: RotatedBox(
+                      quarterTurns: widget.giros,
+                      child: Image.network(
+                        widget.url,
+                        fit: BoxFit.contain,
+                        loadingBuilder: (context, hijo, progreso) =>
+                            progreso == null
+                            ? hijo
+                            : const SizedBox(
+                                height: 240,
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              ),
+                        errorBuilder: (context, error, _) => Container(
+                          padding: const EdgeInsets.all(32),
+                          color: fondoVisor,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.broken_image_outlined,
+                                size: 40,
+                                color: tema.colorScheme.error,
+                              ),
+                              const SizedBox(height: 8),
+                              const Text('No se pudo cargar la imagen.'),
+                            ],
+                          ),
                         ),
                       ),
                     ),

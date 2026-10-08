@@ -35,6 +35,8 @@ void main() {
     expect(find.text('Marcado'), findsNothing);
     expect(find.text('Fecha de creación'), findsOneWidget);
     expect(find.text('23/08/2026 14:05'), findsOneWidget);
+    await tester.ensureVisible(find.byTooltip('Verificar con SIE'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Verificar con SIE'));
     await tester.pumpAndSettle();
 
@@ -57,7 +59,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.aceptado, isTrue);
     expect(find.text('Corrección SIE aceptada'), findsOneWidget);
-    expect(find.text('MARÍA NÚÑEZ'), findsOneWidget);
+    expect(find.text('MARÍA'), findsOneWidget);
+    expect(find.text('NÚÑEZ'), findsOneWidget);
   });
 }
 

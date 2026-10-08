@@ -192,6 +192,8 @@ void main() {
       final tarjeta = find.ancestor(of: titulo, matching: find.byType(Card));
       expect(tester.widget<Card>(tarjeta.first).color, Colors.orange.shade100);
 
+      await tester.ensureVisible(find.text('Aprobar datos'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Aprobar datos'));
       await tester.pumpAndSettle();
       expect(find.text('¿Aprobar los datos actuales?'), findsOneWidget);

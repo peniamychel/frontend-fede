@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../permisos_ui.dart';
+import '../productores/productor_detalle_pagina.dart';
 import '../widgets/boton_tema.dart';
 import '../credenciales/pliego_previa_pagina.dart';
 import '../credenciales/informe_impresion_central_pagina.dart';
@@ -18,14 +19,19 @@ import '../widgets/marca_estado.dart';
 import 'directorio_pagina.dart';
 import 'lista_fisica_sindicato_pagina.dart';
 import 'sindicato_productores_pagina.dart';
+import 'edicion_productores_sindicato_pagina.dart';
 
 /// Navegación por la jerarquía de CARRASCO TROPICAL: Central › Sindicato.
 ///
 /// La federación se resuelve internamente para conservar sus relaciones, pero
 /// no se ofrece como nivel editable porque la aplicación trabaja únicamente
 /// con CARRASCO TROPICAL.
-class JerarquiaControlador {
+class JerarquiaControlador extends ChangeNotifier {
   _JerarquiaPaginaState? _estado;
+
+  bool get fichaAbierta => _estado?._productorId != null;
+
+  void _notificarFicha() => notifyListeners();
 
   /// Intenta volver un nivel dentro de Central › Sindicato.
   /// Devuelve false cuando la jerarquía ya está en la lista de centrales.
@@ -57,6 +63,11 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   static const _claveCentralFijada = 'jerarquia.central_fijada.carrasco';
   static const _claveOrdenCodigo = 'jerarquia.orden_codigo.carrasco';
   final _controladorProductores = SindicatoProductoresControlador();
+  final _controladorFicha = ProductorDetalleControlador();
+  GlobalKey _claveListaProductores = GlobalKey();
+  GlobalKey _claveFicha = GlobalKey();
+  int? _productorId;
+  bool _cambiandoFicha = false;
   bool _ordenPorCodigo = false;
 
   Federacion? _federacion;
@@ -101,7 +112,8 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     return federacion;
   }
 
-  void _recargarTodo() {
+  Future<void> _recargarTodo() async {
+    if (!await _cerrarFichaActual() || !mounted) return;
     setState(() {
       _federacion = null;
       _central = null;
@@ -237,13 +249,16 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
           sindicato.conResumenImpresion(
             totalProductores: porId[sindicato.id]?.total ?? 0,
             porcentajeImpresion: porId[sindicato.id]?.porcentajeAvance ?? 0,
+            datosCompletos: porId[sindicato.id]?.datosCompletos ?? 0,
+            huboFaseImpresion: avance.tieneFasesImpresion,
           ),
       ],
       totalProductores: avance.total,
     );
   }
 
-  void _elegirCentral(Central c) {
+  Future<void> _elegirCentral(Central c) async {
+    if (!await _cerrarFichaActual() || !mounted) return;
     setState(() {
       if (_centralSeleccionadaId != c.id) _sindicatoSeleccionadoId = null;
       _centralSeleccionadaId = c.id;
@@ -254,6 +269,10 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   }
 
   bool _retroceder() {
+    if (_productorId != null) {
+      _controladorFicha.cerrar();
+      return true;
+    }
     if (_sindicato != null) {
       setState(() => _sindicato = null);
       return true;
@@ -295,7 +314,8 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
         alReintentar: _recargarTodo,
         constructor: (context, _) => LayoutBuilder(
           builder: (context, restricciones) {
-            if (restricciones.maxWidth >= 900) {
+            if (_permiteMesaDeTrabajo(restricciones.maxWidth) ||
+                restricciones.maxWidth >= 900) {
               return _columnasAnchas(restricciones.maxWidth);
             }
             return _unaColumna();
@@ -306,7 +326,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   }
 
   bool _permiteMesaDeTrabajo(double ancho) {
-    if (ancho < 900) return false;
+    if (ancho < 780) return false;
     return kIsWeb ||
         defaultTargetPlatform == TargetPlatform.windows ||
         defaultTargetPlatform == TargetPlatform.macOS ||
@@ -315,6 +335,39 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
 
   Widget _columnasAnchas(double ancho) {
     final sindicato = _sindicato;
+    if (sindicato != null && _productorId != null) {
+      if (ancho < 900) return _unaColumna();
+      final sindicatosVisibles = ancho >= 1250;
+      final anchoLista = (ancho * 0.28).clamp(340.0, 420.0);
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ColumnaColapsada(
+            icono: Icons.hub_outlined,
+            nombre: _central!.nombre,
+            ayuda: 'Cambiar central',
+            alTocar: _volverASindicatos,
+          ),
+          const VerticalDivider(width: 1),
+          if (sindicatosVisibles)
+            SizedBox(width: 300, child: _panelSindicatos(enMesaDeTrabajo: true))
+          else
+            _ColumnaColapsada(
+              icono: Icons.groups_outlined,
+              nombre: sindicato.nombre,
+              ayuda: 'Cambiar sindicato',
+              alTocar: () => _controladorFicha.cerrar(),
+            ),
+          const VerticalDivider(width: 1),
+          SizedBox(
+            width: anchoLista,
+            child: _listaProductores(enMesaDeTrabajo: true),
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(child: _fichaProductor()),
+        ],
+      );
+    }
     if (sindicato != null && _permiteMesaDeTrabajo(ancho)) {
       final anchoSindicatos = (ancho * 0.30).clamp(300.0, 440.0);
       return Row(
@@ -324,19 +377,15 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
             icono: Icons.hub_outlined,
             nombre: _central!.nombre,
             ayuda: 'Cambiar central',
-            alTocar: () => setState(() => _sindicato = null),
+            alTocar: _volverASindicatos,
           ),
           const VerticalDivider(width: 1),
-          SizedBox(width: anchoSindicatos, child: _panelSindicatos()),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: SindicatoProductoresPagina(
-              key: ValueKey('productores-sindicato-${sindicato.id}'),
-              sindicato: sindicato,
-              controlador: _controladorProductores,
-              alCambiarProductores: _recargarSindicatos,
-            ),
+          SizedBox(
+            width: anchoSindicatos,
+            child: _panelSindicatos(enMesaDeTrabajo: true),
           ),
+          const VerticalDivider(width: 1),
+          Expanded(child: _listaProductores(enMesaDeTrabajo: true)),
         ],
       );
     }
@@ -346,15 +395,25 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       children: [
         Expanded(child: _panelCentrales()),
         const VerticalDivider(width: 1),
-        Expanded(child: _panelSindicatos()),
+        Expanded(
+          child: _panelSindicatos(
+            enMesaDeTrabajo: _permiteMesaDeTrabajo(ancho),
+          ),
+        ),
       ],
     );
   }
 
   Widget _unaColumna() {
     final Widget panel;
-    if (_central != null) {
-      panel = _panelSindicatos();
+    final sindicato = _sindicato;
+    if (_productorId != null) {
+      panel = _fichaProductor();
+    } else if (sindicato != null) {
+      // Conserva el sindicato visible al reducir una mesa de trabajo abierta.
+      panel = _listaProductores(enMesaDeTrabajo: false);
+    } else if (_central != null) {
+      panel = _panelSindicatos(enMesaDeTrabajo: false);
     } else {
       panel = _panelCentrales();
     }
@@ -365,6 +424,59 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
         Expanded(child: panel),
       ],
     );
+  }
+
+  Widget _listaProductores({required bool enMesaDeTrabajo}) =>
+      SindicatoProductoresPagina(
+        key: _claveListaProductores,
+        sindicato: _sindicato!,
+        controlador: _controladorProductores,
+        alCambiarProductores: _recargarSindicatos,
+        alAbrirProductor: enMesaDeTrabajo ? _abrirProductor : null,
+        antesDeEditarLista: _cerrarFichaActual,
+      );
+
+  Widget _fichaProductor() => ProductorDetallePagina(
+    key: _claveFicha,
+    productorId: _productorId!,
+    controlador: _controladorFicha,
+    alCerrar: _alCerrarFicha,
+    alActualizar: _controladorProductores.actualizarProductor,
+  );
+
+  Future<bool> _abrirProductor(Productor productor) async {
+    if (_productorId == productor.id) return true;
+    if (_cambiandoFicha) return false;
+    _cambiandoFicha = true;
+    try {
+      if (!await _cerrarFichaActual() || !mounted) return false;
+      setState(() {
+        _claveFicha = GlobalKey();
+        _productorId = productor.id;
+      });
+      widget.controlador?._notificarFicha();
+      return true;
+    } finally {
+      _cambiandoFicha = false;
+    }
+  }
+
+  Future<bool> _cerrarFichaActual() async =>
+      _productorId == null || await _controladorFicha.cerrar();
+
+  Future<void> _alCerrarFicha(bool huboCambios) async {
+    if (!mounted) return;
+    setState(() => _productorId = null);
+    widget.controlador?._notificarFicha();
+    if (huboCambios) {
+      await _controladorProductores.refrescar();
+      if (mounted) _recargarSindicatos();
+    }
+  }
+
+  Future<void> _volverASindicatos() async {
+    if (!await _cerrarFichaActual() || !mounted) return;
+    setState(() => _sindicato = null);
   }
 
   Widget _migaDePan() {
@@ -450,76 +562,98 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
             key: const PageStorageKey<String>('jerarquia-centrales'),
             children: [
               for (final c in ordenadas)
-                ListTile(
-                  key: ValueKey('central-${c.id}'),
-                  selected: _centralSeleccionadaId == c.id,
-                  selectedTileColor: Theme.of(
-                    context,
-                  ).colorScheme.primaryContainer.withValues(alpha: 0.55),
-                  shape: _bordeSeleccion(_centralSeleccionadaId == c.id),
-                  leading: IconButton(
-                    tooltip: _centralesFijadasIds.contains(c.id)
-                        ? 'Quitar de arriba'
-                        : 'Fijar arriba',
-                    onPressed: () => _fijarCentral(c),
-                    icon: Icon(
-                      _centralesFijadasIds.contains(c.id)
-                          ? Icons.push_pin
-                          : Icons.push_pin_outlined,
-                      color: _centralesFijadasIds.contains(c.id)
-                          ? Theme.of(context).colorScheme.primary
-                          : null,
-                    ),
-                  ),
-                  title: TituloConEstado(
-                    nombre: c.nombre,
-                    habilitado: c.habilitado,
-                  ),
-                  subtitle: _subtituloCentral(c),
-                  onTap: () => _elegirCentral(c),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (context.puede('INFORMES_DESCARGAR'))
-                        IconButton(
-                          tooltip: 'Informes y reportes central',
-                          onPressed: () => _verInformeImpresionCentral(c),
-                          icon: const Icon(Icons.analytics_outlined, size: 20),
-                        ),
-                      _menu(
-                        alEditar: () => _editarCentral(c),
-                        alVerDirectorio: () =>
-                            _verDirectorio(DirectorioPagina.deCentral(c)),
-                        habilitado: c.habilitado,
-                        alCambiarEstado: () =>
-                            cambiarEstadoConAviso(
-                              context,
-                              nombre: c.nombre,
-                              habilitado: c.habilitado,
-                              accion: (estado) => PadronScope.of(
-                                context,
-                              ).centrales.cambiarEstado(c.id, estado),
-                            ).then((cambio) {
-                              if (cambio) _recargarCentrales();
-                            }),
-                        alEliminar: () => _eliminar(
-                          nombre: c.nombre,
-                          tipo: 'la central',
-                          accion: () =>
-                              PadronScope.of(context).centrales.eliminar(c.id),
-                          alTerminar: () {
-                            if (_central?.id == c.id) {
-                              setState(() {
-                                _central = null;
-                                _sindicato = null;
-                                _sindicatos = null;
-                              });
-                            }
-                            _recargarCentrales();
-                          },
-                        ),
+                _DetalleAvanceTooltip(
+                  key: ValueKey('avance-central-${c.id}'),
+                  revision: _centrales!,
+                  cargar: () async {
+                    final informe = await PadronScope.of(
+                      context,
+                    ).centrales.informeImpresion(c.id);
+                    final completos = informe.detalle.fold<int>(
+                      0,
+                      (total, fila) => total + fila.datosCompletos,
+                    );
+                    final porcentaje = informe.total == 0
+                        ? 0
+                        : (completos * 100 / informe.total).round();
+                    return 'Datos completos: $porcentaje% ($completos/${informe.total})\n'
+                        'Avance de impresión: ${informe.porcentajeAvance.round()}%';
+                  },
+                  child: ListTile(
+                    key: ValueKey('central-${c.id}'),
+                    selected: _centralSeleccionadaId == c.id,
+                    selectedTileColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withValues(alpha: 0.55),
+                    shape: _bordeSeleccion(_centralSeleccionadaId == c.id),
+                    leading: IconButton(
+                      tooltip: _centralesFijadasIds.contains(c.id)
+                          ? 'Quitar de arriba'
+                          : 'Fijar arriba',
+                      onPressed: () => _fijarCentral(c),
+                      icon: Icon(
+                        _centralesFijadasIds.contains(c.id)
+                            ? Icons.push_pin
+                            : Icons.push_pin_outlined,
+                        color: _centralesFijadasIds.contains(c.id)
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
                       ),
-                    ],
+                    ),
+                    title: TituloConEstado(
+                      nombre: c.nombre,
+                      habilitado: c.habilitado,
+                    ),
+                    subtitle: _subtituloCentral(c),
+                    onTap: () => _elegirCentral(c),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (context.puede('INFORMES_DESCARGAR'))
+                          IconButton(
+                            tooltip: 'Informes y reportes central',
+                            onPressed: () => _verInformeImpresionCentral(c),
+                            icon: const Icon(
+                              Icons.analytics_outlined,
+                              size: 20,
+                            ),
+                          ),
+                        _menu(
+                          alEditar: () => _editarCentral(c),
+                          alVerDirectorio: () =>
+                              _verDirectorio(DirectorioPagina.deCentral(c)),
+                          habilitado: c.habilitado,
+                          alCambiarEstado: () =>
+                              cambiarEstadoConAviso(
+                                context,
+                                nombre: c.nombre,
+                                habilitado: c.habilitado,
+                                accion: (estado) => PadronScope.of(
+                                  context,
+                                ).centrales.cambiarEstado(c.id, estado),
+                              ).then((cambio) {
+                                if (cambio) _recargarCentrales();
+                              }),
+                          alEliminar: () => _eliminar(
+                            nombre: c.nombre,
+                            tipo: 'la central',
+                            accion: () => PadronScope.of(
+                              context,
+                            ).centrales.eliminar(c.id),
+                            alTerminar: () {
+                              if (_central?.id == c.id) {
+                                setState(() {
+                                  _central = null;
+                                  _sindicato = null;
+                                  _sindicatos = null;
+                                });
+                              }
+                              _recargarCentrales();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
             ],
@@ -578,7 +712,10 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
         builder: (_) => InformeImpresionCentralPagina(central: central),
       ),
     );
-    if (mounted) _recargarCentrales();
+    if (mounted) {
+      _recargarCentrales();
+      _recargarSindicatos();
+    }
   }
 
   Future<void> _verInformeImpresionFederacion() async {
@@ -594,7 +731,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
 
   // ---------- Sindicatos ----------
 
-  Widget _panelSindicatos() {
+  Widget _panelSindicatos({required bool enMesaDeTrabajo}) {
     final c = _central;
     if (c == null) {
       return const _Panel(
@@ -633,104 +770,99 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
               key: PageStorageKey<String>('jerarquia-sindicatos-${c.id}'),
               children: [
                 for (final s in lista)
-                  ListTile(
-                    selected: _sindicatoSeleccionadoId == s.id,
-                    selectedTileColor: Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer.withValues(alpha: 0.55),
-                    shape: _bordeSeleccion(_sindicatoSeleccionadoId == s.id),
-                    leading: const Icon(Icons.groups_outlined),
-                    title: TituloConEstado(
-                      nombre: s.nombre,
-                      habilitado: s.habilitado,
-                    ),
-                    subtitle: Row(
-                      children: [
-                        if (s.numero != null) ...[
-                          Text(
-                            'N° ${s.numero}',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(fontWeight: FontWeight.w600),
+                  Tooltip(
+                    waitDuration: const Duration(milliseconds: 700),
+                    message:
+                        'Datos completos: ${s.porcentajeDatosCompletos.round()}% '
+                        '(${s.datosCompletos ?? 0}/${s.totalProductores ?? 0})\n'
+                        'Avance de impresión: ${(s.porcentajeImpresion ?? 0).round()}%',
+                    child: ListTile(
+                      selected: _sindicatoSeleccionadoId == s.id,
+                      selectedTileColor: Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withValues(alpha: 0.55),
+                      shape: _bordeSeleccion(_sindicatoSeleccionadoId == s.id),
+                      leading: const Icon(Icons.groups_outlined),
+                      title: TituloConEstado(
+                        nombre: s.nombre,
+                        habilitado: s.habilitado,
+                      ),
+                      subtitle: Row(
+                        children: [
+                          if (s.numero != null) ...[
+                            Text(
+                              'N° ${s.numero}',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            const Text(' · '),
+                          ],
+                          Expanded(
+                            child: Text(
+                              'Total: ${s.totalProductores ?? 0}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          const Text(' · '),
                         ],
-                        Expanded(
-                          child: Text(
-                            'Total: ${s.totalProductores ?? 0} · '
-                            '${(s.porcentajeImpresion ?? 0).round()}% Impresión',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    onTap: () => _verProductores(s),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (context.puede('INFORMES_DESCARGAR'))
-                          IconButton(
-                            tooltip: 'Informes y reportes del sindicato',
-                            onPressed: () => _verInformesSindicato(s),
-                            icon: const Icon(
-                              Icons.analytics_outlined,
-                              size: 20,
-                            ),
-                          ),
-                        if (!context.accesoCentral)
-                          IconButton(
-                            tooltip: 'Directorio del sindicato',
-                            onPressed: () =>
-                                _verDirectorio(DirectorioPagina.deSindicato(s)),
-                            icon: const Icon(Icons.groups_2_outlined, size: 20),
-                          ),
-                        if (!context.accesoCentral)
-                          IconButton(
-                            tooltip: 'Lista física del sindicato',
-                            onPressed: () => _verListaFisica(s),
-                            icon: const Icon(
-                              Icons.document_scanner_outlined,
-                              size: 20,
-                            ),
-                          ),
-                        _menu(
-                          alEditar: () => _editarSindicato(s),
-                          habilitado: s.habilitado,
-                          alCambiarEstado: () =>
-                              cambiarEstadoConAviso(
-                                context,
-                                nombre: s.nombre,
-                                habilitado: s.habilitado,
-                                accion: (estado) => PadronScope.of(
-                                  context,
-                                ).sindicatos.cambiarEstado(s.id, estado),
-                              ).then((cambio) {
-                                if (cambio) _recargarSindicatos();
-                              }),
-                          alVerLotes: () => _verLotes(s),
-                          alVerVetados: () => _verVetados(s),
-                          alDescargarCredenciales: () =>
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      PliegoPreviaPagina(sindicato: s),
-                                ),
+                      ),
+                      onTap: () =>
+                          _verProductores(s, enMesaDeTrabajo: enMesaDeTrabajo),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (context.puede('INFORMES_DESCARGAR'))
+                            IconButton(
+                              tooltip: 'Informes y reportes del sindicato',
+                              onPressed: () => _verInformesSindicato(s),
+                              icon: const Icon(
+                                Icons.analytics_outlined,
+                                size: 20,
                               ),
-                          alEliminar: () => _eliminar(
-                            nombre: s.nombre,
-                            tipo: 'el sindicato',
-                            accion: () => PadronScope.of(
-                              context,
-                            ).sindicatos.eliminar(s.id),
-                            alTerminar: () {
-                              if (_sindicato?.id == s.id) {
-                                setState(() => _sindicato = null);
-                              }
-                              _recargarSindicatos();
-                            },
+                            ),
+                          _menu(
+                            alEditar: () => _editarSindicato(s),
+                            alEditarProductores: () => _editarProductores(s),
+                            alVerDirectorio: () =>
+                                _verDirectorio(DirectorioPagina.deSindicato(s)),
+                            alVerListaFisica: () => _verListaFisica(s),
+                            habilitado: s.habilitado,
+                            alCambiarEstado: () =>
+                                cambiarEstadoConAviso(
+                                  context,
+                                  nombre: s.nombre,
+                                  habilitado: s.habilitado,
+                                  accion: (estado) => PadronScope.of(
+                                    context,
+                                  ).sindicatos.cambiarEstado(s.id, estado),
+                                ).then((cambio) {
+                                  if (cambio) _recargarSindicatos();
+                                }),
+                            alVerLotes: () => _verLotes(s),
+                            alVerVetados: () => _verVetados(s),
+                            alDescargarCredenciales: () =>
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        PliegoPreviaPagina(sindicato: s),
+                                  ),
+                                ),
+                            alEliminar: () => _eliminar(
+                              nombre: s.nombre,
+                              tipo: 'el sindicato',
+                              accion: () => PadronScope.of(
+                                context,
+                              ).sindicatos.eliminar(s.id),
+                              alTerminar: () {
+                                if (_sindicato?.id == s.id) {
+                                  setState(() => _sindicato = null);
+                                }
+                                _recargarSindicatos();
+                              },
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -741,11 +873,19 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     );
   }
 
-  Future<void> _verProductores(Sindicato s) async {
+  Future<void> _verProductores(
+    Sindicato s, {
+    required bool enMesaDeTrabajo,
+  }) async {
+    if (!await _cerrarFichaActual() || !mounted) return;
     setState(() => _sindicatoSeleccionadoId = s.id);
-    final ancho = MediaQuery.sizeOf(context).width;
-    if (_permiteMesaDeTrabajo(ancho)) {
-      setState(() => _sindicato = s);
+    // Usa el mismo criterio del LayoutBuilder: el menú lateral ocupa parte
+    // del ancho de la ventana y puede dejar espacio para una sola columna.
+    if (enMesaDeTrabajo) {
+      setState(() {
+        if (_sindicato?.id != s.id) _claveListaProductores = GlobalKey();
+        _sindicato = s;
+      });
       return;
     }
     await Navigator.of(context).push(
@@ -766,6 +906,19 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       ),
     );
     if (mounted) _recargarSindicatos();
+  }
+
+  Future<void> _editarProductores(Sindicato sindicato) async {
+    if (!await _cerrarFichaActual() || !mounted) return;
+    final cambio = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EdicionProductoresSindicatoPagina(sindicato: sindicato),
+      ),
+    );
+    if (cambio == true && mounted) {
+      await _controladorProductores.refrescar();
+      if (mounted) _recargarSindicatos();
+    }
   }
 
   ShapeBorder? _bordeSeleccion(bool seleccionado) => seleccionado
@@ -911,6 +1064,8 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     required bool habilitado,
     required VoidCallback alCambiarEstado,
     VoidCallback? alVerDirectorio,
+    VoidCallback? alEditarProductores,
+    VoidCallback? alVerListaFisica,
     VoidCallback? alVerLotes,
     VoidCallback? alVerVetados,
     VoidCallback? alDescargarCredenciales,
@@ -922,18 +1077,33 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       icon: const Icon(Icons.more_vert, size: 20),
       onSelected: (v) => switch (v) {
         'editar' => alEditar(),
+        'editarProductores' => alEditarProductores?.call(),
         'estado' => alCambiarEstado(),
         'directorio' => alVerDirectorio?.call(),
+        'listaFisica' => alVerListaFisica?.call(),
         'lotes' => alVerLotes?.call(),
         'vetados' => alVerVetados?.call(),
         'credenciales' => alDescargarCredenciales?.call(),
         _ => alEliminar(),
       },
       itemBuilder: (context) => [
+        if (alEditarProductores != null &&
+            (context.puede('PRODUCTORES_EDITAR') ||
+                context.puede('NUMERO_LOTE_EDITAR') ||
+                context.puede('LOTES_EDITAR') ||
+                context.puede('SIE_REVISAR') ||
+                context.puede('PRODUCTORES_OBSERVAR')))
+          const PopupMenuItem(
+            value: 'editarProductores',
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.table_view_outlined),
+              title: Text('Edición rápida de productores'),
+            ),
+          ),
         if (puedeEditar)
           const PopupMenuItem(value: 'editar', child: Text('Editar')),
-        // El sindicato no lo lleva en el menú: tiene su propio botón en la
-        // fila, porque es el directorio que más se toca.
         if (alVerDirectorio != null)
           const PopupMenuItem(
             value: 'directorio',
@@ -942,6 +1112,16 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.groups_2_outlined),
               title: Text('Directorio'),
+            ),
+          ),
+        if (alVerListaFisica != null)
+          const PopupMenuItem(
+            value: 'listaFisica',
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.document_scanner_outlined),
+              title: Text('Lista física del sindicato'),
             ),
           ),
         if (puedeEditar) itemCambiarEstado(habilitado),
@@ -987,6 +1167,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     required Future<void> Function() accion,
     required VoidCallback alTerminar,
   }) async {
+    if (!await _cerrarFichaActual() || !mounted) return;
     final confirmado = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1097,6 +1278,57 @@ class _DatosSindicatos {
 
   final List<Sindicato> sindicatos;
   final int totalProductores;
+}
+
+class _DetalleAvanceTooltip extends StatefulWidget {
+  const _DetalleAvanceTooltip({
+    super.key,
+    required this.revision,
+    required this.cargar,
+    required this.child,
+  });
+
+  final Object revision;
+  final Future<String> Function() cargar;
+  final Widget child;
+
+  @override
+  State<_DetalleAvanceTooltip> createState() => _DetalleAvanceTooltipState();
+}
+
+class _DetalleAvanceTooltipState extends State<_DetalleAvanceTooltip> {
+  Future<String>? _mensaje;
+
+  @override
+  void didUpdateWidget(_DetalleAvanceTooltip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.revision != widget.revision) _mensaje = null;
+  }
+
+  void _cargar() {
+    if (_mensaje != null) return;
+    final mensaje = widget.cargar();
+    setState(() {
+      _mensaje = mensaje;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => _cargar(),
+    child: FutureBuilder<String>(
+      key: ObjectKey(widget.revision),
+      future: _mensaje,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return widget.child;
+        return Tooltip(
+          waitDuration: const Duration(milliseconds: 700),
+          message: snapshot.data!,
+          child: widget.child,
+        );
+      },
+    ),
+  );
 }
 
 /// Nivel seleccionado reducido a una franja vertical en la mesa de trabajo.

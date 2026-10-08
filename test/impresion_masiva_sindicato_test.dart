@@ -1,6 +1,14 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
+import 'package:printing/src/interface.dart';
 
+import 'package:fede/core/api_client.dart';
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/credenciales/impresion_credencial.dart';
 import 'package:fede/ui/credenciales/pliego_previa_pagina.dart';
@@ -16,6 +24,178 @@ void main() {
 
   setUp(() => debugImpresionDeCredencialesDisponible = true);
   tearDown(() => debugImpresionDeCredencialesDisponible = null);
+
+  Future<void> abrirPreviaReverso(
+    WidgetTester tester,
+    _ApiPanel api,
+    int cantidad,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      PadronScope(
+        padron: Padron(api: api),
+        child: const MaterialApp(
+          home: PliegoPreviaPagina(sindicato: sindicato),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Imprimir reversos'));
+    await tester.tap(find.text('Imprimir reversos'));
+    // El botón del panel mantiene un indicador activo detrás del diálogo.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.enterText(find.byType(TextField), '$cantidad');
+    await tester.tap(find.text('Continuar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Abrir impresión'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    '500 reversos cargan solo una muestra pequeña y cancelar no genera el trabajo',
+    (tester) async {
+      final original = PrintingPlatform.instance;
+      final printing = _PrintingPruebas();
+      PrintingPlatform.instance = printing;
+      addTearDown(() => PrintingPlatform.instance = original);
+      final api = _ApiPanel();
+      await abrirPreviaReverso(tester, api, 500);
+      expect(api.cantidadesReverso, [1]);
+      expect(find.text('Cantidad a imprimir: 500 reversos'), findsOneWidget);
+      final previa = tester.widget<PdfPreview>(find.byType(PdfPreview));
+      expect(previa.pages, [0]);
+      expect(previa.maxPageWidth, 400);
+      expect(previa.allowPrinting, isFalse);
+      expect(previa.useActions, isFalse);
+      expect(printing.paginasRasterizadas, isNotEmpty);
+      expect(
+        printing.paginasRasterizadas.every(
+          (p) => p.length == 1 && p.single == 0,
+        ),
+        isTrue,
+      );
+      expect(find.byType(Image), findsOneWidget);
+      expect(tester.getSize(find.byType(Image)).width, lessThanOrEqualTo(400));
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+      expect(api.cantidadesReverso, [1]);
+      expect(printing.trabajos, isEmpty);
+      expect(find.text('Imprimir reversos'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final cantidad in [1, 25]) {
+    testWidgets(
+      'confirmar $cantidad reversos envía la cantidad elegida y reutiliza una sola muestra',
+      (tester) async {
+        final original = PrintingPlatform.instance;
+        final printing = _PrintingPruebas();
+        PrintingPlatform.instance = printing;
+        addTearDown(() => PrintingPlatform.instance = original);
+        final api = _ApiPanel();
+        await abrirPreviaReverso(tester, api, cantidad);
+        expect(api.cantidadesReverso, [1]);
+        await tester.tap(find.text('Imprimir reverso'));
+        await tester.pumpAndSettle();
+        expect(api.cantidadesReverso, cantidad == 1 ? [1] : [1, cantidad]);
+        expect(printing.trabajos.single, [cantidad]);
+        expect(find.byType(PdfPreview), findsNothing);
+        expect(
+          printing.paginasRasterizadas.every(
+            (p) => p.length == 1 && p.single == 0,
+          ),
+          isTrue,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'mantiene el progreso visible y bloquea volver durante el envío',
+    (tester) async {
+      late BuildContext contexto;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              contexto = context;
+              return const Scaffold(body: Text('Impresión'));
+            },
+          ),
+        ),
+      );
+      final trabajo = Completer<bool>();
+      final resultado = ejecutarConProgresoImpresion<bool>(
+        contexto,
+        mensaje: 'Enviando reversos…',
+        accion: () => trabajo.future,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Enviando reversos…'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      await Navigator.of(contexto).maybePop();
+      await tester.pump();
+      expect(find.text('Enviando reversos…'), findsOneWidget);
+      trabajo.complete(true);
+      await tester.pump();
+      expect(await resultado, isTrue);
+      await tester.pumpAndSettle();
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'ignora un segundo clic de impresión de reversos durante el proceso',
+    (tester) async {
+      await tester.pumpWidget(
+        PadronScope(
+          padron: Padron(api: _ApiPanel()),
+          child: const MaterialApp(
+            home: PliegoPreviaPagina(sindicato: sindicato),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final boton = tester.widget<OutlinedButton>(
+        find.widgetWithText(OutlinedButton, 'Imprimir reversos'),
+      );
+      boton.onPressed!();
+      boton.onPressed!();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Cantidad de reversos'), findsOneWidget);
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.widgetWithText(OutlinedButton, 'Procesando reversos…'),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.widgetWithText(OutlinedButton, 'Imprimir reversos'),
+            )
+            .onPressed,
+        isNotNull,
+      );
+    },
+  );
 
   testWidgets('muestra cantidades y acciones de impresión para Windows', (
     tester,
@@ -150,6 +330,23 @@ class _ApiPanel extends ApiClient {
 
   final bool conUltimoGrupo;
   final bool conFase;
+  final cantidadesReverso = <int>[];
+
+  @override
+  Future<DescargaBinaria> obtenerBytes(
+    String ruta, {
+    Map<String, dynamic>? query,
+    Duration tiempoLimite = const Duration(minutes: 5),
+  }) async {
+    expect(ruta, '/sindicatos/13/credenciales/impresion/reversos.pdf');
+    final cantidad = query!['cantidad'] as int;
+    cantidadesReverso.add(cantidad);
+    return DescargaBinaria(
+      bytes: Uint8List.fromList([cantidad]),
+      nombreArchivo: 'reversos-$cantidad.pdf',
+      tipoMime: 'application/pdf',
+    );
+  }
 
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
@@ -197,4 +394,52 @@ class _ApiPanel extends ApiClient {
     }
     throw StateError('Ruta no simulada: $ruta');
   }
+}
+
+/// Sustituye tanto la rasterización nativa como la impresora. Los bytes de
+/// prueba identifican la cantidad: no se envía ningún trabajo físico.
+class _PrintingPruebas extends PrintingPlatform {
+  final paginasRasterizadas = <List<int>>[];
+  final trabajos = <Uint8List>[];
+
+  @override
+  Future<PrintingInfo> info() async =>
+      const PrintingInfo(canPrint: true, canRaster: true);
+
+  @override
+  Stream<PdfRaster> raster(
+    Uint8List document,
+    List<int>? pages,
+    double dpi,
+  ) async* {
+    paginasRasterizadas.add(List.of(pages!));
+    yield _RasterMuestra();
+  }
+
+  @override
+  Future<bool> layoutPdf(
+    Printer? printer,
+    LayoutCallback onLayout,
+    String name,
+    PdfPageFormat format,
+    bool dynamicLayout,
+    bool usePrinterSettings,
+    OutputType outputType,
+    bool forceCustomPrintPaper,
+    bool windowsModernDialog,
+  ) async {
+    trabajos.add(await onLayout(format));
+    return false;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _RasterMuestra extends PdfRaster {
+  _RasterMuestra() : super(400, 252, Uint8List(0));
+
+  @override
+  Future<Uint8List> toPng() async =>
+      img.encodePng(img.Image(width: 400, height: 252));
 }

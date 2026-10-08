@@ -91,6 +91,28 @@ class SindicatoRepository {
   Future<DescargaBinaria> descargarListaFisica(int id) =>
       _api.obtenerBytes('$_ruta/$id/lista-fisica.pdf');
 
+  Future<ListaFisicaSindicato> girarPaginaListaFisica(
+    int id,
+    int paginaId,
+    int giro,
+  ) async {
+    final datos = await _api.crear(
+      '$_ruta/$id/lista-fisica/paginas/$paginaId/girar',
+      {'giro': giro},
+    );
+    return ListaFisicaSindicato.desdeJson(datos.comoObjeto);
+  }
+
+  Future<ListaFisicaSindicato> ordenarListaFisica(
+    int id,
+    List<int> paginaIds,
+  ) async {
+    final datos = await _api.reemplazar('$_ruta/$id/lista-fisica/orden', {
+      'paginaIds': paginaIds,
+    });
+    return ListaFisicaSindicato.desdeJson(datos.comoObjeto);
+  }
+
   /// Dirección del pliego de credenciales: las de todos sus productores, en
   /// hojas carta listas para imprimir a doble cara y recortar.
   Uri urlCredenciales(int id) => ApiConfig.uri('$_ruta/$id/credenciales.pdf');

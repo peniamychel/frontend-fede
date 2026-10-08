@@ -11,11 +11,27 @@ import '../widgets/marca_estado.dart';
 import 'imagenes_productor.dart';
 import 'productor_formulario.dart';
 
+/// Cierra una ficha integrada respetando sus avisos de salida.
+class ProductorDetalleControlador {
+  _ProductorDetallePaginaState? _estado;
+
+  Future<bool> cerrar() async => await _estado?._salir() ?? true;
+}
+
 /// Ficha completa de un productor: sus datos, sus lotes y sus imágenes.
 class ProductorDetallePagina extends StatefulWidget {
-  const ProductorDetallePagina({super.key, required this.productorId});
+  const ProductorDetallePagina({
+    super.key,
+    required this.productorId,
+    this.controlador,
+    this.alCerrar,
+    this.alActualizar,
+  });
 
   final int productorId;
+  final ProductorDetalleControlador? controlador;
+  final Future<void> Function(bool huboCambios)? alCerrar;
+  final ValueChanged<Productor>? alActualizar;
 
   @override
   State<ProductorDetallePagina> createState() => _ProductorDetallePaginaState();
@@ -23,6 +39,7 @@ class ProductorDetallePagina extends StatefulWidget {
 
 class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   late Future<ProductorDetalle> _futuro;
+  int _versionDetalle = 0;
 
   /// Va aparte de la ficha porque es otra consulta: el historial de cargos
   /// incluye los de sindicatos anteriores y no cuelga del detalle.
@@ -48,7 +65,35 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
   @override
   void initState() {
     super.initState();
+    widget.controlador?._estado = this;
     _recargar();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProductorDetallePagina oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controlador, widget.controlador)) {
+      if (identical(oldWidget.controlador?._estado, this)) {
+        oldWidget.controlador?._estado = null;
+      }
+      widget.controlador?._estado = this;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (identical(widget.controlador?._estado, this)) {
+      widget.controlador?._estado = null;
+    }
+    super.dispose();
+  }
+
+  Future<void> _terminar(bool huboCambios) async {
+    if (widget.alCerrar case final cerrar?) {
+      await cerrar(huboCambios);
+    } else {
+      Navigator.of(context).pop(huboCambios);
+    }
   }
 
   /// Va a la vista previa, no al PDF.
@@ -77,7 +122,10 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     final cambio = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => LotePagina(loteId: lote.id)),
     );
-    if (cambio == true && mounted) _recargar();
+    if (cambio == true && mounted) {
+      _huboCambios = true;
+      _recargar();
+    }
   }
 
   /// Da de baja al productor, o lo reincorpora.
@@ -171,7 +219,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
       await PadronScope.of(context).productores.eliminar(productor.id);
       if (!mounted) return;
       _huboCambios = true;
-      Navigator.of(context).pop(true);
+      await _terminar(true);
     } catch (e) {
       if (mounted) mostrarError(context, e);
     }
@@ -185,7 +233,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     final padron = PadronScope.of(context);
     setState(() {
       _revisionSie = null;
-      _futuro = _cargarDetalleConRevision(padron);
+      _futuro = _sincronizarDetalle(_cargarDetalleConRevision(padron));
       _cargos = context.accesoCentral
           ? Future.value(<Cargo>[])
           : padron.productores.cargos(widget.productorId);
@@ -193,6 +241,17 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
           ? Future.value(<Veto>[])
           : padron.vetos.historialDe(widget.productorId);
     });
+  }
+
+  Future<ProductorDetalle> _sincronizarDetalle(
+    Future<ProductorDetalle> futuro,
+  ) async {
+    final version = ++_versionDetalle;
+    final detalle = await futuro;
+    if (mounted && version == _versionDetalle) {
+      widget.alActualizar?.call(detalle.productor);
+    }
+    return detalle;
   }
 
   Future<ProductorDetalle> _cargarDetalleConRevision(Padron padron) async {
@@ -343,7 +402,10 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
         _revisionSie = resultado;
         _verificandoSie = false;
         if (resultado.completada) {
-          _futuro = padron.productores.obtener(widget.productorId);
+          _huboCambios = true;
+          _futuro = _sincronizarDetalle(
+            padron.productores.obtener(widget.productorId),
+          );
         }
       });
     } catch (e) {
@@ -675,46 +737,48 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
 
   @override
   Widget build(BuildContext context) {
+    final ficha = Scaffold(
+      appBar: AppBar(
+        leading: widget.alCerrar == null ? null : BackButton(onPressed: _salir),
+        title: const Text('Ficha del productor'),
+        actions: [
+          if (!context.accesoCentral)
+            IconButton(
+              tooltip: 'Ver e imprimir la credencial',
+              onPressed: _verCredencial,
+              icon: const Icon(Icons.badge_outlined),
+            ),
+          IconButton(
+            tooltip: 'Recargar',
+            onPressed: _recargar,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: SelectionArea(
+              child: CargaAsync<ProductorDetalle>(
+                futuro: _futuro,
+                alReintentar: _recargar,
+                constructor: (context, detalle) => _contenido(context, detalle),
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(child: _marcaDeAguaVeto(context)),
+          ),
+        ],
+      ),
+    );
+    if (widget.alCerrar != null) return ficha;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (fueDescartado, _) {
         if (!fueDescartado) _salir();
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Ficha del productor'),
-          actions: [
-            if (!context.accesoCentral)
-              IconButton(
-                tooltip: 'Ver e imprimir la credencial',
-                onPressed: _verCredencial,
-                icon: const Icon(Icons.badge_outlined),
-              ),
-            IconButton(
-              tooltip: 'Recargar',
-              onPressed: _recargar,
-              icon: const Icon(Icons.refresh),
-            ),
-          ],
-        ),
-        body: Stack(
-          children: [
-            Positioned.fill(
-              child: SelectionArea(
-                child: CargaAsync<ProductorDetalle>(
-                  futuro: _futuro,
-                  alReintentar: _recargar,
-                  constructor: (context, detalle) =>
-                      _contenido(context, detalle),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: IgnorePointer(child: _marcaDeAguaVeto(context)),
-            ),
-          ],
-        ),
-      ),
+      child: ficha,
     );
   }
 
@@ -1015,8 +1079,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     );
   }
 
-  Future<void> _salir() async {
-    if (_saliendo || _agregandoReimpresion) return;
+  Future<bool> _salir() async {
+    if (_saliendo || _agregandoReimpresion) return false;
     _saliendo = true;
     try {
       if (_editoProductorImpreso && !_reimpresionSolicitada) {
@@ -1041,7 +1105,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
             ],
           ),
         );
-        if (!mounted || agregar == null) return;
+        if (!mounted || agregar == null) return false;
         if (agregar) {
           await PadronScope.of(
             context,
@@ -1050,9 +1114,12 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
           _huboCambios = true;
         }
       }
-      if (mounted) Navigator.of(context).pop(_huboCambios);
+      if (!mounted) return false;
+      await _terminar(_huboCambios);
+      return true;
     } catch (e) {
       if (mounted) mostrarError(context, e);
+      return false;
     } finally {
       _saliendo = false;
     }
@@ -1236,9 +1303,14 @@ class _Encabezado extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 _LineaIdentidad(
-                  key: const ValueKey('productor-cedula-lote'),
+                  key: const ValueKey('productor-cedula'),
                   texto:
-                      'C.I.: ${cedula == null || cedula.isEmpty ? 'Sin cédula' : cedula}   '
+                      'C.I.: ${cedula == null || cedula.isEmpty ? 'Sin cédula' : cedula}',
+                  estilo: estiloDatoPrincipal,
+                ),
+                _LineaIdentidad(
+                  key: const ValueKey('productor-lote'),
+                  texto:
                       'N.° de lote: ${lote == null || lote.isEmpty ? 'Sin lote' : lote}',
                   estilo: estiloDatoPrincipal,
                 ),
@@ -1905,7 +1977,6 @@ class _FilaLote extends StatelessWidget {
                   ? 'Estado sin reconocer, en el padrón decía '
                         '«${lote.estadoOriginal}»'
                   : lote.estado.etiqueta,
-              if (lote.superficie != null) lote.superficieTexto,
             ].join(' · '),
             style: tema.textTheme.bodySmall,
           ),
