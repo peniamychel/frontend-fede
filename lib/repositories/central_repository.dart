@@ -94,6 +94,9 @@ class CentralRepository {
   Future<DescargaBinaria> descargarInformeFase(int id, int faseId) =>
       _api.obtenerBytes('$_ruta/$id/fases-impresion/$faseId/informe.pdf');
 
+  Future<DescargaBinaria> descargarContabilidadFase(int id, int faseId) =>
+      _api.obtenerBytes('$_ruta/$id/fases-impresion/$faseId/contabilidad.pdf');
+
   /// Planilla física para recolectar sellos, firma y pie de firma.
   Uri urlPlanillaRecoleccionDirectorio(int id) => ApiConfig.uri(
     '$_ruta/$id/credenciales/impresion/planilla-recoleccion.pdf',

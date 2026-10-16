@@ -46,7 +46,6 @@ void main() {
     'centralId': 20,
     'centralNombre': 'IVIRGARZAMA',
     'tieneFoto': false,
-    'marcado': false,
   };
 
   Map<String, dynamic> pagina(List<Map<String, dynamic>> contenido) => {

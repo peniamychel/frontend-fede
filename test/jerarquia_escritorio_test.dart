@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:fede/core/preferencia_tema.dart';
+import 'package:fede/core/sesion_controlador.dart';
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/jerarquia/jerarquia_pagina.dart';
 import 'package:fede/ui/jerarquia/sindicato_productores_pagina.dart';
@@ -13,10 +14,85 @@ import 'package:fede/ui/productores/productor_detalle_pagina.dart';
 import 'package:fede/ui/productores/fila_productor.dart';
 import 'package:fede/ui/productores/imagenes_productor.dart';
 import 'package:fede/ui/padron_scope.dart';
+import 'package:fede/ui/sesion_scope.dart';
 import 'miniatura_prueba.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final completo in [true, false]) {
+    testWidgets('menú central respeta perfil completo: $completo', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1700, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final api = _ApiJerarquia();
+      final sesion = SesionControlador(AutenticacionRepository(api));
+      addTearDown(sesion.dispose);
+      sesion.sesion = Sesion(
+        token: '',
+        usuario: 'operador',
+        nombreCompleto: '',
+        rol: 'OPERADOR',
+        roles: {completo ? 'REGISTRO_PRODUCTORES_CENTRAL' : 'REGISTRO_CENTRAL'},
+        permisos: completo
+            ? const {
+                'PRODUCTORES_VER',
+                'PRODUCTORES_EDITAR',
+                'SIE_REVISAR',
+                'LOTES_EDITAR',
+                'IMAGENES_EDITAR',
+              }
+            : const {
+                'PRODUCTORES_VER',
+                'FOTOS_PRODUCTORES_EDITAR',
+                'PRODUCTORES_OBSERVAR',
+                'NUMERO_LOTE_EDITAR',
+                'INFORMES_DESCARGAR',
+              },
+        centralId: 20,
+        expiraEn: DateTime(2100),
+      );
+      await tester.pumpWidget(
+        TemaScope(
+          preferencia: PreferenciaTema(),
+          child: PadronScope(
+            padron: Padron(api: api),
+            child: SesionScope(
+              controlador: sesion,
+              child: const MaterialApp(home: JerarquiaPagina()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('CENTRAL DE PRUEBA'));
+      await tester.pumpAndSettle();
+      final sindicato = find.ancestor(
+        of: find.text('SINDICATO UNO'),
+        matching: find.byType(ListTile),
+      );
+      await tester.tap(
+        find.descendant(
+          of: sindicato,
+          matching: find.byType(PopupMenuButton<String>),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Edición rápida de productores'), findsOneWidget);
+      expect(find.text('Parcelas'), completo ? findsOneWidget : findsNothing);
+      expect(
+        find.text('Lista física del sindicato'),
+        completo ? findsOneWidget : findsNothing,
+      );
+      expect(find.text('Directorio'), findsNothing);
+      expect(find.text('Productores vetados'), findsNothing);
+      expect(find.text('Estado e impresión de Carnets'), findsNothing);
+      expect(find.text('Eliminar'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   for (final ancho in [1700, 1200, 430]) {
     testWidgets('ficha del productor adaptativa a $ancho px', (tester) async {

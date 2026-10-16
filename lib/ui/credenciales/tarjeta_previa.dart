@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'fuentes_bajo_demanda.dart';
+import 'imagen_plantilla_autenticada.dart';
 
 import '../../core/api_config.dart';
 import '../../models/credencial_previa.dart';
@@ -14,6 +15,8 @@ class TarjetaPrevia extends StatelessWidget {
     this.ancho = 420,
     this.diseno,
     this.plantillaUrl,
+    this.valores = const {},
+    this.plantillaPorDefecto = true,
   });
 
   final CredencialPrevia previa;
@@ -21,6 +24,12 @@ class TarjetaPrevia extends StatelessWidget {
   final double ancho;
   final DisenoCredencial? diseno;
   final String? plantillaUrl;
+
+  /// Campos de otros tipos de credencial, sin alterar los datos del productor.
+  final Map<String, String> valores;
+
+  /// Los operadores tienen un diseño independiente y no usan el carnet agrícola.
+  final bool plantillaPorDefecto;
 
   static const double anchoPt = 242.65;
   static const double altoPt = 153.01;
@@ -44,12 +53,20 @@ class TarjetaPrevia extends StatelessWidget {
   static const double firmaOrganizacionPt = 3.8;
   static const Color grisLinea = Color(0xFFAAAAAA);
 
-  double get _escala => ancho / anchoPt;
+  double get _escala => ancho / (diseno?.ancho ?? anchoPt);
   double _p(double puntos) => puntos * _escala;
 
   @override
   Widget build(BuildContext context) {
-    final actual = diseno ?? DisenoCredencial.predeterminado();
+    final actual =
+        diseno ??
+        (plantillaPorDefecto
+            ? DisenoCredencial.predeterminado()
+            : const DisenoCredencial(
+                ancho: anchoPt,
+                alto: altoPt,
+                elementos: [],
+              ));
     final cara = reverso ? CaraCredencial.reverso : CaraCredencial.cara;
     final elementos = actual.elementos.where((e) => e.cara == cara);
 
@@ -72,7 +89,7 @@ class TarjetaPrevia extends StatelessWidget {
           // El tamaño de letra pertenece al diseño impreso, no al ajuste del móvil.
           child: Container(
             width: ancho,
-            height: _p(altoPt),
+            height: _p(actual.alto),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: grisLinea),
@@ -109,25 +126,27 @@ class TarjetaPrevia extends StatelessWidget {
 
   Widget _plantilla() => Positioned.fill(
     child: plantillaUrl == null
-        ? Image.asset(
-            reverso
-                ? 'assets/credencial/reverso.jpg'
-                : 'assets/credencial/cara.png',
-            fit: BoxFit.fill,
-          )
+        ? _plantillaPredeterminada()
+        : !plantillaPorDefecto
+        ? ImagenPlantillaAutenticada(url: plantillaUrl!)
         : Image.network(
             ApiConfig.urlAbsoluta(plantillaUrl!),
             fit: BoxFit.fill,
-            errorBuilder: (_, _, _) => Image.asset(
-              reverso
-                  ? 'assets/credencial/reverso.jpg'
-                  : 'assets/credencial/cara.png',
-              fit: BoxFit.fill,
-            ),
+            errorBuilder: (_, _, _) => _plantillaPredeterminada(),
           ),
   );
 
+  Widget _plantillaPredeterminada() => plantillaPorDefecto
+      ? Image.asset(
+          reverso
+              ? 'assets/credencial/reverso.jpg'
+              : 'assets/credencial/cara.png',
+          fit: BoxFit.fill,
+        )
+      : const ColoredBox(color: Colors.white);
+
   Widget _texto(ElementoDisenoCredencial e) {
+    if (e.campo == 'RESENA') return _resena(e);
     final valor = _valor(e);
     final falta = valor.isEmpty;
     final texto = falta ? 'FALTA' : valor;
@@ -160,55 +179,112 @@ class TarjetaPrevia extends StatelessWidget {
     );
   }
 
-  Widget _imagen(ElementoDisenoCredencial e) {
-    final url = _url(e);
-    final esta = _imagenPresente(e);
-    final esFoto = e.campo == 'FOTO';
-    final opcional = _imagenOpcional(e.campo);
+  /// La autorización común es un párrafo, no un dato de una sola línea.
+  Widget _resena(ElementoDisenoCredencial e) {
+    final valor = _valor(e);
+    final texto = valor.isEmpty ? 'FALTA' : valor;
+    final alineacion = switch (e.alineacion) {
+      AlineacionCredencial.izquierda => TextAlign.left,
+      AlineacionCredencial.centro => TextAlign.center,
+      AlineacionCredencial.derecha => TextAlign.right,
+    };
     return Positioned(
       left: _p(e.x),
       bottom: _p(e.y),
       width: _p(e.ancho),
       height: _p(e.alto),
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          border: !esta && !opcional
-              ? Border.all(color: Colors.red.shade400)
-              : null,
-        ),
-        child: url != null
-            ? Image.network(
-                ApiConfig.urlAbsoluta(url),
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) =>
-                    const Icon(Icons.broken_image_outlined),
-              )
-            : e.campo == 'QR'
-            ? Icon(Icons.qr_code_2, size: _p(e.alto) * .8)
-            : Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    esFoto
-                        ? 'SIN FOTO'
-                        : opcional
-                        ? 'FIRMA OPCIONAL'
+      child: LayoutBuilder(
+        builder: (context, limites) {
+          final base = TextStyle(
+            fontFamily: e.fuente.familiaFlutter,
+            fontSize: _p(e.tamanoFuente),
+            height: 1.2,
+            fontWeight: e.negrita ? FontWeight.bold : FontWeight.normal,
+            color: valor.isEmpty ? Colors.red.shade700 : _color(e.color),
+          );
+          var inferior = .1;
+          var superior = _p(e.tamanoFuente);
+          var cuerpo = superior;
+          for (var intento = 0; intento < 16; intento++) {
+            final medida = TextPainter(
+              text: TextSpan(
+                text: texto,
+                style: base.copyWith(fontSize: cuerpo),
+              ),
+              textAlign: alineacion,
+              textDirection: Directionality.of(context),
+            )..layout(maxWidth: limites.maxWidth);
+            final cabe = medida.height <= limites.maxHeight;
+            medida.dispose();
+            if (cabe) {
+              inferior = cuerpo;
+              if (cuerpo == superior) break;
+            } else {
+              superior = cuerpo;
+            }
+            cuerpo = (inferior + superior) / 2;
+          }
+          return Text(
+            texto,
+            softWrap: true,
+            textAlign: alineacion,
+            style: base.copyWith(fontSize: inferior),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _imagen(ElementoDisenoCredencial e) {
+    final url = _url(e);
+    final esta = _imagenPresente(e);
+    final esFoto = e.campo == 'FOTO';
+    final opcional = _imagenOpcional(e.campo);
+    final contenido = Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        border: !esta && !opcional
+            ? Border.all(color: Colors.red.shade400)
+            : null,
+      ),
+      child: url != null
+          ? Image.network(
+              ApiConfig.urlAbsoluta(url),
+              fit: esFoto && e.circular ? BoxFit.cover : BoxFit.contain,
+              errorBuilder: (_, _, _) =>
+                  const Icon(Icons.broken_image_outlined),
+            )
+          : e.campo == 'QR'
+          ? Icon(Icons.qr_code_2, size: _p(e.alto) * .8)
+          : Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  esFoto
+                      ? 'SIN FOTO'
+                      : opcional
+                      ? 'FIRMA OPCIONAL'
+                      : esta
+                      ? e.etiqueta
+                      : 'SIN ${e.etiqueta.toUpperCase()}',
+                  style: TextStyle(
+                    fontSize: _p(rotuloPt),
+                    color: opcional
+                        ? Colors.grey.shade600
                         : esta
-                        ? e.etiqueta
-                        : 'SIN ${e.etiqueta.toUpperCase()}',
-                    style: TextStyle(
-                      fontSize: _p(rotuloPt),
-                      color: opcional
-                          ? Colors.grey.shade600
-                          : esta
-                          ? Colors.green.shade700
-                          : Colors.red.shade700,
-                    ),
+                        ? Colors.green.shade700
+                        : Colors.red.shade700,
                   ),
                 ),
               ),
-      ),
+            ),
+    );
+    return Positioned(
+      left: _p(e.x),
+      bottom: _p(e.y),
+      width: _p(e.ancho),
+      height: _p(e.alto),
+      child: esFoto && e.circular ? ClipOval(child: contenido) : contenido,
     );
   }
 
@@ -276,24 +352,26 @@ class TarjetaPrevia extends StatelessWidget {
     ];
   }
 
-  String _valor(ElementoDisenoCredencial e) => switch (e.campo) {
-    'CODIGO_PADRON' => previa.codigoPadron ?? '',
-    'NOMBRE_COMPLETO' => '${previa.nombres} ${previa.apellidos}'.trim(),
-    'NOMBRES' => previa.nombres,
-    'APELLIDOS' => previa.apellidos,
-    'CI' => previa.ci,
-    'SINDICATO' => previa.sindicato,
-    'CENTRAL' => previa.central,
-    'FEDERACION' => previa.federacion.replaceFirst(
-      RegExp(r'^FEDERACI[ÓO]N\s+', caseSensitive: false),
-      '',
-    ),
-    'LOTES' => previa.lotes.isEmpty ? '—' : previa.lotes,
-    'FECHA_EMISION' => DateTime.now().toString().substring(0, 10),
-    'CODIGO_CREDENCIAL' => previa.codigoQr,
-    'TEXTO_FIJO' => e.texto,
-    _ => '',
-  };
+  String _valor(ElementoDisenoCredencial e) =>
+      valores[e.campo] ??
+      switch (e.campo) {
+        'CODIGO_PADRON' => previa.codigoPadron ?? '',
+        'NOMBRE_COMPLETO' => '${previa.nombres} ${previa.apellidos}'.trim(),
+        'NOMBRES' => previa.nombres,
+        'APELLIDOS' => previa.apellidos,
+        'CI' => previa.ci,
+        'SINDICATO' => previa.sindicato,
+        'CENTRAL' => previa.central,
+        'FEDERACION' => previa.federacion.replaceFirst(
+          RegExp(r'^FEDERACI[ÓO]N\s+', caseSensitive: false),
+          '',
+        ),
+        'LOTES' => previa.lotes.isEmpty ? '—' : previa.lotes,
+        'FECHA_EMISION' => DateTime.now().toString().substring(0, 10),
+        'CODIGO_CREDENCIAL' => previa.codigoQr,
+        'TEXTO_FIJO' => e.texto,
+        _ => '',
+      };
 
   String? _url(ElementoDisenoCredencial e) {
     if (e.campo == 'IMAGEN_PERSONALIZADA' && e.recurso != null) {

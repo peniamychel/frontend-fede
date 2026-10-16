@@ -39,6 +39,7 @@ class FilaProductor extends StatelessWidget {
         'N° lote: ${productor.numeroLote}',
       if (mostrarRuta) productor.ruta,
       if (productor.revisionLotePendiente) productor.resumenRevisionLote,
+      if (productor.ciDuplicada) 'Revisión CI · Cédula repetida',
       if (productor.observado)
         'Observado: ${productor.observacion ?? 'Sin detalle'}',
       if (productor.revisionSiePendiente ||
@@ -50,21 +51,34 @@ class FilaProductor extends StatelessWidget {
       key: ValueKey('fila-productor-${productor.id}'),
       onTap: alTocar,
       selected: seleccionado,
-      tileColor: productor.revisionSiePendiente
+      tileColor: productor.ciDuplicada
+          ? tema.colorScheme.errorContainer.withValues(alpha: 0.3)
+          : productor.revisionSiePendiente
           ? tema.colorScheme.surfaceContainerHighest
           : null,
-      textColor: productor.revisionSiePendiente
+      textColor: productor.ciDuplicada
+          ? tema.colorScheme.error
+          : productor.revisionSiePendiente
           ? tema.colorScheme.outline
           : null,
-      selectedColor: productor.revisionSiePendiente
+      selectedColor: productor.ciDuplicada
+          ? tema.colorScheme.error
+          : productor.revisionSiePendiente
           ? tema.colorScheme.outline
           : null,
-      selectedTileColor: tema.colorScheme.primaryContainer.withValues(
-        alpha: 0.55,
-      ),
+      selectedTileColor:
+          (productor.ciDuplicada
+                  ? tema.colorScheme.errorContainer
+                  : tema.colorScheme.primaryContainer)
+              .withValues(alpha: 0.55),
       shape: seleccionado
           ? RoundedRectangleBorder(
-              side: BorderSide(color: tema.colorScheme.primary, width: 1.5),
+              side: BorderSide(
+                color: productor.ciDuplicada
+                    ? tema.colorScheme.error
+                    : tema.colorScheme.primary,
+                width: 1.5,
+              ),
               borderRadius: BorderRadius.circular(8),
             )
           : null,
@@ -93,7 +107,8 @@ class FilaProductor extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: tema.textTheme.bodySmall?.copyWith(
                       color:
-                          (productor.revisionLotePendiente &&
+                          productor.ciDuplicada ||
+                              (productor.revisionLotePendiente &&
                                   texto == productor.resumenRevisionLote) ||
                               (productor.observado &&
                                   texto.startsWith('Observado:')) ||
@@ -114,15 +129,6 @@ class FilaProductor extends StatelessWidget {
           const SizedBox(width: 5),
           _ClasificacionProductor(productor: productor),
           const SizedBox(width: 5),
-          if (productor.marcado)
-            Tooltip(
-              message: 'Marcado en la revisión',
-              child: Icon(
-                Icons.bookmark,
-                size: 18,
-                color: tema.colorScheme.tertiary,
-              ),
-            ),
           if (productor.tieneCorreccionPendiente)
             Tooltip(
               message: 'Corrección de nombre sin confirmar',
@@ -238,7 +244,12 @@ class _EstadoImpresion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    final (mensaje, color) = !productor.habilitado
+    final (mensaje, color) = productor.ciDuplicada
+        ? (
+            'Revisión CI: cédula repetida, excluido de impresión',
+            tema.colorScheme.error,
+          )
+        : !productor.habilitado
         ? ('Deshabilitado: excluido de impresión', tema.colorScheme.outline)
         : productor.observado
         ? ('Observado: excluido de impresión', tema.colorScheme.error)

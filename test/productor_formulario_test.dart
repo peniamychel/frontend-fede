@@ -119,7 +119,6 @@ void main() {
       apellidosCorregidos: null,
       fotoDescripcion: null,
       tieneFoto: false,
-      marcado: false,
       sindicatoId: 16,
       sindicatoNombre: 'LIBERTAD',
       centralId: 20,

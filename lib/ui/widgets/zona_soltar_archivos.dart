@@ -40,17 +40,24 @@ class ZonaSoltarArchivos extends StatefulWidget {
 class _ZonaSoltarArchivosState extends State<ZonaSoltarArchivos> {
   bool _arrastrando = false;
 
+  bool _aceptaEventos() =>
+      mounted &&
+      widget.habilitada &&
+      Visibility.of(context) &&
+      (ModalRoute.of(context)?.isCurrent ?? true);
+
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    final rutaVisible = ModalRoute.of(context)?.isCurrent ?? true;
+    final rutaVisible = _aceptaEventos();
     return DropTarget(
-      // desktop_drop también detecta eventos detrás de un diálogo; se apaga
-      // mientras otra ruta está encima para no abrir dos vistas previas.
-      enable: widget.habilitada && rutaVisible,
+      // También quedan fichas montadas en secciones ocultas del IndexedStack.
+      // desktop_drop comprueba sus coordenadas aunque no estén pintadas.
+      enable: rutaVisible,
       onDragEntered: (_) => setState(() => _arrastrando = true),
       onDragExited: (_) => setState(() => _arrastrando = false),
       onDragDone: (detalle) {
+        if (!_aceptaEventos()) return;
         setState(() => _arrastrando = false);
         final archivos = detalle.files;
         if (archivos.isEmpty) return;

@@ -124,15 +124,27 @@ class _FilaDuplicadoState extends State<_FilaDuplicado> {
                   for (final p in productores)
                     ListTile(
                       dense: true,
-                      contentPadding:
-                          const EdgeInsets.only(left: 56, right: 16),
+                      textColor: p.ciDuplicada
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                      contentPadding: const EdgeInsets.only(
+                        left: 56,
+                        right: 16,
+                      ),
                       leading: const Icon(Icons.person_outline, size: 20),
                       title: Text(
-                        p.nombreCompleto.isEmpty
-                            ? p.nombres
-                            : p.nombreCompleto,
+                        p.nombreCompleto.isEmpty ? p.nombres : p.nombreCompleto,
                       ),
-                      subtitle: Text(p.ruta),
+                      subtitle: Text(
+                        p.ciDuplicada
+                            ? '${p.ruta}\nRevisión CI · Impresión bloqueada'
+                            : p.ruta,
+                        style: p.ciDuplicada
+                            ? TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              )
+                            : null,
+                      ),
                       trailing: const Icon(Icons.chevron_right, size: 20),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(

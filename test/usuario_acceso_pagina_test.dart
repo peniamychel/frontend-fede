@@ -101,7 +101,15 @@ void main() {
     expect(api.guardado?['todosSindicatos'], isFalse);
     expect(api.guardado?['sindicatoIds'], unorderedEquals([7, 8]));
     expect(api.guardado?['permisosPersonalizados'], isTrue);
-    expect(api.guardado?['permisos'], ['PRODUCTORES_VER']);
+    expect(
+      api.guardado?['permisos'],
+      unorderedEquals([
+        'PRODUCTORES_VER',
+        'PRODUCTORES_OBSERVAR',
+        'NUMERO_LOTE_EDITAR',
+        'INFORMES_DESCARGAR',
+      ]),
+    );
     expect(api.guardado?['centralId'], 3);
     expect(tester.takeException(), isNull);
   });
@@ -116,6 +124,143 @@ void main() {
     await pulsar(tester, 'Guardar configuración');
     expect(api.guardado?['todosSindicatos'], isTrue);
     expect(api.guardado?['sindicatoIds'], isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('rol de registro se asigna solo con alcance de central', (
+    tester,
+  ) async {
+    final api = _ApiUsuarios();
+    await abrir(tester, api);
+    await pulsar(tester, 'Registro de productores');
+    await pulsar(tester, 'Guardar configuración');
+    expect(api.guardado?['roles'], unorderedEquals([4, 5]));
+    expect(api.guardado?['centralId'], 3);
+    expect(api.guardado?['sindicatoIds'], [7]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('registro limitado no se ofrece para acceso general', (
+    tester,
+  ) async {
+    final api = _ApiUsuarios();
+    await abrir(tester, api);
+    await pulsar(tester, 'Acceso solo a una central');
+    expect(find.text('Registro de productores'), findsNothing);
+    expect(find.text('Fotos, observaciones y número de lote'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('registro puede añadirse como permiso individual de central', (
+    tester,
+  ) async {
+    final api = _ApiUsuarios();
+    await abrir(tester, api);
+    await pulsar(tester, 'Personalizar permisos de este usuario');
+    await pulsar(tester, 'Registrar productores nuevos');
+    await pulsar(tester, 'Guardar configuración');
+    expect(
+      api.guardado?['permisos'],
+      unorderedEquals([
+        'PRODUCTORES_VER',
+        'FOTOS_PRODUCTORES_EDITAR',
+        'PRODUCTORES_OBSERVAR',
+        'NUMERO_LOTE_EDITAR',
+        'INFORMES_DESCARGAR',
+        'PRODUCTORES_REGISTRAR',
+      ]),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('roles reales de fotos y registro son combinables en central', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _ApiUsuarios();
+    await abrir(tester, api);
+    await tester.scrollUntilVisible(
+      find.text('Fotos, observaciones y número de lote'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.widgetWithText(
+              CheckboxListTile,
+              'Fotos, observaciones y número de lote',
+            ),
+          )
+          .value,
+      isTrue,
+    );
+    await pulsar(tester, 'Registro de productores');
+    await pulsar(tester, 'Personalizar permisos de este usuario');
+    await tester.scrollUntilVisible(
+      find.text('Descargar informes'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.widgetWithText(CheckboxListTile, 'Descargar informes'),
+          )
+          .value,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.widgetWithText(CheckboxListTile, 'Revisar SIE'),
+          )
+          .value,
+      isFalse,
+    );
+    await pulsar(tester, 'Guardar configuración');
+    expect(api.guardado?['roles'], unorderedEquals([4, 5]));
+    expect(
+      api.guardado?['permisos'],
+      unorderedEquals([
+        'PRODUCTORES_VER',
+        'FOTOS_PRODUCTORES_EDITAR',
+        'PRODUCTORES_OBSERVAR',
+        'NUMERO_LOTE_EDITAR',
+        'INFORMES_DESCARGAR',
+        'PRODUCTORES_REGISTRAR',
+      ]),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('rol registro con los cinco permisos del registro general', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _ApiUsuarios()..registroCompleto = true;
+    await abrir(tester, api);
+    await pulsar(tester, 'Fotos, observaciones y número de lote');
+    await pulsar(tester, 'Registro de productores');
+    await pulsar(tester, 'Personalizar permisos de este usuario');
+    await pulsar(tester, 'Guardar configuración');
+    expect(api.guardado?['roles'], [5]);
+    expect(api.guardado?['centralId'], 3);
+    expect(api.guardado?['sindicatoIds'], [7]);
+    expect(
+      api.guardado?['permisos'],
+      unorderedEquals([
+        'PRODUCTORES_VER',
+        'PRODUCTORES_EDITAR',
+        'SIE_REVISAR',
+        'LOTES_EDITAR',
+        'IMAGENES_EDITAR',
+      ]),
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -168,6 +313,7 @@ void main() {
 
 class _ApiUsuarios extends ApiClient {
   bool eliminado = false;
+  bool registroCompleto = false;
   @override
   Future<void> eliminar(String ruta) async {
     expect(ruta, '/administracion/accesos/usuarios/9');
@@ -201,9 +347,34 @@ class _ApiUsuarios extends ApiClient {
           {
             'id': 4,
             'codigo': 'REGISTRO_CENTRAL',
-            'nombre': 'Fotos y lotes',
+            'nombre': 'Fotos, observaciones y número de lote',
             'activo': true,
-            'permisos': ['PRODUCTORES_VER', 'FOTOS_PRODUCTORES_EDITAR'],
+            'permisos': [
+              'PRODUCTORES_VER',
+              'FOTOS_PRODUCTORES_EDITAR',
+              'PRODUCTORES_OBSERVAR',
+              'NUMERO_LOTE_EDITAR',
+              'INFORMES_DESCARGAR',
+            ],
+          },
+          {
+            'id': 5,
+            'codigo': 'REGISTRO_PRODUCTORES_CENTRAL',
+            'nombre': 'Registro de productores',
+            'activo': true,
+            'permisos': registroCompleto
+                ? [
+                    'PRODUCTORES_VER',
+                    'PRODUCTORES_EDITAR',
+                    'SIE_REVISAR',
+                    'LOTES_EDITAR',
+                    'IMAGENES_EDITAR',
+                  ]
+                : [
+                    'PRODUCTORES_VER',
+                    'PRODUCTORES_REGISTRAR',
+                    'NUMERO_LOTE_EDITAR',
+                  ],
           },
         ];
       case '/administracion/accesos/permisos':
@@ -222,6 +393,41 @@ class _ApiUsuarios extends ApiClient {
             'codigo': 'SIE_REVISAR',
             'nombre': 'Revisar SIE',
             'grupo': 'Productores',
+          },
+          {
+            'codigo': 'PRODUCTORES_REGISTRAR',
+            'nombre': 'Registrar productores nuevos',
+            'grupo': 'Productores',
+          },
+          {
+            'codigo': 'PRODUCTORES_OBSERVAR',
+            'nombre': 'Observar productores',
+            'grupo': 'Productores',
+          },
+          {
+            'codigo': 'NUMERO_LOTE_EDITAR',
+            'nombre': 'Editar número de lote',
+            'grupo': 'Productores',
+          },
+          {
+            'codigo': 'INFORMES_DESCARGAR',
+            'nombre': 'Descargar informes',
+            'grupo': 'Informes',
+          },
+          {
+            'codigo': 'PRODUCTORES_EDITAR',
+            'nombre': 'Editar productores',
+            'grupo': 'Productores',
+          },
+          {
+            'codigo': 'LOTES_EDITAR',
+            'nombre': 'Editar parcelas',
+            'grupo': 'Parcelas',
+          },
+          {
+            'codigo': 'IMAGENES_EDITAR',
+            'nombre': 'Editar imágenes',
+            'grupo': 'Imágenes',
           },
         ];
       case '/centrales':

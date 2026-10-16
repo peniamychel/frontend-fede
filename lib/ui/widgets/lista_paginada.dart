@@ -87,10 +87,12 @@ class ListaPaginadaState<T> extends State<ListaPaginada<T>> {
   Future<void> refrescar() => _reiniciar();
 
   /// Sustituye una fila ya cargada sin reiniciar la paginación ni el scroll.
-  void actualizarElemento(T elemento, {required bool Function(T) coincide}) {
+  T? actualizarElemento(T elemento, {required bool Function(T) coincide}) {
     final indice = _elementos.indexWhere(coincide);
-    if (indice < 0) return;
+    if (indice < 0) return null;
+    final anterior = _elementos[indice];
     setState(() => _elementos[indice] = elemento);
+    return anterior;
   }
 
   /// Actualiza todas las páginas que el usuario ya alcanzó sin vaciar la lista

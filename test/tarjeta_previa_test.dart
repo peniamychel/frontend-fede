@@ -66,6 +66,8 @@ void main() {
     required bool reverso,
     CredencialPrevia? datos,
     DisenoCredencial? diseno,
+    Map<String, String> valores = const {},
+    bool plantillaPorDefecto = true,
   }) => MaterialApp(
     home: Scaffold(
       body: Center(
@@ -74,6 +76,8 @@ void main() {
           reverso: reverso,
           ancho: anchoDelDoble,
           diseno: diseno,
+          valores: valores,
+          plantillaPorDefecto: plantillaPorDefecto,
         ),
       ),
     ),
@@ -104,6 +108,68 @@ void main() {
     expect(caja.height, closeTo(TarjetaPrevia.altoPt * 2, 0.01));
     // 85,6 × 54 mm: la proporción de una cédula.
     expect(caja.width / caja.height, closeTo(1.586, 0.005));
+  });
+
+  testWidgets(
+    'la tarjeta vertical respeta dimensiones y posiciones del diseño',
+    (tester) async {
+      final vertical = DisenoCredencial.predeterminado().conOrientacion(
+        OrientacionCredencial.vertical,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TarjetaPrevia(
+              previa: previa(),
+              reverso: false,
+              ancho: vertical.ancho * 2,
+              diseno: vertical,
+              plantillaPorDefecto: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final caja = tester.getSize(find.byType(TarjetaPrevia));
+      expect(caja.width, closeTo(vertical.ancho * 2, .01));
+      expect(caja.height, closeTo(vertical.alto * 2, .01));
+      expect(caja.height, greaterThan(caja.width));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('solo la foto con indicador circular se recorta como círculo', (
+    tester,
+  ) async {
+    final base = DisenoCredencial.predeterminado();
+    await tester.pumpWidget(banco(reverso: false));
+    expect(find.byType(ClipOval), findsNothing);
+
+    await tester.pumpWidget(
+      banco(
+        reverso: false,
+        diseno: base.conElementos([
+          for (final e in base.elementos)
+            e.campo == 'FOTO' ? e.copiar(circular: true) : e,
+        ]),
+      ),
+    );
+    expect(find.byType(ClipOval), findsOneWidget);
+    final fondoFoto = tester.widget<Container>(
+      find
+          .descendant(
+            of: find.byType(ClipOval),
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    expect(
+      (fondoFoto.decoration as BoxDecoration).color,
+      isNull,
+      reason: 'La transparencia del PNG debe dejar visible el fondo del diseño',
+    );
+    expect(find.text('SIN FOTO'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   for (final reverso in [false, true]) {
@@ -397,5 +463,78 @@ void main() {
         );
       }
     }
+  });
+
+  testWidgets(
+    'operador sin plantilla no muestra fondos ni datos del productor',
+    (tester) async {
+      await tester.pumpWidget(
+        banco(reverso: false, plantillaPorDefecto: false),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsNothing);
+      expect(find.text('CANDIDO COLQUECHAMBI MAMANI'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('operador muestra cargo, teléfono y reseña dentro de su caja', (
+    tester,
+  ) async {
+    const resena =
+        'La Federación Carrasco autoriza al portador de esta '
+        'credencial a realizar las tareas de operación del software asignadas. '
+        'Esta autorización es personal y debe presentarse cuando sea requerida.';
+    ElementoDisenoCredencial campo(String nombre, double y, double alto) =>
+        ElementoDisenoCredencial(
+          id: nombre,
+          cara: CaraCredencial.reverso,
+          tipo: TipoElementoCredencial.texto,
+          campo: nombre,
+          etiqueta: nombre,
+          x: 20,
+          y: y,
+          ancho: 100,
+          alto: alto,
+          tamanoFuente: 10,
+          negrita: false,
+          alineacion: AlineacionCredencial.izquierda,
+          color: '#000000',
+          texto: '',
+        );
+    await tester.pumpWidget(
+      banco(
+        reverso: true,
+        plantillaPorDefecto: false,
+        diseno: DisenoCredencial(
+          ancho: TarjetaPrevia.anchoPt,
+          alto: TarjetaPrevia.altoPt,
+          elementos: [
+            campo('CARGO', 115, 10),
+            campo('TELEFONO', 95, 10),
+            campo('RESENA', 20, 50),
+          ],
+        ),
+        valores: const {
+          'CARGO': 'OPERADOR',
+          'TELEFONO': '70012345',
+          'RESENA': resena,
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('OPERADOR'), findsOneWidget);
+    expect(find.text('70012345'), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
+    final texto = tester.widget<Text>(find.text(resena));
+    expect(texto.maxLines, isNull);
+    expect(texto.softWrap, isTrue);
+    expect(texto.style!.fontSize, lessThan(20));
+    final caja = tester.getRect(find.text(resena));
+    expect(caja.width, closeTo(200, .01));
+    expect(caja.height, lessThanOrEqualTo(100));
+    expect(tester.takeException(), isNull);
   });
 }

@@ -1071,7 +1071,57 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     VoidCallback? alDescargarCredenciales,
   }) {
     final puedeEditar = context.puede('JERARQUIA_EDITAR');
-    if (context.accesoCentral) return const SizedBox.shrink();
+    if (context.accesoCentral) {
+      final acciones = <PopupMenuEntry<String>>[
+        if (alEditarProductores != null &&
+            (context.puedeRegistrarProductores ||
+                context.puede('NUMERO_LOTE_EDITAR') ||
+                context.puede('PRODUCTORES_OBSERVAR') ||
+                context.puede('SIE_REVISAR') ||
+                context.puede('LOTES_EDITAR')))
+          PopupMenuItem(
+            value: 'editarProductores',
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.table_view_outlined),
+              title: Text('Edición rápida de productores'),
+            ),
+          ),
+        if (alVerLotes != null && context.puede('LOTES_EDITAR'))
+          const PopupMenuItem(
+            value: 'lotes',
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.crop_landscape_outlined),
+              title: Text('Parcelas'),
+            ),
+          ),
+        if (alVerListaFisica != null && context.puede('IMAGENES_EDITAR'))
+          const PopupMenuItem(
+            value: 'listaFisica',
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.document_scanner_outlined),
+              title: Text('Lista física del sindicato'),
+            ),
+          ),
+      ];
+      if (acciones.isEmpty) return const SizedBox.shrink();
+      return PopupMenuButton<String>(
+        tooltip: 'Acciones',
+        icon: const Icon(Icons.more_vert, size: 20),
+        onSelected: (opcion) => switch (opcion) {
+          'editarProductores' => alEditarProductores?.call(),
+          'lotes' => alVerLotes?.call(),
+          'listaFisica' => alVerListaFisica?.call(),
+          _ => null,
+        },
+        itemBuilder: (_) => acciones,
+      );
+    }
     return PopupMenuButton<String>(
       tooltip: 'Acciones',
       icon: const Icon(Icons.more_vert, size: 20),

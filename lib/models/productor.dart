@@ -22,7 +22,6 @@ class Productor {
     required this.apellidosCorregidos,
     required this.fotoDescripcion,
     required this.tieneFoto,
-    required this.marcado,
     required this.sindicatoId,
     required this.sindicatoNombre,
     required this.centralId,
@@ -37,6 +36,7 @@ class Productor {
     this.sieNombresSugeridos,
     this.sieApellidosSugeridos,
     this.revisionSieBloqueaImpresion = false,
+    this.ciDuplicada = false,
     this.observado = false,
     this.observacion,
     this.credencialImpresiones = 0,
@@ -72,6 +72,9 @@ class Productor {
   final String? sieNombresSugeridos;
   final String? sieApellidosSugeridos;
   final bool revisionSieBloqueaImpresion;
+
+  /// Conflicto global de identidad, independiente de la revisión SIE y de notas manuales.
+  final bool ciDuplicada;
 
   bool get tieneSugerenciaSie =>
       revisionSieEstado == EstadoRevisionSiePersistida.diferenciaPendiente &&
@@ -126,9 +129,6 @@ class Productor {
 
   final bool tieneFoto;
 
-  /// Marca manual puesta durante la revisión.
-  final bool marcado;
-
   final int sindicatoId;
   final String sindicatoNombre;
   final int centralId;
@@ -169,7 +169,6 @@ class Productor {
     apellidosCorregidos: json['apellidosCorregidos'] as String?,
     fotoDescripcion: json['fotoDescripcion'] as String?,
     tieneFoto: json['tieneFoto'] as bool? ?? false,
-    marcado: json['marcado'] as bool? ?? false,
     sindicatoId: (json['sindicatoId'] as num?)?.toInt() ?? 0,
     sindicatoNombre: json['sindicatoNombre'] as String? ?? '',
     centralId: (json['centralId'] as num?)?.toInt() ?? 0,
@@ -187,6 +186,7 @@ class Productor {
     sieApellidosSugeridos: json['sieApellidosSugeridos'] as String?,
     revisionSieBloqueaImpresion:
         json['revisionSieBloqueaImpresion'] as bool? ?? false,
+    ciDuplicada: json['ciDuplicada'] as bool? ?? false,
     observado: json['observado'] as bool? ?? false,
     observacion: json['observacion'] as String?,
     credencialImpresiones:
@@ -194,7 +194,9 @@ class Productor {
     credencialUltimaImpresion: DateTime.tryParse(
       json['credencialUltimaImpresion'] as String? ?? '',
     ),
-    credencialLista: json['credencialLista'] as bool? ?? false,
+    credencialLista:
+        json['ciDuplicada'] != true &&
+        (json['credencialLista'] as bool? ?? false),
     clasificacion: json['clasificacion'] == null
         ? null
         : EstadoLote.desde(json['clasificacion']),
@@ -292,7 +294,6 @@ class ProductorRequest {
     this.nombresCorregidos,
     this.apellidosCorregidos,
     this.fotoDescripcion,
-    this.marcado = false,
   });
 
   static const int maxNombres = 60;
@@ -307,7 +308,6 @@ class ProductorRequest {
   final String? nombresCorregidos;
   final String? apellidosCorregidos;
   final String? fotoDescripcion;
-  final bool marcado;
 
   /// Copia los datos de un productor existente, para precargar el formulario
   /// de edición.
@@ -319,7 +319,6 @@ class ProductorRequest {
     nombresCorregidos: p.nombresCorregidos,
     apellidosCorregidos: p.apellidosCorregidos,
     fotoDescripcion: p.fotoDescripcion,
-    marcado: p.marcado,
   );
 
   Map<String, dynamic> aJson() => {
@@ -330,7 +329,6 @@ class ProductorRequest {
     if (nombresCorregidos != null) 'nombresCorregidos': nombresCorregidos,
     if (apellidosCorregidos != null) 'apellidosCorregidos': apellidosCorregidos,
     if (fotoDescripcion != null) 'fotoDescripcion': fotoDescripcion,
-    'marcado': marcado,
   };
 }
 

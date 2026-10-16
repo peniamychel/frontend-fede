@@ -9,6 +9,7 @@ import 'calidad/calidad_pagina.dart';
 import 'credenciales/editor_credencial_pagina.dart';
 import 'jerarquia/directorio_pagina.dart';
 import 'jerarquia/jerarquia_pagina.dart';
+import 'operadores/credenciales_operadores_pagina.dart';
 import 'padron_scope.dart';
 import 'sesion_scope.dart';
 import 'productores/productores_pagina.dart';
@@ -77,6 +78,9 @@ class _InicioState extends State<Inicio> {
     final carnet = sesion == null || sesion.puede('CARNETS_DISENO');
     final respaldos = sesion == null || sesion.puede('RESPALDOS_ADMINISTRAR');
     final general = sesion?.sesion?.centralId == null;
+    final operadores =
+        general &&
+        (sesion == null || sesion.puede('CREDENCIALES_OPERADORES_GESTIONAR'));
     final destinos = <_Destino>[
       const _Destino('Productores', Icons.people_outline, Icons.people),
       const _Destino(
@@ -93,6 +97,12 @@ class _InicioState extends State<Inicio> {
       if (general)
         const _Destino('Calidad', Icons.fact_check_outlined, Icons.fact_check),
       if (carnet) const _Destino('Carnet', Icons.badge_outlined, Icons.badge),
+      if (operadores)
+        const _Destino(
+          'Personal operador',
+          Icons.contact_emergency_outlined,
+          Icons.contact_emergency,
+        ),
       if (respaldos)
         const _Destino('Respaldos', Icons.backup_outlined, Icons.backup),
       if (administra)
@@ -109,6 +119,7 @@ class _InicioState extends State<Inicio> {
       if (reuniones) const ReunionesPagina(),
       if (general) const CalidadPagina(),
       if (carnet) const EditorCredencialPagina(),
+      if (operadores) const CredencialesOperadoresPagina(),
       if (respaldos) const BackupsPagina(),
       if (administra) const AccesosPagina(),
       const CuentaPagina(),

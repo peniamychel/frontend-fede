@@ -6,7 +6,7 @@ import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/estados.dart';
 import 'informe_importacion.dart';
-import 'conciliacion_udestro_pagina.dart';
+import 'revision_cambios_importacion.dart';
 
 /// Carga masiva del padrón desde una planilla de Excel.
 ///
@@ -32,6 +32,10 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
   bool _trabajando = false;
   bool _sindicatosAprobados = false;
   bool _ignorarFilasConError = false;
+  final Map<String, bool> _seleccionDuplicados = {};
+  final Map<int, ({String huella, bool? valor})> _seleccionLotes = {};
+  bool _analisisPendiente = false;
+  int get _actualizados => _informe?.productoresActualizados ?? 0;
 
   /// Queda en true cuando la confirmación terminó, para no importar dos veces
   /// con el mismo archivo por un doble clic.
@@ -65,22 +69,44 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _paso1(context),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: _trabajando
-                            ? null
-                            : () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) =>
-                                      const ConciliacionUdestroPagina(),
-                                ),
-                              ),
-                        icon: const Icon(Icons.compare_arrows_outlined),
-                        label: const Text('Conciliar lista UDESTRO'),
-                      ),
                       const SizedBox(height: 16),
                       if (_informe != null) ...[
-                        InformeImportacion(informe: _informe!),
+                        InformeImportacion(
+                          informe: _informe!,
+                          seleccionDuplicados: _seleccionDuplicados,
+                          alSeleccionar: _trabajando || _yaImportado
+                              ? null
+                              : (grupo, fila, incluir) async {
+                                  setState(() {
+                                    _seleccionDuplicados['${grupo.huella}:$fila'] =
+                                        incluir;
+                                    _analisisPendiente = true;
+                                  });
+                                  await _enviar(simular: true);
+                                },
+                        ),
+                        if (_informe!.comparaciones.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          RevisionCambiosImportacion(
+                            comparaciones: _informe!.comparaciones,
+                            decisiones: {
+                              for (final d in _seleccionLotes.values)
+                                '${d.huella}:numeroLote': d.valor,
+                            },
+                            alDecidir: _trabajando || _yaImportado
+                                ? null
+                                : (p, eleccion) async {
+                                    setState(() {
+                                      _seleccionLotes[p.fila] = (
+                                        huella: p.huella,
+                                        valor: eleccion,
+                                      );
+                                      _analisisPendiente = true;
+                                    });
+                                    await _enviar(simular: true);
+                                  },
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         _paso2(context),
                       ],
@@ -241,7 +267,7 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
               Expanded(
                 child: Text(
                   'Importación terminada: ${informe.productores} productores '
-                  'quedaron cargados.',
+                  'nuevos y ${informe.productoresActualizados} actualizados.',
                   style: tema.textTheme.titleSmall?.copyWith(
                     color: tema.colorScheme.onPrimaryContainer,
                   ),
@@ -255,6 +281,7 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
 
     final puedeImportar =
         informe.hayAlgoQueImportar &&
+        !_analisisPendiente &&
         (!informe.hayRechazos || _ignorarFilasConError) &&
         (informe.sindicatosNuevos.isEmpty || _sindicatosAprobados);
 
@@ -314,12 +341,14 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.cloud_upload_outlined),
-              label: Text('Importar ${informe.filasValidas} productores'),
+              label: Text('Importar y aplicar cambios'),
             ),
             if (!puedeImportar) ...[
               const SizedBox(height: 8),
               Text(
-                informe.hayAlgoQueImportar
+                _analisisPendiente
+                    ? 'Volvé a analizar para actualizar la selección antes de importar.'
+                    : informe.hayAlgoQueImportar
                     ? informe.sindicatosNuevos.isNotEmpty &&
                               !_sindicatosAprobados
                           ? 'Revisá y aprobá la lista de sindicatos nuevos.'
@@ -358,6 +387,9 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
         _archivo = elegido;
         _informe = null;
         _sindicatosAprobados = false;
+        _seleccionDuplicados.clear();
+        _seleccionLotes.clear();
+        _analisisPendiente = false;
         _yaImportado = false;
       });
     } catch (e) {
@@ -370,15 +402,26 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
     final url = PadronScope.of(context).importaciones.urlPlantilla;
     try {
       final archivo = await PadronScope.of(context).api.descargarUrl(url);
-      await guardarArchivo(archivo.bytes, archivo.nombreArchivo, archivo.tipoMime);
+      await guardarArchivo(
+        archivo.bytes,
+        archivo.nombreArchivo,
+        archivo.tipoMime,
+      );
     } catch (e) {
       if (mounted) mostrarError(context, e);
     }
   }
 
-  Future<void> _analizar() => _enviar(simular: true);
+  Future<void> _analizar() {
+    // Una revisión nueva permite elegir otra vez si la ficha cambió en el servidor.
+    setState(() => _seleccionLotes.clear());
+    return _enviar(simular: true);
+  }
 
   Future<void> _confirmar() async {
+    if (_trabajando || _yaImportado || _analisisPendiente) {
+      return;
+    }
     final informe = _informe;
     if (informe == null) return;
 
@@ -391,10 +434,14 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Se van a crear ${informe.productores} productores, '
-              '${informe.lotes} lotes y ${informe.observaciones} '
-              'observaciones en ${informe.federacionNombre}.',
+              'Se van a crear ${informe.productores} productores '
+              'y se actualizarán $_actualizados productores existentes '
+              'en ${informe.federacionNombre}.',
             ),
+            if (informe.filasOmitidas > 0)
+              Text(
+                '${informe.filasOmitidas} fila(s) desmarcadas no se importarán.',
+              ),
             if (informe.sindicatosNuevos.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(
@@ -438,6 +485,7 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
   }
 
   Future<void> _enviar({required bool simular}) async {
+    if (_trabajando || (!simular && _yaImportado)) return;
     final archivo = _archivo;
     final federacion = _federacion;
     final bytes = archivo?.bytes;
@@ -451,7 +499,9 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
 
     setState(() {
       _trabajando = true;
-      if (simular) _sindicatosAprobados = false;
+      if (simular) {
+        _sindicatosAprobados = false;
+      }
     });
 
     try {
@@ -464,11 +514,13 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
         // En la ejecución, true representa la aprobación explícita del usuario.
         crearJerarquia: simular || _sindicatosAprobados,
         ignorarFilasConError: _ignorarFilasConError,
+        decisiones: _decisionesParaEnviar(),
       );
       if (!mounted) return;
       setState(() {
         _informe = informe;
         _trabajando = false;
+        _analisisPendiente = false;
         // `simulacion` viene en true también cuando la ejecución real se
         // aborta por filas inválidas, así que hay que mirar las dos cosas.
         _yaImportado = !simular && !informe.simulacion;
@@ -478,8 +530,7 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
           context,
           'Importación completada',
           detalle:
-              '${informe.productores} productores, ${informe.lotes} lotes '
-              'y ${informe.observaciones} observaciones '
+              '${informe.productores} nuevos y ${informe.productoresActualizados} actualizados '
               'en ${informe.duracionMs} ms.',
         );
       }
@@ -488,5 +539,30 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
       setState(() => _trabajando = false);
       mostrarError(context, e);
     }
+  }
+
+  List<Map<String, dynamic>> _decisionesParaEnviar() {
+    final porFila = <int, Map<String, dynamic>>{
+      for (final d in _seleccionLotes.entries)
+        d.key: {
+          'fila': d.key,
+          'huella': d.value.huella,
+          'campos': {'numeroLote': d.value.valor},
+        },
+    };
+    for (final grupo
+        in _informe?.gruposDuplicados ?? <GrupoDuplicadoImportacion>[]) {
+      for (final fila in grupo.filas) {
+        final decision = porFila.putIfAbsent(
+          fila.numero,
+          () => {'fila': fila.numero},
+        );
+        decision['huellaDuplicado'] = grupo.huella;
+        decision['aceptarFila'] =
+            _seleccionDuplicados['${grupo.huella}:${fila.numero}'] ??
+            fila.seleccionada;
+      }
+    }
+    return porFila.values.toList();
   }
 }

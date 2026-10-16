@@ -46,8 +46,7 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
   _Campo? _campoConGlobo;
 
   bool get _ocupado => _creando || _filaSie != null || _filaObservacion != null;
-  bool get _puedeCrear =>
-      context.puede('PRODUCTORES_EDITAR') && !context.accesoCentral;
+  bool get _puedeCrear => context.puedeRegistrarProductores;
   bool get _puedeObservar =>
       context.puede('PRODUCTORES_OBSERVAR') ||
       context.puede('PRODUCTORES_EDITAR');
@@ -352,6 +351,25 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
           fila.productor = p;
           _confirmar(campo, valor, _valor(p, campo.nombre), version);
           _cambio = true;
+          if (campo.nombre == 'ci') {
+            // Cambiar una CI afecta también al otro productor que la compartía.
+            // Se actualizan solo los modelos, sin tocar borradores, focos ni scroll.
+            try {
+              final actualizados = await _todos();
+              if (!mounted) return;
+              final porId = {for (final p in actualizados) p.id: p};
+              for (final otra in _filas) {
+                otra.productor = porId[otra.productor.id] ?? otra.productor;
+              }
+            } catch (_) {
+              if (mounted) {
+                mostrarAviso(
+                  context,
+                  'CI guardada. No se pudieron actualizar los conflictos de las otras filas; volvé a cargar la lista.',
+                );
+              }
+            }
+          }
         }
         if (fila.productor.credencialImpresa &&
             !fila.productor.reimpresionFasePendiente) {
@@ -594,9 +612,7 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
           ),
         ),
         actions: [
-          if (fila.productor.observado &&
-              context.puede('PRODUCTORES_EDITAR') &&
-              !context.accesoCentral)
+          if (fila.productor.observado && context.puede('PRODUCTORES_EDITAR'))
             TextButton(
               onPressed: () => Navigator.pop(
                 context,
@@ -987,11 +1003,16 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
     final campos = fila.campos.values;
     final fallo = campos.any((c) => c.error != null);
     final pendienteSie = fila.productor.revisionSiePendiente;
+    final ciDuplicada = fila.productor.ciDuplicada;
     final colores = Theme.of(context).colorScheme;
     return Container(
       key: ValueKey(fila.productor.id),
       decoration: BoxDecoration(
-        color: pendienteSie ? colores.surfaceContainerHighest : null,
+        color: ciDuplicada
+            ? colores.errorContainer.withValues(alpha: 0.3)
+            : pendienteSie
+            ? colores.surfaceContainerHighest
+            : null,
         border: Border(
           bottom: BorderSide(color: Theme.of(context).dividerColor),
         ),
@@ -1009,7 +1030,9 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
                   padding: const EdgeInsets.only(top: 15),
                   child: Text(
                     '${i + 1}',
-                    style: pendienteSie
+                    style: ciDuplicada
+                        ? TextStyle(color: colores.error)
+                        : pendienteSie
                         ? TextStyle(color: colores.outline)
                         : null,
                   ),
@@ -1038,6 +1061,11 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
               if (_puedeObservar) _accionObservacion(fila),
             ],
           ),
+          if (ciDuplicada)
+            Text(
+              'Revisión CI · Cédula repetida: impresión bloqueada',
+              style: TextStyle(color: colores.error),
+            ),
           if (fallo)
             TextButton(
               onPressed: _saliendo || _ocupado
@@ -1097,7 +1125,9 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
           children: [
             TextField(
               key: ValueKey('${fila.productor.id}-$nombre'),
-              style: fila.productor.revisionSiePendiente
+              style: fila.productor.ciDuplicada
+                  ? TextStyle(color: Theme.of(context).colorScheme.error)
+                  : fila.productor.revisionSiePendiente
                   ? TextStyle(color: Theme.of(context).colorScheme.outline)
                   : null,
               controller: fila.campos[nombre]!.texto,
@@ -1108,8 +1138,7 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
                   (nombre == 'numeroLote'
                       ? context.puede('NUMERO_LOTE_EDITAR') ||
                             context.puede('LOTES_EDITAR')
-                      : context.puede('PRODUCTORES_EDITAR') &&
-                            !context.accesoCentral),
+                      : context.puede('PRODUCTORES_EDITAR')),
               textInputAction: TextInputAction.done,
               inputFormatters: [
                 LengthLimitingTextInputFormatter(

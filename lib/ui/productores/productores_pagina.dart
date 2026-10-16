@@ -188,7 +188,7 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
 
   Widget _panelLista({required bool fichaLateral}) {
     final padron = PadronScope.of(context);
-    final puedeEditar = context.puede('PRODUCTORES_EDITAR');
+    final puedeRegistrar = context.puedeRegistrarProductores;
     final puedeImportar = context.puede('IMPORTAR_PADRON');
 
     return Scaffold(
@@ -223,7 +223,7 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
           ),
         ],
       ),
-      floatingActionButton: puedeEditar
+      floatingActionButton: puedeRegistrar
           ? FloatingActionButton.extended(
               onPressed: _crear,
               icon: const Icon(Icons.person_add_alt),
@@ -486,10 +486,15 @@ class _ProductoresPaginaState extends State<ProductoresPagina> {
   }
 
   void _actualizarProductor(Productor productor) {
-    _lista.currentState?.actualizarElemento(
+    final anterior = _lista.currentState?.actualizarElemento(
       productor,
       coincide: (fila) => fila.id == productor.id,
     );
+    if (anterior != null &&
+        (anterior.ci != productor.ci ||
+            anterior.ciDuplicada != productor.ciDuplicada)) {
+      _lista.currentState?.refrescarConservandoPosicion();
+    }
   }
 
   Future<void> _crear() async {

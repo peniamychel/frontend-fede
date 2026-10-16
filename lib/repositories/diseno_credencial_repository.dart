@@ -2,10 +2,14 @@ import '../core/api_client.dart';
 import '../models/diseno_credencial.dart';
 
 class DisenoCredencialRepository {
-  DisenoCredencialRepository(this._api);
+  DisenoCredencialRepository(
+    this._api, {
+    this.ruta = '/configuracion/credencial',
+  });
 
   final ApiClient _api;
-  static const _ruta = '/configuracion/credencial';
+  final String ruta;
+  String get _ruta => ruta;
 
   Future<EditorDisenoCredencial> obtener() async {
     final datos = await _api.obtener(_ruta);

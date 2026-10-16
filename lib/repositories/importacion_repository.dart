@@ -1,3 +1,4 @@
+import 'dart:convert';
 import '../core/api_client.dart';
 import '../core/api_config.dart';
 import '../models/importacion.dart';
@@ -32,12 +33,14 @@ class ImportacionRepository {
     bool simular = true,
     bool crearJerarquia = false,
     bool ignorarFilasConError = false,
+    List<Map<String, dynamic>> decisiones = const [],
   }) async {
     final datos = await _api.subirArchivo(
       _ruta,
       campo: 'archivo',
       bytes: bytes,
       nombreArchivo: nombreArchivo,
+      campos: {'decisiones': jsonEncode(decisiones)},
       query: {
         'federacionId': federacionId,
         'simular': simular,

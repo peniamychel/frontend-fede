@@ -670,6 +670,86 @@ void main() {
     },
   );
 
+  testWidgets(
+    'rol registro de central crea sin habilitar identidad existente ni SIE',
+    (tester) async {
+      final api = _ApiEdicion();
+      final sesion = SesionControlador(AutenticacionRepository(api));
+      addTearDown(sesion.dispose);
+      sesion.sesion = Sesion(
+        token: '',
+        usuario: 'registro',
+        nombreCompleto: '',
+        rol: 'OPERADOR',
+        roles: const {'REGISTRO_PRODUCTORES_CENTRAL'},
+        permisos: const {
+          'PRODUCTORES_VER',
+          'PRODUCTORES_REGISTRAR',
+          'NUMERO_LOTE_EDITAR',
+        },
+        centralId: 20,
+        expiraEn: DateTime(2100),
+      );
+      await _abrir(tester, api, sesion: sesion, ancho: 430);
+      expect(tester.widget<TextField>(campo(1, 'nombres')).enabled, isFalse);
+      expect(tester.widget<TextField>(campo(1, 'ci')).enabled, isFalse);
+      expect(find.byKey(const ValueKey('sie-1')), findsNothing);
+      await tester.tap(find.byTooltip('Nuevo productor'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Verificar cédula'), findsNothing);
+      await tester.enterText(campoAlta('Cédula de identidad *'), '777');
+      await tester.enterText(campoAlta('Nombres *'), 'ALBERTO');
+      await tester.enterText(campoAlta('Apellidos'), 'NUEVO');
+      await tester.ensureVisible(find.text('Registrar'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Registrar'));
+      await tester.pumpAndSettle();
+      expect(api.altas, hasLength(1));
+      expect(api.verificacionesSie, isEmpty);
+      expect(tester.widget<TextField>(campo(3, 'nombres')).enabled, isFalse);
+      expect(find.byKey(const ValueKey('sie-3')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('registro completo de central edita identidad y revisa SIE', (
+    tester,
+  ) async {
+    final api = _ApiEdicion();
+    final sesion = SesionControlador(AutenticacionRepository(api));
+    addTearDown(sesion.dispose);
+    sesion.sesion = Sesion(
+      token: '',
+      usuario: 'registro',
+      nombreCompleto: '',
+      rol: 'OPERADOR',
+      roles: const {'REGISTRO_PRODUCTORES_CENTRAL'},
+      permisos: const {
+        'PRODUCTORES_VER',
+        'PRODUCTORES_EDITAR',
+        'SIE_REVISAR',
+        'LOTES_EDITAR',
+        'IMAGENES_EDITAR',
+      },
+      centralId: 20,
+      expiraEn: DateTime(2100),
+    );
+    await _abrir(tester, api, sesion: sesion, ancho: 1200);
+    expect(tester.widget<TextField>(campo(1, 'nombres')).enabled, isTrue);
+    expect(tester.widget<TextField>(campo(1, 'ci')).enabled, isTrue);
+    expect(tester.widget<TextField>(campo(1, 'numeroLote')).enabled, isTrue);
+    expect(find.byKey(const ValueKey('sie-1')), findsOneWidget);
+    await tester.enterText(campo(1, 'nombres'), 'MARÍA ELENA');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(api.cambios.single['campo'], 'nombres');
+    expect(api.cambios.single['valor'], 'MARÍA ELENA');
+    await tester.tap(find.byKey(const ValueKey('sie-1')));
+    await tester.pumpAndSettle();
+    expect(api.verificacionesSie, isNotEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('se puede entrar desde la lista de un sindicato', (tester) async {
     final api = _ApiEdicion();
     await tester.pumpWidget(

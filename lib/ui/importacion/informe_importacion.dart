@@ -4,9 +4,31 @@ import '../../repositories/padron.dart';
 
 /// Muestra el informe que devuelve el backend, sea de análisis o de ejecución.
 class InformeImportacion extends StatelessWidget {
-  const InformeImportacion({super.key, required this.informe});
+  const InformeImportacion({
+    super.key,
+    required this.informe,
+    this.seleccionDuplicados = const {},
+    this.alSeleccionar,
+  });
 
   final ImportacionResultado informe;
+  final Map<String, bool> seleccionDuplicados;
+  final void Function(GrupoDuplicadoImportacion grupo, int fila, bool incluir)?
+  alSeleccionar;
+
+  bool _seleccionada(
+    GrupoDuplicadoImportacion grupo,
+    FilaDuplicadaImportacion fila,
+  ) =>
+      seleccionDuplicados['${grupo.huella}:${fila.numero}'] ??
+      fila.seleccionada;
+
+  List<ErrorFila> get _avisosSinGrupo {
+    final agrupadas = informe.gruposDuplicados
+        .expand((g) => g.filas.map((f) => f.numero))
+        .toSet();
+    return informe.avisos.where((a) => !agrupadas.contains(a.fila)).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,13 +38,13 @@ class InformeImportacion extends StatelessWidget {
         _cabecera(context),
         const SizedBox(height: 12),
         _contadores(context),
-        if (informe.productores > informe.lotes) ...[
+        if (informe.nuevosSinLote > 0) ...[
           const SizedBox(height: 12),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                '${informe.productores - informe.lotes} productores sin número '
+                '${informe.nuevosSinLote} productores sin número '
                 'de lote: quedan pendientes de revisión. Se conserva la '
                 'clasificación declarada; completá el lote en su ficha antes '
                 'de imprimir el carnet.',
@@ -38,13 +60,81 @@ class InformeImportacion extends StatelessWidget {
           const SizedBox(height: 12),
           _duplicados(context),
         ],
-        if (informe.errores.isNotEmpty) ...[
+        if (informe.gruposDuplicados.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _seleccionPorCi(context),
+        ],
+        if (informe.errores.isNotEmpty || _avisosSinGrupo.isNotEmpty) ...[
           const SizedBox(height: 12),
           _errores(context),
         ],
       ],
     );
   }
+
+  Widget _seleccionPorCi(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'CI repetidas en la planilla',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Todas las filas están marcadas por defecto. Desmarcá las que no querés importar. '
+            'Si queda una sola CI y no se repite en el padrón, no tendrá observación por duplicidad. '
+            'Las demás validaciones y las observaciones del Excel se mantienen.',
+          ),
+          if (informe.filasOmitidas > 0)
+            Text(
+              '${informe.filasOmitidas} fila(s) desmarcadas: no se importarán.',
+            ),
+          for (final grupo in informe.gruposDuplicados) ...[
+            const Divider(height: 24),
+            Text(
+              'CI: ${grupo.ci}',
+              key: ValueKey('grupo-ci-${grupo.ci}'),
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            for (final fila in grupo.filas)
+              CheckboxListTile(
+                key: ValueKey('importar-fila-${fila.numero}'),
+                contentPadding: EdgeInsets.zero,
+                value: _seleccionada(grupo, fila),
+                onChanged: !informe.simulacion || alSeleccionar == null
+                    ? null
+                    : (valor) =>
+                          alSeleccionar!(grupo, fila.numero, valor ?? false),
+                title: Text('Fila ${fila.numero} · ${fila.productor}'),
+                subtitle: Text(
+                  [
+                    '${fila.central} › ${fila.sindicato}',
+                    'N° lote: ${fila.numeroLote ?? 'Sin dato'}${fila.extension == null ? '' : ' ${fila.extension}'}',
+                    if (fila.clasificacion?.isNotEmpty == true)
+                      'Clasificación: ${fila.clasificacion}',
+                    if (fila.observaciones?.isNotEmpty == true)
+                      'Observación del Excel: ${fila.observaciones}',
+                    if (!_seleccionada(grupo, fila))
+                      'No se importará esta fila.',
+                  ].join('\n'),
+                ),
+              ),
+            for (final aviso
+                in informe.avisos
+                    .where((a) => grupo.filas.any((f) => f.numero == a.fila))
+                    .take(1))
+              Text(
+                aviso.mensaje,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+          ],
+        ],
+      ),
+    ),
+  );
 
   Widget _cabecera(BuildContext context) {
     final tema = Theme.of(context);
@@ -125,10 +215,12 @@ class InformeImportacion extends StatelessWidget {
               icono: Icons.grid_view_outlined,
             ),
             _Contador(
-              etiqueta: 'Observaciones',
-              detalle: verbo,
-              valor: informe.observaciones,
-              icono: Icons.flag_outlined,
+              etiqueta: 'Ya registrados',
+              detalle: informe.simulacion
+                  ? 'comparados por CI'
+                  : '${informe.productoresActualizados} actualizados',
+              valor: informe.comparaciones.length,
+              icono: Icons.compare_arrows,
             ),
             _Contador(
               etiqueta: 'Filas rechazadas',
@@ -286,6 +378,7 @@ class InformeImportacion extends StatelessWidget {
 
   Widget _errores(BuildContext context) {
     final tema = Theme.of(context);
+    final errores = informe.errores;
 
     return Card(
       child: Padding(
@@ -295,7 +388,12 @@ class InformeImportacion extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Text('Filas rechazadas', style: tema.textTheme.titleSmall),
+              child: Text(
+                informe.errores.isEmpty
+                    ? 'Avisos de importación'
+                    : 'Filas rechazadas y avisos',
+                style: tema.textTheme.titleSmall,
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -307,38 +405,66 @@ class InformeImportacion extends StatelessWidget {
                 ),
               ),
             ),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 320),
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: informe.errores.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (context, i) {
-                  final e = informe.errores[i];
-                  return ListTile(
-                    dense: true,
-                    leading: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: tema.colorScheme.errorContainer,
-                      child: Text(
-                        '${e.fila}',
-                        style: tema.textTheme.labelSmall?.copyWith(
-                          color: tema.colorScheme.onErrorContainer,
+            if (_avisosSinGrupo.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'Productores con CI repetida · Revisión CI',
+                  style: tema.textTheme.titleSmall,
+                ),
+              ),
+              for (final aviso in _avisosSinGrupo)
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: Text(aviso.productor ?? 'Fila ${aviso.fila}'),
+                  subtitle: Text(
+                    'Fila ${aviso.fila} · ${aviso.central} › ${aviso.sindicato}\n${aviso.mensaje}',
+                  ),
+                ),
+            ],
+            if (errores.isNotEmpty)
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: errores.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final e = errores[i];
+                    return ListTile(
+                      dense: true,
+                      leading: CircleAvatar(
+                        radius: 16,
+                        backgroundColor: tema.colorScheme.errorContainer,
+                        child: Text(
+                          '${e.fila}',
+                          style: tema.textTheme.labelSmall?.copyWith(
+                            color: tema.colorScheme.onErrorContainer,
+                          ),
                         ),
                       ),
-                    ),
-                    title: Text(e.mensaje),
-                    subtitle: e.columna == null
-                        ? null
-                        : Text(
-                            'Columna ${e.columna}'
-                            '${(e.valor ?? '').isEmpty ? '' : ' · «${e.valor}»'}',
-                            style: tema.textTheme.bodySmall,
-                          ),
-                  );
-                },
+                      title: Text(
+                        (e.productor ?? '').isEmpty ? e.mensaje : e.productor!,
+                      ),
+                      subtitle: Text(
+                        [
+                          if (e.productor?.isNotEmpty == true) e.mensaje,
+                          if (e.ci?.isNotEmpty == true) 'CI: ${e.ci}',
+                          if (e.central?.isNotEmpty == true ||
+                              e.sindicato?.isNotEmpty == true)
+                            [e.central, e.sindicato]
+                                .whereType<String>()
+                                .where((v) => v.isNotEmpty)
+                                .join(' › '),
+                          if (e.productor == null && e.columna != null)
+                            'Columna ${e.columna}${(e.valor ?? '').isEmpty ? '' : ' · «${e.valor}»'}',
+                        ].join('\n'),
+                        style: tema.textTheme.bodySmall,
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
             if (informe.erroresOmitidos > 0)
               Padding(
                 padding: const EdgeInsets.all(12),

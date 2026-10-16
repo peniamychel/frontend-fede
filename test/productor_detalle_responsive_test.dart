@@ -10,11 +10,74 @@ import 'package:fede/ui/productores/productor_detalle_pagina.dart';
 import 'package:fede/ui/productores/imagenes_productor.dart';
 import 'package:fede/core/sesion_controlador.dart';
 import 'package:fede/ui/sesion_scope.dart';
+import 'package:fede/ui/lotes/lote_pagina.dart';
 
 const _central = 'CENTRAL REGIONAL DE PRODUCTORES TRECE DE JUNIO';
 const _sindicato = 'SINDICATO AGRARIO PRIMERO DE MAYO DE CARRASCO TROPICAL';
 
 void main() {
+  testWidgets('registro completo de central gestiona fotos y abre parcela', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1100, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _ApiDetalle(conFoto: true, conLote: true);
+    final sesion = SesionControlador(AutenticacionRepository(api));
+    sesion.sesion = Sesion(
+      token: 'prueba',
+      usuario: 'central',
+      nombreCompleto: 'Registro',
+      rol: 'OPERADOR',
+      roles: const {'REGISTRO_PRODUCTORES_CENTRAL'},
+      centralId: 3,
+      permisos: const {
+        'PRODUCTORES_VER',
+        'PRODUCTORES_EDITAR',
+        'SIE_REVISAR',
+        'LOTES_EDITAR',
+        'IMAGENES_EDITAR',
+      },
+      expiraEn: DateTime(2100),
+    );
+    final tema = PreferenciaTema();
+    addTearDown(tema.dispose);
+    addTearDown(sesion.dispose);
+    await tester.pumpWidget(
+      TemaScope(
+        preferencia: tema,
+        child: SesionScope(
+          controlador: sesion,
+          child: PadronScope(
+            padron: Padron(api: api),
+            child: const MaterialApp(
+              home: ProductorDetallePagina(productorId: 42),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<ImagenesProductor>(find.byType(ImagenesProductor)).editable,
+      isTrue,
+    );
+    expect(find.text('Reemplazar'), findsOneWidget);
+    expect(find.text('Borrar'), findsOneWidget);
+    expect(find.text('Cambiar'), findsOneWidget);
+    expect(find.text('Quitarle la parcela'), findsOneWidget);
+    expect(find.byTooltip('Editar'), findsOneWidget);
+    expect(find.byTooltip('Verificar con SIE'), findsOneWidget);
+    expect(find.byTooltip('Eliminar'), findsNothing);
+    expect(find.byTooltip('Ver e imprimir la credencial'), findsNothing);
+    await tester.tap(find.widgetWithText(ListTile, '15 A'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LotePagina), findsOneWidget);
+    expect(find.text('Cambiar clasificación'), findsOneWidget);
+    expect(api.lecturas, contains('/lotes/9/historial'));
+    expect(api.lecturas.where((ruta) => ruta.contains('/sistemas')), isEmpty);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'usuario de central gestiona fotos, observa y cambia número sin SIE ni clasificación',
     (tester) async {
@@ -140,10 +203,7 @@ void main() {
       tester.getTopLeft(apellidos).dy,
       lessThan(tester.getTopLeft(cedula).dy),
     );
-    expect(
-      tester.getTopLeft(cedula).dy,
-      lessThan(tester.getTopLeft(lote).dy),
-    );
+    expect(tester.getTopLeft(cedula).dy, lessThan(tester.getTopLeft(lote).dy));
     expect(tester.takeException(), isNull);
   });
 
@@ -329,6 +389,7 @@ class _ApiDetalle extends ApiClient {
   });
   final bool revisionSiePendiente;
   final creaciones = <String>[];
+  final lecturas = <String>[];
   String? ultimaRuta;
   Object? ultimoCuerpo;
   @override
@@ -359,6 +420,17 @@ class _ApiDetalle extends ApiClient {
   Future<void>? esperaDetalle;
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
+    lecturas.add(ruta);
+    if (ruta == '/lotes/9') {
+      return {
+        'id': 9,
+        'numero': '15',
+        'codigo': '15 A',
+        'estado': 'CON_SISTEMA',
+        'sindicatoId': 7,
+        'sindicatoNombre': _sindicato,
+      };
+    }
     if (ruta == '/productores/42') {
       await esperaDetalle;
       return {

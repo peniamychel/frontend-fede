@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fede/core/api_client.dart' show DescargaBinaria;
 
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/credenciales/informe_impresion_central_pagina.dart';
@@ -12,6 +13,43 @@ void main() {
     federacionId: 1,
     federacionNombre: 'FEDERA',
   );
+
+  test('descarga contabilidad por la ruta autenticada de la fase', () async {
+    final api = _ApiInforme();
+    await Padron(api: api).centrales.descargarContabilidadFase(13, 7);
+    expect(
+      api.rutaDescarga,
+      '/centrales/13/fases-impresion/7/contabilidad.pdf',
+    );
+    await Padron(api: api).centrales.descargarInformeFase(13, 7);
+    expect(api.rutaDescarga, '/centrales/13/fases-impresion/7/informe.pdf');
+  });
+
+  testWidgets('ofrece ambos PDF por fase también en pantalla móvil', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      PadronScope(
+        padron: Padron(api: _ApiInforme()),
+        child: const MaterialApp(
+          home: InformeImpresionCentralPagina(central: central),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byTooltip('Descargar contabilidad de la fase'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.byTooltip('Descargar informe de la fase'), findsOneWidget);
+    expect(find.byTooltip('Descargar contabilidad de la fase'), findsOneWidget);
+    expect(find.textContaining('sin una fase abierta'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('muestra totales, porcentaje y detalle por sindicato', (
     tester,
@@ -127,6 +165,21 @@ void main() {
 
 class _ApiInforme extends ApiClient {
   List<int>? ultimaSeleccion;
+  String? rutaDescarga;
+
+  @override
+  Future<DescargaBinaria> obtenerBytes(
+    String ruta, {
+    Map<String, dynamic>? query,
+    Duration tiempoLimite = const Duration(minutes: 5),
+  }) async {
+    rutaDescarga = ruta;
+    return const DescargaBinaria(
+      bytes: [37, 80, 68, 70],
+      nombreArchivo: 'contabilidad.pdf',
+      tipoMime: 'application/pdf',
+    );
+  }
 
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {

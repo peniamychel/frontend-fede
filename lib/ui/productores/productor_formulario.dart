@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
+import '../sesion_scope.dart';
 import '../widgets/estados.dart';
 import 'productor_detalle_pagina.dart';
 
@@ -45,8 +47,6 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   late final TextEditingController _apellidos;
   late final TextEditingController _ci;
 
-  late bool _marcado;
-
   // ---------------------------------------------------- parcela y sistema
   //
   // Solo en el alta. En la edición la parcela se maneja desde la ficha, que
@@ -73,6 +73,11 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
 
   bool _cargando = true;
   bool _guardando = false;
+  bool _registroCompletado = false;
+  bool _confirmandoSalida = false;
+  bool _permitirSalir = false;
+  late final int? _centralInicialId;
+  late final int? _sindicatoInicialId;
   Object? _errorCarga;
 
   /// Con el sindicato fijado se muestra un resumen en vez de los desplegables.
@@ -88,11 +93,73 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   String? _mensajeCedula;
 
   bool get _esEdicion => widget.productor != null;
+  // También se consulta durante initState, sin registrar dependencias del árbol.
+  bool _permiso(String codigo) =>
+      context.getInheritedWidgetOfExactType<SesionScope>()?.notifier?.puede(
+        codigo,
+      ) ??
+      true;
+  bool get _registroLimitado => !_esEdicion && !_permiso('PRODUCTORES_EDITAR');
+  bool get _puedeConsultarSie => _permiso('SIE_REVISAR');
   bool get _datosHabilitados =>
       _esEdicion ||
+      !_puedeConsultarSie ||
+      _estadoCedula == _EstadoCedula.existente ||
       _estadoCedula == _EstadoCedula.encontradaSie ||
       _estadoCedula == _EstadoCedula.ingresoManual;
   bool get _verificandoCedula => _estadoCedula == _EstadoCedula.buscando;
+
+  bool get _hayDatosSinGuardar =>
+      !_esEdicion &&
+      !_registroCompletado &&
+      ([
+            _ci,
+            _nombres,
+            _apellidos,
+            _parcelaNumero,
+          ].any((c) => c.text.trim().isNotEmpty) ||
+          _opcionParcela != _OpcionParcela.ninguna ||
+          _parcelaExistente != null ||
+          (_central != null && _central!.id != _centralInicialId) ||
+          (_sindicato != null && _sindicato!.id != _sindicatoInicialId));
+
+  void _actualizarSalida() {
+    if (mounted && !_esEdicion && !_registroCompletado) setState(() {});
+  }
+
+  Future<void> _intentarSalir() async {
+    if (_guardando || _confirmandoSalida || _permitirSalir) return;
+    if (_hayDatosSinGuardar) {
+      _confirmandoSalida = true;
+      final salir = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('¿Salir sin registrar al productor?'),
+          content: const Text(
+            'Los datos ingresados todavía no se guardaron. Si salís, se perderán.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Seguir registrando'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Salir sin guardar'),
+            ),
+          ],
+        ),
+      );
+      _confirmandoSalida = false;
+      if (!mounted || salir != true) return;
+    }
+    if (!mounted || _guardando) return;
+    setState(() => _permitirSalir = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   void initState() {
@@ -104,7 +171,18 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     if (!_esEdicion) _ci.addListener(_alCambiarCedula);
     _parcelaNumero = TextEditingController();
     _parcelaNumero.addListener(_alCambiarNumeroParcela);
-    _marcado = p?.marcado ?? false;
+    for (final controlador in [_ci, _nombres, _apellidos, _parcelaNumero]) {
+      controlador.addListener(_actualizarSalida);
+    }
+    _centralInicialId =
+        p?.centralId ??
+        widget.sindicatoFijo?.centralId ??
+        context
+            .getInheritedWidgetOfExactType<SesionScope>()
+            ?.notifier
+            ?.sesion
+            ?.centralId;
+    _sindicatoInicialId = p?.sindicatoId ?? widget.sindicatoFijo?.id;
     _sindicatoBloqueado = p == null && widget.sindicatoFijo != null;
 
     if (_sindicatoBloqueado) {
@@ -129,6 +207,9 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
 
   @override
   void dispose() {
+    for (final controlador in [_ci, _nombres, _apellidos, _parcelaNumero]) {
+      controlador.removeListener(_actualizarSalida);
+    }
     if (!_esEdicion) _ci.removeListener(_alCambiarCedula);
     _nombres.dispose();
     _apellidos.dispose();
@@ -140,6 +221,11 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
 
   Future<void> _cargarJerarquia() async {
     final padron = PadronScope.of(context);
+    final centralAsignada = context
+        .getInheritedWidgetOfExactType<SesionScope>()
+        ?.notifier
+        ?.sesion
+        ?.centralId;
     try {
       final centrales = await padron.centrales.listar();
       Central? central;
@@ -155,9 +241,10 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
       final destinoSindicatoId =
           widget.productor?.sindicatoId ?? _sindicato?.id;
 
-      if (destinoCentralId != null) {
+      final centralInicial = centralAsignada ?? destinoCentralId;
+      if (centralInicial != null) {
         for (final c in centrales) {
-          if (c.id == destinoCentralId) central = c;
+          if (c.id == centralInicial) central = c;
         }
         if (central != null) {
           sindicatos = await padron.centrales.sindicatos(central.id);
@@ -175,6 +262,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
         _sindicato = sindicato;
         _cargando = false;
       });
+      if (sindicato != null) _cargarDisponibles();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -231,7 +319,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   /// lo dice.
   Future<void> _cargarDisponibles() async {
     final sindicato = _sindicato;
-    if (_esEdicion || sindicato == null) return;
+    if (_esEdicion || _registroLimitado || sindicato == null) return;
 
     setState(() => _cargandoDisponibles = true);
     try {
@@ -280,6 +368,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   List<Productor> _yaRegistrados = const [];
 
   void _alCambiarCedula() {
+    if (!_puedeConsultarSie) return;
     final consultada = _cedulaConsultada;
     if (consultada == null || _ci.text.trim() == consultada) return;
     setState(() {
@@ -293,7 +382,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   }
 
   Future<void> _verificarCedula() async {
-    if (_esEdicion || _verificandoCedula) return;
+    if (_esEdicion || !_puedeConsultarSie || _verificandoCedula) return;
     final buscado = _ci.text.trim();
     if (buscado.isEmpty) {
       mostrarAviso(context, 'Ingresá la cédula de identidad.');
@@ -428,6 +517,14 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                 onTap: () => _abrirFicha(p),
               ),
             ),
+          const SizedBox(height: 8),
+          Text(
+            'Podés registrar otro productor con esta misma CI, sin añadir X. '
+            'Todos los registros con esta CI se mostrarán en rojo y no podrán imprimir '
+            'hasta corregir la cédula repetida. En los informes figurará Revisión CI. '
+            'Los vetos siguen impidiendo registrar esa cédula.',
+            style: TextStyle(color: tema.colorScheme.error),
+          ),
         ],
       ),
     );
@@ -459,6 +556,20 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   // ------------------------------------------------ la sección de parcela
 
   List<Widget> _seccionParcela(BuildContext context) {
+    if (_registroLimitado) {
+      if (!_permiso('NUMERO_LOTE_EDITAR')) return const [];
+      return [
+        const SizedBox(height: 24),
+        _titulo(context, 'Número de lote'),
+        _campo(
+          controlador: _parcelaNumero,
+          etiqueta: 'N° de lote',
+          ayuda: 'Opcional. Se asignará dentro del sindicato autorizado.',
+          campoServidor: 'numero',
+          maximo: 20,
+        ),
+      ];
+    }
     final tema = Theme.of(context);
     return [
       const SizedBox(height: 24),
@@ -641,6 +752,14 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   Future<void> _asignarParcela(Productor productor, Sindicato sindicato) async {
     final padron = PadronScope.of(context);
 
+    if (_registroLimitado) {
+      await padron.lotes.guardarNumeroProductor(
+        productor.id,
+        _texto(_parcelaNumero)!,
+      );
+      return;
+    }
+
     switch (_opcionParcela) {
       case _OpcionParcela.nueva:
         await padron.lotes.crear(
@@ -688,6 +807,13 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   }
 
   Future<void> _guardar() async {
+    if (_guardando || _registroCompletado || _confirmandoSalida) return;
+    if (_esEdicion
+        ? !_permiso('PRODUCTORES_EDITAR')
+        : !context.puedeRegistrarProductores) {
+      mostrarAviso(context, 'No tenés permiso para guardar estos datos.');
+      return;
+    }
     setState(() => _erroresServidor = const {});
 
     if (!_datosHabilitados) {
@@ -711,6 +837,15 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
       mostrarAviso(context, 'Elegí el sindicato al que pertenece.');
       return;
     }
+    final centralAsignada = context
+        .getInheritedWidgetOfExactType<SesionScope>()
+        ?.notifier
+        ?.sesion
+        ?.centralId;
+    if (centralAsignada != null && sindicato.centralId != centralAsignada) {
+      mostrarAviso(context, 'Elegí un sindicato de la central asignada.');
+      return;
+    }
 
     final request = ProductorRequest(
       nombres: _nombres.text.trim(),
@@ -726,7 +861,6 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
       nombresCorregidos: widget.productor?.nombresCorregidos,
       apellidosCorregidos: widget.productor?.apellidosCorregidos,
       fotoDescripcion: widget.productor?.fotoDescripcion,
-      marcado: _marcado,
     );
 
     setState(() => _guardando = true);
@@ -746,7 +880,11 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
       }
 
       final creado = await repo.crear(request);
-      if (_opcionParcela != _OpcionParcela.ninguna) {
+      if (!mounted) return;
+      setState(() => _registroCompletado = true);
+      if (_registroLimitado
+          ? _texto(_parcelaNumero) != null && _permiso('NUMERO_LOTE_EDITAR')
+          : _opcionParcela != _OpcionParcela.ninguna) {
         if (!mounted) return;
         try {
           await _asignarParcela(creado, sindicato);
@@ -789,6 +927,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   }
 
   Future<void> _avisarIncorporacionAFase(Productor productor) async {
+    if (!_permiso('CARNETS_IMPRIMIR')) return;
     if (productor.credencialImpresa) return;
     if (!productor.faseImpresionPendiente || !mounted) return;
     await showDialog<void>(
@@ -816,32 +955,39 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          switch ((_esEdicion, widget.sindicatoFijo)) {
-            (true, _) => 'Editar productor',
-            (false, final Sindicato s) => 'Nuevo productor en ${s.nombre}',
-            _ => 'Nuevo productor',
-          },
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-      body: switch ((_cargando, _errorCarga)) {
-        (true, _) => const Cargando(mensaje: 'Cargando la jerarquía…'),
-        (_, final Object e) => FalloCarga(
-          error: e,
-          alReintentar: () {
-            setState(() {
-              _cargando = true;
-              _errorCarga = null;
-            });
-            _cargarJerarquia();
-          },
-        ),
-        _ => _cuerpo(context),
+    return PopScope<bool>(
+      canPop:
+          _permitirSalir || _esEdicion || (!_guardando && !_hayDatosSinGuardar),
+      onPopInvokedWithResult: (salio, _) {
+        if (!salio) _intentarSalir();
       },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            switch ((_esEdicion, widget.sindicatoFijo)) {
+              (true, _) => 'Editar productor',
+              (false, final Sindicato s) => 'Nuevo productor en ${s.nombre}',
+              _ => 'Nuevo productor',
+            },
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        body: switch ((_cargando, _errorCarga)) {
+          (true, _) => const Cargando(mensaje: 'Cargando la jerarquía…'),
+          (_, final Object e) => FalloCarga(
+            error: e,
+            alReintentar: () {
+              setState(() {
+                _cargando = true;
+                _errorCarga = null;
+              });
+              _cargarJerarquia();
+            },
+          ),
+          _ => _cuerpo(context),
+        },
+      ),
     );
   }
 
@@ -861,7 +1007,8 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                   _campoCedula(),
                   if (_yaRegistrados.isNotEmpty)
                     _avisoDeCedulaRepetida(context),
-                  if (!_esEdicion) _estadoDeCedula(context),
+                  if (!_esEdicion && _puedeConsultarSie)
+                    _estadoDeCedula(context),
                   IgnorePointer(
                     ignoring: !_datosHabilitados,
                     child: AnimatedOpacity(
@@ -905,7 +1052,9 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                                     child: Text(c.nombre),
                                   ),
                               ],
-                              onChanged: _elegirCentral,
+                              onChanged: context.accesoCentral
+                                  ? null
+                                  : _elegirCentral,
                               validator: (v) =>
                                   v == null ? 'Elegí una central' : null,
                             ),
@@ -935,17 +1084,6 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                             ),
                           ],
                           if (!_esEdicion) ..._seccionParcela(context),
-                          const SizedBox(height: 24),
-                          _titulo(context, 'Revisión'),
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            value: _marcado,
-                            onChanged: (v) => setState(() => _marcado = v),
-                            title: const Text('Marcado para seguimiento'),
-                            subtitle: const Text(
-                              'Marca manual puesta durante la revisión.',
-                            ),
-                          ),
                           const SizedBox(height: 32),
                           FilledButton.icon(
                             onPressed: _guardando ? null : _guardar,
@@ -988,17 +1126,19 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
         controller: _ci,
         autofocus: !_esEdicion,
         maxLength: ProductorRequest.maxCi,
-        textInputAction: _esEdicion
+        textInputAction: _esEdicion || !_puedeConsultarSie
             ? TextInputAction.next
             : TextInputAction.search,
-        onFieldSubmitted: _esEdicion ? null : (_) => _verificarCedula(),
+        onFieldSubmitted: _esEdicion || !_puedeConsultarSie
+            ? null
+            : (_) => _verificarCedula(),
         decoration: InputDecoration(
           labelText: _esEdicion
               ? 'Cédula de identidad'
               : 'Cédula de identidad *',
           helperText: 'Admite complemento, por ejemplo 8005906-1V.',
           counterText: '',
-          suffixIcon: _esEdicion
+          suffixIcon: _esEdicion || !_puedeConsultarSie
               ? null
               : _verificandoCedula
               ? const Padding(

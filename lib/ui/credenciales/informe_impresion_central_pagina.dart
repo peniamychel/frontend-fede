@@ -137,12 +137,20 @@ class _InformeImpresionCentralPaginaState
     }
   }
 
-  Future<void> _descargarFase(FaseImpresionCarnet fase) async {
+  Future<void> _descargarFase(
+    FaseImpresionCarnet fase, {
+    bool contabilidad = false,
+  }) async {
+    if (_descargandoFases.contains(fase.id)) return;
     setState(() => _descargandoFases.add(fase.id));
     try {
-      final descarga = await PadronScope.of(
-        context,
-      ).centrales.descargarInformeFase(widget.central.id, fase.id);
+      final repositorio = PadronScope.of(context).centrales;
+      final descarga = contabilidad
+          ? await repositorio.descargarContabilidadFase(
+              widget.central.id,
+              fase.id,
+            )
+          : await repositorio.descargarInformeFase(widget.central.id, fase.id);
       await guardarArchivo(
         descarga.bytes,
         descarga.nombreArchivo,
@@ -151,7 +159,7 @@ class _InformeImpresionCentralPaginaState
       if (mounted) {
         mostrarExito(
           context,
-          'Informe de la ${ordinalFase(fase.numero)} fase descargado.',
+          '${contabilidad ? 'Contabilidad' : 'Informe'} de la ${ordinalFase(fase.numero)} fase descargado.',
         );
       }
     } catch (e) {
@@ -215,6 +223,8 @@ class _InformeImpresionCentralPaginaState
           alHabilitarFase: _habilitarFase,
           alCerrarFase: _cerrarFase,
           alDescargarFase: _descargarFase,
+          alDescargarContabilidad: (fase) =>
+              _descargarFase(fase, contabilidad: true),
         ),
       ),
     );
@@ -254,6 +264,7 @@ class _Contenido extends StatelessWidget {
     required this.alHabilitarFase,
     required this.alCerrarFase,
     required this.alDescargarFase,
+    required this.alDescargarContabilidad,
   });
 
   final _DatosPagina datos;
@@ -268,6 +279,7 @@ class _Contenido extends StatelessWidget {
   final Future<void> Function(int numero) alHabilitarFase;
   final Future<void> Function(FaseImpresionCarnet fase) alCerrarFase;
   final Future<void> Function(FaseImpresionCarnet fase) alDescargarFase;
+  final Future<void> Function(FaseImpresionCarnet fase) alDescargarContabilidad;
 
   @override
   Widget build(BuildContext context) {
@@ -311,6 +323,7 @@ class _Contenido extends StatelessWidget {
             alHabilitar: alHabilitarFase,
             alCerrar: alCerrarFase,
             alDescargar: alDescargarFase,
+            alDescargarContabilidad: alDescargarContabilidad,
             puedeGestionar: puedeGestionarFases,
             puedeDescargar: puedeDescargar,
           ),
@@ -532,6 +545,7 @@ class _PanelFasesImpresion extends StatelessWidget {
     required this.alHabilitar,
     required this.alCerrar,
     required this.alDescargar,
+    required this.alDescargarContabilidad,
     required this.puedeGestionar,
     required this.puedeDescargar,
   });
@@ -542,6 +556,7 @@ class _PanelFasesImpresion extends StatelessWidget {
   final Future<void> Function(int numero) alHabilitar;
   final Future<void> Function(FaseImpresionCarnet fase) alCerrar;
   final Future<void> Function(FaseImpresionCarnet fase) alDescargar;
+  final Future<void> Function(FaseImpresionCarnet fase) alDescargarContabilidad;
   final bool puedeGestionar;
   final bool puedeDescargar;
 
@@ -558,8 +573,10 @@ class _PanelFasesImpresion extends StatelessWidget {
             Text('Fases de impresión', style: tema.textTheme.titleMedium),
             const SizedBox(height: 5),
             Text(
-              'Windows solo puede imprimir carnets mientras exista una fase '
-              'habilitada. Al cerrarla, su informe queda conservado.',
+              'La impresión masiva requiere una fase habilitada. Las impresiones '
+              'manuales cuentan en la fase abierta; sin una fase abierta quedan '
+              'identificadas con m. La contabilidad cuenta una sola vez por '
+              'productor y fase, aunque se vuelva a imprimir en esa fase.',
               style: tema.textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
@@ -636,19 +653,31 @@ class _PanelFasesImpresion extends StatelessWidget {
                     '· ${fase.abierta ? 'Habilitada' : 'Cerrada'}',
                   ),
                   trailing: puedeDescargar
-                      ? IconButton(
-                          tooltip: 'Descargar informe de la fase',
-                          onPressed: descargando.contains(fase.id)
-                              ? null
-                              : () => alDescargar(fase),
-                          icon: descargando.contains(fase.id)
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.picture_as_pdf_outlined),
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Descargar informe de la fase',
+                              onPressed: descargando.contains(fase.id)
+                                  ? null
+                                  : () => alDescargar(fase),
+                              icon: descargando.contains(fase.id)
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.picture_as_pdf_outlined),
+                            ),
+                            IconButton(
+                              tooltip: 'Descargar contabilidad de la fase',
+                              onPressed: descargando.contains(fase.id)
+                                  ? null
+                                  : () => alDescargarContabilidad(fase),
+                              icon: const Icon(Icons.table_chart_outlined),
+                            ),
+                          ],
                         )
                       : null,
                 ),

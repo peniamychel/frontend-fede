@@ -8,6 +8,7 @@ import 'diseno_credencial_repository.dart';
 import 'federacion_repository.dart';
 import 'importacion_repository.dart';
 import 'lote_repository.dart';
+import 'operador_credencial_repository.dart';
 import 'productor_repository.dart';
 import 'reunion_repository.dart';
 import 'sindicato_repository.dart';
@@ -31,6 +32,7 @@ export '../models/informe_impresion_central.dart';
 export '../models/lado_credencial.dart';
 export '../models/importacion.dart';
 export '../models/lote.dart';
+export '../models/operador_credencial.dart';
 export '../models/lista_fisica_sindicato.dart';
 export '../models/productor.dart';
 export '../models/productor_papelera.dart';
@@ -48,6 +50,7 @@ export 'diseno_credencial_repository.dart';
 export 'federacion_repository.dart';
 export 'importacion_repository.dart';
 export 'lote_repository.dart';
+export 'operador_credencial_repository.dart';
 export 'productor_repository.dart';
 export 'reunion_repository.dart';
 export 'sindicato_repository.dart';
@@ -69,6 +72,13 @@ class Padron {
   late final BackupRepository backups = BackupRepository(api);
   late final DisenoCredencialRepository disenoCredencial =
       DisenoCredencialRepository(api);
+  late final DisenoCredencialRepository disenoCredencialOperador =
+      DisenoCredencialRepository(
+        api,
+        ruta: '/configuracion/credencial-operador',
+      );
+  late final OperadorCredencialRepository credencialesOperadores =
+      OperadorCredencialRepository(api);
 
   late final FederacionRepository federaciones = FederacionRepository(api);
   late final CentralRepository centrales = CentralRepository(api);

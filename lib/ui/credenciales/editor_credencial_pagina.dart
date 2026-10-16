@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/credencial_previa.dart';
 import '../../models/diseno_credencial.dart';
+import '../../repositories/diseno_credencial_repository.dart';
 import '../padron_scope.dart';
 import '../permisos_ui.dart';
 import '../widgets/estados.dart';
@@ -13,7 +14,9 @@ import 'tarjeta_previa.dart';
 import 'fuentes_bajo_demanda.dart';
 
 class EditorCredencialPagina extends StatefulWidget {
-  const EditorCredencialPagina({super.key});
+  const EditorCredencialPagina({super.key, this.operadores = false});
+
+  final bool operadores;
 
   @override
   State<EditorCredencialPagina> createState() => _EditorCredencialPaginaState();
@@ -30,6 +33,20 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
   bool _guardandoPlantilla = false;
   bool _guardandoImagen = false;
 
+  DisenoCredencialRepository get _repositorio {
+    final padron = PadronScope.of(context);
+    return widget.operadores
+        ? DisenoCredencialRepository(
+            padron.api,
+            ruta: '/configuracion/credencial-operador',
+          )
+        : padron.disenoCredencial;
+  }
+
+  bool get _editable => context.puede(
+    widget.operadores ? 'CREDENCIALES_OPERADORES_GESTIONAR' : 'CARNETS_DISENO',
+  );
+
   @override
   void initState() {
     super.initState();
@@ -38,11 +55,11 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
 
   Future<void> _cargar() async {
     try {
-      final editor = await PadronScope.of(context).disenoCredencial.obtener();
+      final editor = await _repositorio.obtener();
       if (!mounted) return;
       setState(() {
         _editor = editor;
-        _diseno = editor.diseno.elementos.isEmpty
+        _diseno = !widget.operadores && editor.diseno.elementos.isEmpty
             ? DisenoCredencial.predeterminado()
             : editor.diseno;
         _campoNuevo = editor.campos.firstOrNull?.campo;
@@ -59,9 +76,7 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
     if (diseno == null || _guardando) return;
     setState(() => _guardando = true);
     try {
-      final editor = await PadronScope.of(
-        context,
-      ).disenoCredencial.guardar(diseno);
+      final editor = await _repositorio.guardar(diseno);
       if (!mounted) return;
       setState(() {
         _editor = editor;
@@ -82,9 +97,17 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Restablecer diseño'),
-        content: const Text(
-          'Se perderán los cambios de posición, tamaño y campos agregados.',
+        title: Text(
+          widget.operadores
+              ? 'Aplicar diseño vertical verde'
+              : 'Restablecer diseño',
+        ),
+        content: Text(
+          widget.operadores
+              ? 'Se aplicará el diseño vertical verde de referencia en ambas caras. '
+                    'Se reemplazarán los fondos cargados y la distribución de '
+                    'campos. Los datos y fotografías del personal se conservarán.'
+              : 'Se perderán los cambios de posición, tamaño y campos agregados.',
         ),
         actions: [
           TextButton(
@@ -93,16 +116,14 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Restablecer'),
+            child: Text(widget.operadores ? 'Aplicar diseño' : 'Restablecer'),
           ),
         ],
       ),
     );
     if (confirmar != true || !mounted) return;
     try {
-      final editor = await PadronScope.of(
-        context,
-      ).disenoCredencial.restablecer();
+      final editor = await _repositorio.restablecer();
       if (!mounted) return;
       setState(() {
         _editor = editor;
@@ -114,13 +135,40 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
     }
   }
 
+  void _cambiarOrientacion(OrientacionCredencial orientacion) {
+    if (!widget.operadores || !_editable || _diseno == null) return;
+    setState(() {
+      _diseno = _diseno!.conOrientacion(orientacion);
+    });
+  }
+
+  String? _plantillaUrl() {
+    final url = _editor!.plantillaUrl(_cara);
+    if (!widget.operadores || url == null) return url;
+    final uri = Uri.parse(url);
+    return uri
+        .replace(
+          queryParameters: {
+            ...uri.queryParameters,
+            'orientacion': _diseno!.orientacion.name.toUpperCase(),
+          },
+        )
+        .toString();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final editable = context.puede('CARNETS_DISENO');
+    final editable = _editable;
     final diseno = _diseno;
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Diseño del carnet')),
+        appBar: AppBar(
+          title: Text(
+            widget.operadores
+                ? 'Diseño de credencial de operador'
+                : 'Diseño del carnet',
+          ),
+        ),
         body: FalloCarga(error: _error!, alReintentar: _cargar),
       );
     }
@@ -130,13 +178,18 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Editor del carnet'),
+        title: Text(
+          widget.operadores
+              ? 'Editor de credenciales de operadores'
+              : 'Editor del carnet',
+        ),
         actions: [
-          TextButton.icon(
-            onPressed: editable ? _restablecer : null,
-            icon: const Icon(Icons.restore),
-            label: const Text('Restablecer'),
-          ),
+          if (!widget.operadores)
+            TextButton.icon(
+              onPressed: editable && !_guardando ? _restablecer : null,
+              icon: const Icon(Icons.restore),
+              label: const Text('Restablecer'),
+            ),
           const SizedBox(width: 8),
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -156,9 +209,11 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
       body: LayoutBuilder(
         builder: (context, limites) {
           final anchoEditor = math.min(
-            680.0,
+            diseno.orientacion == OrientacionCredencial.vertical
+                ? 420.0
+                : 680.0,
             math.max(
-              320.0,
+              120.0,
               limites.maxWidth - (limites.maxWidth >= 1050 ? 390 : 32),
             ),
           );
@@ -169,24 +224,30 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
             seleccion: _seleccion,
             alSeleccionar: (id) => setState(() => _seleccion = id),
             alCambiar: _reemplazar,
-            plantillaUrl: _editor!.plantillaUrl(_cara),
+            plantillaUrl: _plantillaUrl(),
+            operadores: widget.operadores,
+            editable: editable,
           );
           final panel = SizedBox(
             width: limites.maxWidth >= 1050 ? 350 : null,
-            child: _PanelPropiedades(
-              editor: _editor!,
-              diseno: diseno,
-              cara: _cara,
-              seleccion: _seleccion,
-              campoNuevo: _campoNuevo,
-              alCambiarCampoNuevo: (valor) =>
-                  setState(() => _campoNuevo = valor),
-              alAgregar: _agregar,
-              alSeleccionar: (id) => setState(() => _seleccion = id),
-              alCambiar: _reemplazar,
-              alEliminar: _eliminar,
-              alSubirCapa: () => _moverCapa(1),
-              alBajarCapa: () => _moverCapa(-1),
+            child: AbsorbPointer(
+              absorbing: !editable,
+              child: _PanelPropiedades(
+                editor: _editor!,
+                diseno: diseno,
+                cara: _cara,
+                seleccion: _seleccion,
+                campoNuevo: _campoNuevo,
+                alCambiarCampoNuevo: (valor) =>
+                    setState(() => _campoNuevo = valor),
+                alAgregar: _agregar,
+                alSeleccionar: (id) => setState(() => _seleccion = id),
+                alCambiar: _reemplazar,
+                alEliminar: _eliminar,
+                alSubirCapa: () => _moverCapa(1),
+                alBajarCapa: () => _moverCapa(-1),
+                operadores: widget.operadores,
+              ),
             ),
           );
 
@@ -195,6 +256,27 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (widget.operadores) ...[
+                  SegmentedButton<OrientacionCredencial>(
+                    segments: const [
+                      ButtonSegment(
+                        value: OrientacionCredencial.horizontal,
+                        icon: Icon(Icons.crop_landscape),
+                        label: Text('Horizontal'),
+                      ),
+                      ButtonSegment(
+                        value: OrientacionCredencial.vertical,
+                        icon: Icon(Icons.crop_portrait),
+                        label: Text('Vertical'),
+                      ),
+                    ],
+                    selected: {diseno.orientacion},
+                    onSelectionChanged: editable && !_guardando
+                        ? (valor) => _cambiarOrientacion(valor.first)
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 SegmentedButton<CaraCredencial>(
                   segments: const [
                     ButtonSegment(
@@ -220,6 +302,14 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
+                    if (widget.operadores)
+                      OutlinedButton.icon(
+                        onPressed: !editable || _guardando
+                            ? null
+                            : _restablecer,
+                        icon: const Icon(Icons.auto_awesome_outlined),
+                        label: const Text('Aplicar diseño vertical verde'),
+                      ),
                     FilledButton.tonalIcon(
                       onPressed: !editable || _guardandoPlantilla
                           ? null
@@ -235,7 +325,11 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
                             ? null
                             : _restablecerPlantilla,
                         icon: const Icon(Icons.restore_page_outlined),
-                        label: const Text('Usar plantilla original'),
+                        label: Text(
+                          widget.operadores
+                              ? 'Usar fondo original'
+                              : 'Usar plantilla original',
+                        ),
                       ),
                     ZonaSoltarArchivos(
                       habilitada: editable && !_guardandoImagen,
@@ -262,12 +356,22 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Arrastrá una caja para moverla. Usá el punto de la esquina '
-                  'superior derecha para cambiar su ancho y alto. Si la '
-                  'plantilla PNG tiene un hueco para la foto, dejá el objeto '
-                  'Fotografía debajo de Plantilla. Para evitar deformaciones, '
-                  'usá una imagen horizontal de 1355 × 851 px o de la misma '
-                  'proporción. PNG conserva transparencias; JPG no.',
+                  widget.operadores
+                      ? 'Cargá el diseño de la cara y del reverso de los '
+                            'operadores. Arrastrá cada campo para moverlo y '
+                            'usá el punto de la esquina superior derecha para '
+                            'cambiar su ancho y alto. La reseña y la firma del '
+                            'ejecutivo se comparten entre todas estas '
+                            'credenciales. Usá imágenes de '
+                            '${diseno.orientacion == OrientacionCredencial.vertical ? '851 × 1355' : '1355 × 851'} '
+                            'px o de la misma proporción. La fotografía se '
+                            'carga en la ficha de cada operador.'
+                      : 'Arrastrá una caja para moverla. Usá el punto de la esquina '
+                            'superior derecha para cambiar su ancho y alto. Si la '
+                            'plantilla PNG tiene un hueco para la foto, dejá el objeto '
+                            'Fotografía debajo de Plantilla. Para evitar deformaciones, '
+                            'usá una imagen horizontal de 1355 × 851 px o de la misma '
+                            'proporción. PNG conserva transparencias; JPG no.',
                   style: Theme.of(context).textTheme.bodySmall,
                   textAlign: TextAlign.center,
                 ),
@@ -320,15 +424,30 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
       etiqueta: campo.etiqueta,
       x: 20,
       y: 20,
-      ancho: tipo == TipoElementoCredencial.imagen ? 50 : 90,
-      alto: tipo == TipoElementoCredencial.imagen ? 35 : 12,
-      tamanoFuente: tipo == TipoElementoCredencial.pieFirma ? 4.2 : 8,
-      negrita: tipo != TipoElementoCredencial.imagen,
+      ancho: campo.campo == 'RESENA'
+          ? math.min(200, _diseno!.ancho - 40)
+          : tipo == TipoElementoCredencial.imagen
+          ? 50
+          : 90,
+      alto: campo.campo == 'RESENA'
+          ? 65
+          : tipo == TipoElementoCredencial.imagen
+          ? widget.operadores && campo.campo == 'FOTO'
+                ? 50
+                : 35
+          : 12,
+      tamanoFuente: campo.campo == 'RESENA'
+          ? 7
+          : tipo == TipoElementoCredencial.pieFirma
+          ? 4.2
+          : 8,
+      negrita: campo.campo != 'RESENA' && tipo != TipoElementoCredencial.imagen,
       alineacion: tipo == TipoElementoCredencial.texto
           ? AlineacionCredencial.izquierda
           : AlineacionCredencial.centro,
       color: '#000000',
       texto: campo.campo == 'TEXTO_FIJO' ? 'NUEVO TEXTO' : '',
+      circular: widget.operadores && campo.campo == 'FOTO',
     );
     setState(() {
       _diseno = _diseno!.conElementos([..._diseno!.elementos, nuevo]);
@@ -391,9 +510,11 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
     if (bytes == null || bytes.isEmpty || _guardandoPlantilla) return;
     setState(() => _guardandoPlantilla = true);
     try {
-      final editor = await PadronScope.of(
-        context,
-      ).disenoCredencial.subirPlantilla(_cara, bytes, archivo.name);
+      final editor = await _repositorio.subirPlantilla(
+        _cara,
+        bytes,
+        archivo.name,
+      );
       if (!mounted) return;
       setState(() => _editor = editor);
       mostrarAviso(
@@ -411,9 +532,7 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
     if (_guardandoPlantilla) return;
     setState(() => _guardandoPlantilla = true);
     try {
-      final editor = await PadronScope.of(
-        context,
-      ).disenoCredencial.restablecerPlantilla(_cara);
+      final editor = await _repositorio.restablecerPlantilla(_cara);
       if (!mounted) return;
       setState(() => _editor = editor);
     } catch (e) {
@@ -441,9 +560,7 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
     if (bytes == null || bytes.isEmpty || _guardandoImagen) return;
     setState(() => _guardandoImagen = true);
     try {
-      final subida = await PadronScope.of(
-        context,
-      ).disenoCredencial.subirImagen(bytes, archivo.name);
+      final subida = await _repositorio.subirImagen(bytes, archivo.name);
       if (!mounted) return;
       final id = 'imagen-${DateTime.now().microsecondsSinceEpoch}';
       final etiqueta = archivo.name.replaceFirst(RegExp(r'\.[^.]+$'), '');
@@ -480,7 +597,7 @@ class _EditorCredencialPaginaState extends State<EditorCredencialPagina> {
   }
 
   Widget _zonaPlantilla(Widget lienzo) => ZonaSoltarArchivos(
-    habilitada: !_guardandoPlantilla,
+    habilitada: _editable && !_guardandoPlantilla,
     extensionesPermitidas: extensionesImagen,
     mensaje: 'Soltá aquí la nueva plantilla',
     alSoltar: (archivos) async {
@@ -500,6 +617,8 @@ class _LienzoEditable extends StatelessWidget {
     required this.alSeleccionar,
     required this.alCambiar,
     required this.plantillaUrl,
+    required this.operadores,
+    required this.editable,
   });
 
   final DisenoCredencial diseno;
@@ -509,8 +628,10 @@ class _LienzoEditable extends StatelessWidget {
   final ValueChanged<String> alSeleccionar;
   final ValueChanged<ElementoDisenoCredencial> alCambiar;
   final String? plantillaUrl;
+  final bool operadores;
+  final bool editable;
 
-  double get escala => ancho / TarjetaPrevia.anchoPt;
+  double get escala => ancho / diseno.ancho;
 
   @override
   Widget build(BuildContext context) {
@@ -522,28 +643,31 @@ class _LienzoEditable extends StatelessWidget {
     final seleccionado = elementos.where((e) => e.id == seleccion).firstOrNull;
     return SizedBox(
       width: ancho,
-      height: TarjetaPrevia.altoPt * escala,
+      height: diseno.alto * escala,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           TarjetaPrevia(
-            previa: _muestra,
+            previa: operadores ? _muestraOperador : _muestra,
             reverso: cara == CaraCredencial.reverso,
             ancho: ancho,
             diseno: diseno,
             plantillaUrl: plantillaUrl,
+            plantillaPorDefecto: !operadores,
+            valores: operadores ? _valoresOperador : const {},
           ),
-          for (final e in elementos)
-            _CajaMovible(
-              key: ValueKey('caja-${e.id}'),
-              elemento: e,
-              diseno: diseno,
-              escala: escala,
-              elegido: seleccion == e.id,
-              alSeleccionar: alSeleccionar,
-              alCambiar: alCambiar,
-            ),
-          if (seleccionado != null)
+          if (editable)
+            for (final e in elementos)
+              _CajaMovible(
+                key: ValueKey('caja-${e.id}'),
+                elemento: e,
+                diseno: diseno,
+                escala: escala,
+                elegido: seleccion == e.id,
+                alSeleccionar: alSeleccionar,
+                alCambiar: alCambiar,
+              ),
+          if (editable && seleccionado != null)
             _ControlRedimension(
               key: ValueKey('redimension-${seleccionado.id}'),
               elemento: seleccionado,
@@ -722,6 +846,7 @@ class _PanelPropiedades extends StatelessWidget {
     required this.alEliminar,
     required this.alSubirCapa,
     required this.alBajarCapa,
+    this.operadores = false,
   });
 
   final EditorDisenoCredencial editor;
@@ -736,6 +861,7 @@ class _PanelPropiedades extends StatelessWidget {
   final VoidCallback alEliminar;
   final VoidCallback alSubirCapa;
   final VoidCallback alBajarCapa;
+  final bool operadores;
 
   @override
   Widget build(BuildContext context) {
@@ -828,6 +954,14 @@ class _PanelPropiedades extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
+                if (operadores && actual.campo == 'FOTO')
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Fotografía circular'),
+                    value: actual.circular,
+                    onChanged: (valor) =>
+                        alCambiar(actual.copiar(circular: valor)),
+                  ),
                 Row(
                   children: [
                     Expanded(
@@ -1043,3 +1177,33 @@ const _muestra = CredencialPrevia(
   faltantes: [],
   completa: true,
 );
+
+const _muestraOperador = CredencialPrevia(
+  productorId: 0,
+  nombreCompleto: 'CARLOS PÉREZ',
+  federacion: 'FEDERACIÓN CARRASCO',
+  central: '',
+  sindicato: '',
+  nombres: 'CARLOS',
+  apellidos: 'PÉREZ',
+  ci: '1234567',
+  lotes: '',
+  codigoQr: '',
+  ejecutivoFederacion: FirmantePrevio(
+    nombre: 'EJECUTIVO DE LA FEDERACIÓN',
+    cargo: 'EJECUTIVO',
+    organizacion: 'FEDERACIÓN CARRASCO',
+    tieneFirma: true,
+  ),
+  faltantes: [],
+  completa: true,
+);
+
+const _valoresOperador = {
+  'CARGO': 'OPERADOR DEL SOFTWARE',
+  'TELEFONO': '70012345',
+  'RESENA':
+      'La Federación Carrasco autoriza al portador de esta credencial '
+      'a realizar las tareas de operación del software asignadas. '
+      'Esta autorización es personal y debe presentarse cuando sea requerida.',
+};

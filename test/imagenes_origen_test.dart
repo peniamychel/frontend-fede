@@ -20,12 +20,15 @@ void main() {
       );
 
       await tester.tap(find.text('Subir foto'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       expect(find.text('Tomar foto'), findsOneWidget);
       expect(find.text('Abrir la cámara del dispositivo'), findsOneWidget);
       expect(find.text('Elegir de galería'), findsOneWidget);
       expect(find.text('Seleccionar una imagen guardada'), findsOneWidget);
+      Navigator.of(tester.element(find.text('Tomar foto'))).pop();
+      await tester.pumpAndSettle();
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

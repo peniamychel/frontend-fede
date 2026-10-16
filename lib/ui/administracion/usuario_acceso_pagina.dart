@@ -14,9 +14,15 @@ class UsuarioAccesoPagina extends StatefulWidget {
 class _UsuarioAccesoPaginaState extends State<UsuarioAccesoPagina> {
   static const _permisosCentral = {
     'PRODUCTORES_VER',
+    'PRODUCTORES_REGISTRAR',
+    'PRODUCTORES_EDITAR',
+    'SIE_REVISAR',
+    'LOTES_EDITAR',
+    'IMAGENES_EDITAR',
     'FOTOS_PRODUCTORES_EDITAR',
     'PRODUCTORES_OBSERVAR',
     'NUMERO_LOTE_EDITAR',
+    'INFORMES_DESCARGAR',
   };
   final _nombre = TextEditingController();
   final _form = GlobalKey<FormState>();
@@ -47,7 +53,8 @@ class _UsuarioAccesoPaginaState extends State<UsuarioAccesoPagina> {
   bool _rolPermitido(Map<String, dynamic> r) => _limitado
       ? r['codigo'] != 'ADMIN' &&
             (r['permisos'] as List? ?? []).every(_permisosCentral.contains)
-      : r['codigo'] != 'REGISTRO_CENTRAL';
+      : r['codigo'] != 'REGISTRO_CENTRAL' &&
+            r['codigo'] != 'REGISTRO_PRODUCTORES_CENTRAL';
 
   @override
   void initState() {
@@ -371,7 +378,7 @@ class _UsuarioAccesoPaginaState extends State<UsuarioAccesoPagina> {
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'Solo podrá consultar y trabajar en los sindicatos autorizados. No podrá cambiar la clasificación ni usar SIE.',
+                          'Solo podrá trabajar en la central y los sindicatos autorizados. El rol Registro de productores permite registrar y editar productores, revisar por SIE, gestionar parcelas y fotos. No concede eliminación, impresión ni importación. El rol de fotos mantiene sus permisos específicos.',
                         ),
                         if (_centralId != null) ...[
                           SwitchListTile(

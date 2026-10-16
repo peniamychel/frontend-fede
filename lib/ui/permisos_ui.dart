@@ -15,4 +15,8 @@ extension PermisosUi on BuildContext {
       null;
   bool puede(String permiso) =>
       SesionScope.maybeOf(this)?.puede(permiso) ?? true;
+
+  /// Registrar no concede permiso para editar identidades ya existentes.
+  bool get puedeRegistrarProductores =>
+      puede('PRODUCTORES_EDITAR') || puede('PRODUCTORES_REGISTRAR');
 }

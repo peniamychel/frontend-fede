@@ -819,6 +819,23 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
           alCambiarEstado: () => _cambiarEstado(p, detalle.lotes.isNotEmpty),
           alEliminar: () => _eliminar(detalle),
         ),
+        if (p.ciDuplicada) ...[
+          const SizedBox(height: 16),
+          Card(
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Revisión CI: esta cédula se repite en otro productor del padrón. '
+                'Todos los registros con esta CI quedan bloqueados para impresión. '
+                'Corregí la cédula en las fichas correspondientes; aprobar SIE o quitar una observación no elimina este conflicto.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                ),
+              ),
+            ),
+          ),
+        ],
         if (p.observado) ...[
           const SizedBox(height: 16),
           _AvisoObservacionManual(
@@ -898,6 +915,8 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
                 padding: const EdgeInsets.all(8),
                 child: ImagenesProductor(
                   productorId: p.id,
+                  nombreProductor: p.nombreCompleto,
+                  ci: p.ci,
                   imagenes: detalle.imagenes,
                   editable: puedeImagenes,
                   alCambiar: () {
@@ -1482,7 +1501,12 @@ class _EstadoImpresionCredencial extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    final (estado, color) = !productor.habilitado
+    final (estado, color) = productor.ciDuplicada
+        ? (
+            'Revisión CI: cédula repetida, no se puede imprimir',
+            tema.colorScheme.error,
+          )
+        : !productor.habilitado
         ? ('Deshabilitado, excluido de impresión', tema.colorScheme.outline)
         : productor.observado
         ? ('Observado, excluido de impresión', tema.colorScheme.error)
@@ -1970,7 +1994,9 @@ class _FilaLote extends StatelessWidget {
           dense: true,
           leading: const Icon(Icons.grid_view_outlined),
           title: Text(lote.codigo.isEmpty ? 'Lote ${lote.id}' : lote.codigo),
-          onTap: context.accesoCentral ? null : alAbrir,
+          onTap: context.accesoCentral && !context.puede('LOTES_EDITAR')
+              ? null
+              : alAbrir,
           subtitle: Text(
             [
               lote.necesitaRevision && lote.estadoOriginal != null

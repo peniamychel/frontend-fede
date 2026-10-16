@@ -29,10 +29,15 @@ class SindicatoProductoresControlador {
   Future<void> refrescarTotal() async => _estado?._recargarTotal();
 
   void actualizarProductor(Productor productor) {
-    _estado?._lista.currentState?.actualizarElemento(
+    final anterior = _estado?._lista.currentState?.actualizarElemento(
       productor,
       coincide: (fila) => fila.id == productor.id,
     );
+    if (anterior != null &&
+        (anterior.ci != productor.ci ||
+            anterior.ciDuplicada != productor.ciDuplicada)) {
+      _estado?._lista.currentState?.refrescarConservandoPosicion();
+    }
   }
 
   void _conectar(_SindicatoProductoresPaginaState estado) => _estado = estado;
@@ -152,7 +157,7 @@ class _SindicatoProductoresPaginaState
           ],
         ),
         actions: [
-          if (context.puede('PRODUCTORES_EDITAR') ||
+          if (context.puedeRegistrarProductores ||
               context.puede('NUMERO_LOTE_EDITAR') ||
               context.puede('LOTES_EDITAR') ||
               context.puede('SIE_REVISAR') ||
@@ -202,7 +207,7 @@ class _SindicatoProductoresPaginaState
           ),
         ],
       ),
-      floatingActionButton: context.puede('PRODUCTORES_EDITAR')
+      floatingActionButton: context.puedeRegistrarProductores
           ? FloatingActionButton.extended(
               onPressed: _crear,
               icon: const Icon(Icons.person_add_alt),
@@ -250,11 +255,11 @@ class _SindicatoProductoresPaginaState
                 mensaje: _texto.isEmpty
                     ? 'Este sindicato no tiene productores.'
                     : 'Ningún productor coincide con la búsqueda.',
-                detalle: _texto.isEmpty && context.puede('PRODUCTORES_EDITAR')
+                detalle: _texto.isEmpty && context.puedeRegistrarProductores
                     ? 'Registrá el primero: va a quedar asignado a «${s.nombre}» '
                           'sin que tengas que elegirlo.'
                     : 'Probá con otro nombre, apellido, cédula o código.',
-                accion: _texto.isEmpty && !context.puede('PRODUCTORES_EDITAR')
+                accion: _texto.isEmpty && !context.puedeRegistrarProductores
                     ? null
                     : _texto.isEmpty
                     ? FilledButton.icon(

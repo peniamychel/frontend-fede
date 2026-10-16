@@ -1,4 +1,8 @@
+import 'dart:math' as math;
+
 enum CaraCredencial { cara, reverso }
+
+enum OrientacionCredencial { horizontal, vertical }
 
 enum TipoElementoCredencial { texto, imagen, pieFirma, plantilla }
 
@@ -98,6 +102,7 @@ class ElementoDisenoCredencial {
     required this.texto,
     this.fuente = FuenteCredencial.roboto,
     this.recurso,
+    this.circular = false,
   });
 
   final String id;
@@ -116,6 +121,7 @@ class ElementoDisenoCredencial {
   final String texto;
   final FuenteCredencial fuente;
   final String? recurso;
+  final bool circular;
 
   factory ElementoDisenoCredencial.desdeJson(Map<String, dynamic> json) =>
       ElementoDisenoCredencial(
@@ -160,6 +166,7 @@ class ElementoDisenoCredencial {
           _ => FuenteCredencial.roboto,
         },
         recurso: json['recurso'] as String?,
+        circular: json['circular'] as bool? ?? false,
       );
 
   Map<String, dynamic> aJson() => {
@@ -188,6 +195,7 @@ class ElementoDisenoCredencial {
     'texto': texto,
     'fuente': fuente.valorApi,
     'recurso': recurso,
+    'circular': circular,
   };
 
   ElementoDisenoCredencial copiar({
@@ -202,6 +210,7 @@ class ElementoDisenoCredencial {
     String? texto,
     FuenteCredencial? fuente,
     String? recurso,
+    bool? circular,
   }) => ElementoDisenoCredencial(
     id: id,
     cara: cara ?? this.cara,
@@ -219,6 +228,7 @@ class ElementoDisenoCredencial {
     texto: texto ?? this.texto,
     fuente: fuente ?? this.fuente,
     recurso: recurso ?? this.recurso,
+    circular: circular ?? this.circular,
   );
 }
 
@@ -232,6 +242,45 @@ class DisenoCredencial {
   final double ancho;
   final double alto;
   final List<ElementoDisenoCredencial> elementos;
+
+  OrientacionCredencial get orientacion => alto > ancho
+      ? OrientacionCredencial.vertical
+      : OrientacionCredencial.horizontal;
+
+  /// Conserva las posiciones relativas sin girar los textos ni sus imágenes.
+  DisenoCredencial conOrientacion(OrientacionCredencial nueva) {
+    if (nueva == orientacion) return this;
+    final escalaX = alto / ancho;
+    final escalaY = ancho / alto;
+    return DisenoCredencial(
+      ancho: alto,
+      alto: ancho,
+      elementos: elementos.map((e) {
+        if (e.campo == 'FOTO' && e.circular) {
+          // La orientación cambia el centro de la fotografía, no su diámetro.
+          // Escalar sus ejes por separado convertía el círculo en un óvalo.
+          final diametro = math.min(
+            math.min(e.ancho, e.alto),
+            math.min(ancho, alto),
+          );
+          final centroX = (e.x + e.ancho / 2) * escalaX;
+          final centroY = (e.y + e.alto / 2) * escalaY;
+          return e.copiar(
+            x: (centroX - diametro / 2).clamp(0.0, alto - diametro),
+            y: (centroY - diametro / 2).clamp(0.0, ancho - diametro),
+            ancho: diametro,
+            alto: diametro,
+          );
+        }
+        return e.copiar(
+          x: e.x * escalaX,
+          y: e.y * escalaY,
+          ancho: e.ancho * escalaX,
+          alto: e.alto * escalaY,
+        );
+      }).toList(),
+    );
+  }
 
   factory DisenoCredencial.desdeJson(Map<String, dynamic> json) =>
       DisenoCredencial(

@@ -275,6 +275,7 @@ class ProductorRepository {
     required List<int> bytes,
     required String nombreArchivo,
     Recorte? recorte,
+    String? operacionId,
   }) async {
     final datos = await _api.subirArchivo(
       '$_ruta/$productorId/imagenes',
@@ -282,8 +283,16 @@ class ProductorRepository {
       bytes: bytes,
       nombreArchivo: nombreArchivo,
       query: recorte?.query,
+      campos: operacionId == null ? null : {'operacionId': operacionId},
     );
-    return ImagenSubida.desdeJson(datos.comoObjeto);
+    final confirmacion = ImagenSubida.desdeJson(datos.comoObjeto);
+    if (confirmacion.productorId != productorId ||
+        confirmacion.operacionId != operacionId) {
+      throw const FormatException(
+        'La confirmación no corresponde a esta fotografía y productor.',
+      );
+    }
+    return confirmacion;
   }
 
   /// Borra la foto: las dos variantes juntas, porque tampoco se suben por

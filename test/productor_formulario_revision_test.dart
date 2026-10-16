@@ -34,7 +34,6 @@ void main() {
     apellidosCorregidos: 'MORALES VARGAS',
     fotoDescripcion: 'Juan Morales, Libertad',
     tieneFoto: true,
-    marcado: false,
     sindicatoId: 7,
     sindicatoNombre: 'LIBERTAD',
     centralId: 3,
@@ -83,8 +82,8 @@ void main() {
     expect(find.text('Apellidos corregidos'), findsNothing);
     expect(find.text('Rótulo de la fotografía'), findsNothing);
 
-    // Lo que se pidió sacar son esos tres. La marca de seguimiento se queda.
-    expect(find.text('Marcado para seguimiento'), findsOneWidget);
+    // El seguimiento también se retiró; observado continúa en la ficha.
+    expect(find.text('Marcado para seguimiento'), findsNothing);
     // Y los datos de la persona siguen editándose.
     expect(find.text('Nombres *'), findsOneWidget);
     expect(find.text('Cédula de identidad'), findsOneWidget);
@@ -103,6 +102,7 @@ void main() {
     expect(espia.enviado!['nombresCorregidos'], 'JUAN CARLOS');
     expect(espia.enviado!['apellidosCorregidos'], 'MORALES VARGAS');
     expect(espia.enviado!['fotoDescripcion'], 'Juan Morales, Libertad');
+    expect(espia.enviado!.containsKey('marcado'), isFalse);
   });
 
   testWidgets('un productor nuevo no inventa correcciones', (tester) async {
@@ -134,6 +134,7 @@ void main() {
     expect(espia.enviado!.containsKey('nombresCorregidos'), isFalse);
     expect(espia.enviado!.containsKey('apellidosCorregidos'), isFalse);
     expect(espia.enviado!.containsKey('fotoDescripcion'), isFalse);
+    expect(espia.enviado!.containsKey('marcado'), isFalse);
   });
 
   testWidgets('envía nombres con ñ y tildes sin modificarlos', (tester) async {
