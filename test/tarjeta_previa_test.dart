@@ -5,6 +5,7 @@ import 'package:fede/models/credencial_previa.dart';
 import 'package:fede/models/diseno_credencial.dart';
 import 'package:fede/ui/credenciales/tarjeta_previa.dart';
 import 'package:fede/ui/credenciales/fuentes_bajo_demanda.dart';
+import 'package:fede/ui/imagen_autenticada.dart';
 
 /// La tarjeta de la vista previa tiene que verse como el PDF.
 ///
@@ -410,13 +411,11 @@ void main() {
 
     expect(find.text('ANA QUISPE'), findsNothing);
     expect(find.text('EJECUTIVO'), findsNothing);
-    final imagenesDeRed = tester
-        .widgetList<Image>(find.byType(Image))
-        .where((imagen) => imagen.image is NetworkImage);
+    final imagenesAutenticadas = tester.widgetList<ImagenAutenticada>(
+      find.byType(ImagenAutenticada),
+    );
     expect(
-      imagenesDeRed
-          .map((imagen) => (imagen.image as NetworkImage).url)
-          .where((direccion) => direccion.endsWith(url)),
+      imagenesAutenticadas.where((imagen) => imagen.url.endsWith(url)),
       hasLength(1),
     );
   });
