@@ -10,7 +10,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Productores'), findsWidgets);
-    expect(find.text('Jerarquía'), findsWidgets);
+    expect(find.text('Centrales'), findsWidgets);
     expect(find.text('Calidad'), findsWidgets);
   });
 
@@ -63,7 +63,7 @@ void main() {
     expect(barra, findsOneWidget);
     for (final etiqueta in [
       'Productores',
-      'Jerarquía',
+      'Centrales',
       'Reuniones',
       'Calidad',
       'Respaldos',

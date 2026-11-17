@@ -1,6 +1,9 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show compute;
+
 import '../models/imagen.dart';
+import 'ajustes_fotografia.dart';
 import 'fondo_ia_modelo.dart';
 import 'fondo_ia_stub.dart'
     if (dart.library.io) 'fondo_ia_io.dart'
@@ -8,6 +11,25 @@ import 'fondo_ia_stub.dart'
     as plataforma;
 
 export 'fondo_ia_modelo.dart';
+
+Future<Uint8List> procesarFotoProductor({
+  required Uint8List bytes,
+  required Recorte recorte,
+  required String tipoMime,
+  required AjustesFotografia ajustes,
+}) async {
+  final preparada = await prepararFotoSinFondo(
+    bytes: bytes,
+    recorte: recorte,
+    quitarFondo: true,
+    tipoMime: tipoMime,
+  );
+  if (!ajustes.modificados) return preparada.bytes;
+  return compute(
+    aplicarAjustesFotografia,
+    SolicitudAjustesFotografia(preparada.bytes, ajustes),
+  );
+}
 
 Future<FotoSinFondo> prepararFotoSinFondo({
   required Uint8List bytes,

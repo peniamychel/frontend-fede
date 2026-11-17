@@ -1,10 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../permisos_ui.dart';
+import '../sesion_scope.dart';
 import '../productores/productor_detalle_pagina.dart';
 import '../widgets/boton_tema.dart';
 import '../credenciales/pliego_previa_pagina.dart';
@@ -17,9 +17,11 @@ import '../widgets/dialogo_nombre_numero.dart';
 import '../widgets/estados.dart';
 import '../widgets/marca_estado.dart';
 import 'directorio_pagina.dart';
+import 'editar_telefono_directorio.dart';
 import 'lista_fisica_sindicato_pagina.dart';
 import 'sindicato_productores_pagina.dart';
 import 'edicion_productores_sindicato_pagina.dart';
+import 'edicion_fotos_sindicato_pagina.dart';
 
 /// Navegación por la jerarquía de CARRASCO TROPICAL: Central › Sindicato.
 ///
@@ -39,6 +41,7 @@ class JerarquiaControlador extends ChangeNotifier {
 
   /// Sincroniza los totales al volver desde otras secciones del padrón.
   void refrescarConteos() {
+    _estado?._recargarCentrales();
     _estado?._recargarSindicatos();
     _estado?._controladorProductores.refrescarTotal();
   }
@@ -251,10 +254,22 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
             porcentajeImpresion: porId[sindicato.id]?.porcentajeAvance ?? 0,
             datosCompletos: porId[sindicato.id]?.datosCompletos ?? 0,
             huboFaseImpresion: avance.tieneFasesImpresion,
+            estadoImpresionFase: porId[sindicato.id]?.estadoImpresionFase,
           ),
       ],
       totalProductores: avance.total,
     );
+  }
+
+  void _marcarCentral(Central central) {
+    setState(() {
+      if (_centralSeleccionadaId != central.id) _sindicatoSeleccionadoId = null;
+      _centralSeleccionadaId = central.id;
+    });
+  }
+
+  void _marcarSindicato(Sindicato sindicato) {
+    setState(() => _sindicatoSeleccionadoId = sindicato.id);
   }
 
   Future<void> _elegirCentral(Central c) async {
@@ -314,8 +329,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
         alReintentar: _recargarTodo,
         constructor: (context, _) => LayoutBuilder(
           builder: (context, restricciones) {
-            if (_permiteMesaDeTrabajo(restricciones.maxWidth) ||
-                restricciones.maxWidth >= 900) {
+            if (_permiteMesaDeTrabajo(restricciones.maxWidth)) {
               return _columnasAnchas(restricciones.maxWidth);
             }
             return _unaColumna();
@@ -325,18 +339,45 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     );
   }
 
-  bool _permiteMesaDeTrabajo(double ancho) {
-    if (ancho < 780) return false;
-    return kIsWeb ||
-        defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.linux;
-  }
+  bool _permiteMesaDeTrabajo(double ancho) => ancho >= 600;
 
   Widget _columnasAnchas(double ancho) {
     final sindicato = _sindicato;
+    // En tablets estrechas se conservan los niveles seleccionados en franjas
+    // verticales y se reserva el resto del ancho para un solo panel legible.
+    if (ancho < 780 || (ancho < 900 && _productorId != null)) {
+      final central = _central;
+      if (central == null) return _unaColumna();
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ColumnaColapsada(
+            icono: Icons.hub_outlined,
+            nombre: central.nombre,
+            ayuda: 'Cambiar central',
+            alTocar: _volverACentrales,
+          ),
+          const VerticalDivider(width: 1),
+          if (sindicato != null) ...[
+            _ColumnaColapsada(
+              icono: Icons.groups_outlined,
+              nombre: sindicato.nombre,
+              ayuda: 'Cambiar sindicato',
+              alTocar: _volverASindicatos,
+            ),
+            const VerticalDivider(width: 1),
+          ],
+          Expanded(
+            child: _productorId != null
+                ? _fichaProductor()
+                : sindicato != null
+                ? _listaProductores(enMesaDeTrabajo: true)
+                : _panelSindicatos(enMesaDeTrabajo: true),
+          ),
+        ],
+      );
+    }
     if (sindicato != null && _productorId != null) {
-      if (ancho < 900) return _unaColumna();
       final sindicatosVisibles = ancho >= 1250;
       final anchoLista = (ancho * 0.28).clamp(340.0, 420.0);
       return Row(
@@ -479,6 +520,15 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     setState(() => _sindicato = null);
   }
 
+  Future<void> _volverACentrales() async {
+    if (!await _cerrarFichaActual() || !mounted) return;
+    setState(() {
+      _sindicato = null;
+      _central = null;
+      _sindicatos = null;
+    });
+  }
+
   Widget _migaDePan() {
     final tema = Theme.of(context);
     return Material(
@@ -603,6 +653,13 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                     title: TituloConEstado(
                       nombre: c.nombre,
                       habilitado: c.habilitado,
+                      etiqueta: c.faseImpresionActivaNumero == null &&
+                              c.ultimaFaseImpresionNumero > 0
+                          ? _etiquetaEstadoImpresion(
+                              'f${c.ultimaFaseImpresionNumero} Impreso',
+                              impreso: true,
+                            )
+                          : null,
                     ),
                     subtitle: _subtituloCentral(c),
                     onTap: () => _elegirCentral(c),
@@ -619,7 +676,14 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                             ),
                           ),
                         _menu(
+                          alAbrir: () => _marcarCentral(c),
                           alEditar: () => _editarCentral(c),
+                          alEditarTelefono: () =>
+                              _editarTelefonoEnLista(
+                                ambito: Ambito.central,
+                                id: c.id,
+                                nombre: c.nombre,
+                              ),
                           alVerDirectorio: () =>
                               _verDirectorio(DirectorioPagina.deCentral(c)),
                           habilitado: c.habilitado,
@@ -707,6 +771,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   }
 
   Future<void> _verInformeImpresionCentral(Central central) async {
+    _marcarCentral(central);
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => InformeImpresionCentralPagina(central: central),
@@ -777,6 +842,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                         '(${s.datosCompletos ?? 0}/${s.totalProductores ?? 0})\n'
                         'Avance de impresión: ${(s.porcentajeImpresion ?? 0).round()}%',
                     child: ListTile(
+                      key: ValueKey('sindicato-${s.id}'),
                       selected: _sindicatoSeleccionadoId == s.id,
                       selectedTileColor: Theme.of(
                         context,
@@ -786,8 +852,17 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                       title: TituloConEstado(
                         nombre: s.nombre,
                         habilitado: s.habilitado,
+                        etiqueta: switch (s.estadoImpresionFase) {
+                          EstadoImpresionFase.imprimiendo =>
+                            _etiquetaEstadoImpresion('Imprimiendo', impreso: false),
+                          EstadoImpresionFase.impreso =>
+                            _etiquetaEstadoImpresion('Impreso', impreso: true),
+                          null => null,
+                        },
                       ),
-                      subtitle: Row(
+                      subtitle: Wrap(
+                        spacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           if (s.numero != null) ...[
                             Text(
@@ -795,15 +870,11 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(fontWeight: FontWeight.w600),
                             ),
-                            const Text(' · '),
+                            const Text('·'),
                           ],
-                          Expanded(
-                            child: Text(
-                              'Total: ${s.totalProductores ?? 0}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                          Text('Total: ${s.totalProductores ?? 0}'),
+                          if (s.telefono case final telefono?)
+                            Text('($telefono)'),
                         ],
                       ),
                       onTap: () =>
@@ -821,8 +892,16 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                               ),
                             ),
                           _menu(
+                            alAbrir: () => _marcarSindicato(s),
                             alEditar: () => _editarSindicato(s),
+                            alEditarTelefono: () =>
+                                _editarTelefonoEnLista(
+                                  ambito: Ambito.sindicato,
+                                  id: s.id,
+                                  nombre: s.nombre,
+                                ),
                             alEditarProductores: () => _editarProductores(s),
+                            alEditarFotos: () => _editarFotos(s),
                             alVerDirectorio: () =>
                                 _verDirectorio(DirectorioPagina.deSindicato(s)),
                             alVerListaFisica: () => _verListaFisica(s),
@@ -840,13 +919,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
                                 }),
                             alVerLotes: () => _verLotes(s),
                             alVerVetados: () => _verVetados(s),
-                            alDescargarCredenciales: () =>
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        PliegoPreviaPagina(sindicato: s),
-                                  ),
-                                ),
+                            alDescargarCredenciales: () => _verImpresionSindicato(s),
                             alEliminar: () => _eliminar(
                               nombre: s.nombre,
                               tipo: 'el sindicato',
@@ -900,6 +973,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   }
 
   Future<void> _verInformesSindicato(Sindicato sindicato) async {
+    _marcarSindicato(sindicato);
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => InformeImpresionSindicatoPagina(sindicato: sindicato),
@@ -908,7 +982,18 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     if (mounted) _recargarSindicatos();
   }
 
+  Future<void> _verImpresionSindicato(Sindicato sindicato) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => PliegoPreviaPagina(sindicato: sindicato)),
+    );
+    if (!mounted) return;
+    _recargarCentrales();
+    _recargarSindicatos();
+    await _controladorProductores.refrescar();
+  }
+
   Future<void> _editarProductores(Sindicato sindicato) async {
+    if (!context.mostrarEdicionRapidaProductores) return;
     if (!await _cerrarFichaActual() || !mounted) return;
     final cambio = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -919,6 +1004,17 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       await _controladorProductores.refrescar();
       if (mounted) _recargarSindicatos();
     }
+  }
+
+  Future<void> _editarFotos(Sindicato sindicato) async {
+    if (SesionScope.maybeOf(context)?.sesion?.esAdministrador != true) return;
+    if (!await _cerrarFichaActual() || !mounted) return;
+    final cambio = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EdicionFotosSindicatoPagina(sindicato: sindicato),
+      ),
+    );
+    if (cambio == true && mounted) await _controladorProductores.refrescar();
   }
 
   ShapeBorder? _bordeSeleccion(bool seleccionado) => seleccionado
@@ -933,8 +1029,30 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
 
   /// Abre el directorio de cualquiera de los tres niveles.
   Future<void> _verDirectorio(DirectorioPagina pagina) async {
+    if (!context.mostrarDirectorios) return;
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => pagina));
-    if (mounted) _recargarSindicatos();
+    if (!mounted) return;
+    if (pagina.ambito == Ambito.central) _recargarCentrales();
+    _recargarSindicatos();
+  }
+
+  Future<void> _editarTelefonoEnLista({
+    required Ambito ambito,
+    required int id,
+    required String nombre,
+  }) async {
+    final actualizado = await mostrarEditorTelefonoDirectorio(
+      context,
+      ambito: ambito,
+      id: id,
+      nombre: nombre,
+    );
+    if (!mounted || actualizado == null) return;
+    if (ambito == Ambito.central) {
+      _recargarCentrales();
+    } else {
+      _recargarSindicatos();
+    }
   }
 
   Future<void> _verLotes(Sindicato s) async {
@@ -1024,29 +1142,28 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
   ///
   /// Va sola, sin etiqueta delante: tres letras en mayúsculas debajo del nombre
   /// completo ya se leen como lo que son.
-  Widget? _abreviatura(String? abreviatura) {
-    if (abreviatura == null) return null;
-    return Text(
-      abreviatura,
-      style: Theme.of(
-        context,
-      ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-    );
-  }
-
   Widget? _subtituloCentral(Central central) {
     final abreviatura = central.abreviatura;
+    final telefono = central.telefono;
     final fase = central.faseImpresionActivaNumero;
-    if (abreviatura == null && fase == null) return null;
+    if (abreviatura == null && telefono == null && fase == null) return null;
+    final estilo = Theme.of(context).textTheme.bodySmall;
     return Wrap(
       spacing: 10,
       runSpacing: 2,
       children: [
-        if (abreviatura != null) _abreviatura(abreviatura)!,
+        if (abreviatura != null || telefono != null)
+          Text(
+            [
+              ?abreviatura,
+              if (telefono != null) '($telefono)',
+            ].join(' '),
+            style: estilo?.copyWith(fontWeight: FontWeight.w600),
+          ),
         if (fase != null)
           Text(
             '${ordinalFase(fase)} fase impresión habilitada',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            style: estilo?.copyWith(
               color: Colors.orange.shade800,
               fontWeight: FontWeight.w700,
             ),
@@ -1055,25 +1172,53 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     );
   }
 
+  Widget _etiquetaEstadoImpresion(String texto, {required bool impreso}) {
+    final tema = Theme.of(context);
+    final oscuro = tema.brightness == Brightness.dark;
+    final tono = impreso ? Colors.green : Colors.orange;
+    final color = oscuro ? tono.shade200 : tono.shade900;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: oscuro ? tono.shade900.withValues(alpha: 0.34) : tono.shade100,
+        border: Border.all(color: oscuro ? tono.shade400 : tono.shade700),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        texto,
+        style: tema.textTheme.bodySmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
   /// Menú de acciones de una fila.
   ///
   /// Los carnets solo se imprimen desde el sindicato.
   Widget _menu({
+    required VoidCallback alAbrir,
     required VoidCallback alEditar,
+    required VoidCallback alEditarTelefono,
     required VoidCallback alEliminar,
     required bool habilitado,
     required VoidCallback alCambiarEstado,
     VoidCallback? alVerDirectorio,
     VoidCallback? alEditarProductores,
+    VoidCallback? alEditarFotos,
     VoidCallback? alVerListaFisica,
     VoidCallback? alVerLotes,
     VoidCallback? alVerVetados,
     VoidCallback? alDescargarCredenciales,
   }) {
     final puedeEditar = context.puede('JERARQUIA_EDITAR');
-    if (context.accesoCentral) {
+    final puedeEditarFotos = alEditarFotos != null &&
+        SesionScope.maybeOf(context)?.sesion?.esAdministrador == true;
+    if (context.accesoCentral || context.soloFotosObservaciones) {
       final acciones = <PopupMenuEntry<String>>[
-        if (alEditarProductores != null &&
+        if (context.mostrarEdicionRapidaProductores &&
+            alEditarProductores != null &&
             (context.puedeRegistrarProductores ||
                 context.puede('NUMERO_LOTE_EDITAR') ||
                 context.puede('PRODUCTORES_OBSERVAR') ||
@@ -1112,6 +1257,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
       if (acciones.isEmpty) return const SizedBox.shrink();
       return PopupMenuButton<String>(
         tooltip: 'Acciones',
+        onOpened: alAbrir,
         icon: const Icon(Icons.more_vert, size: 20),
         onSelected: (opcion) => switch (opcion) {
           'editarProductores' => alEditarProductores?.call(),
@@ -1124,10 +1270,13 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
     }
     return PopupMenuButton<String>(
       tooltip: 'Acciones',
+      onOpened: alAbrir,
       icon: const Icon(Icons.more_vert, size: 20),
       onSelected: (v) => switch (v) {
         'editar' => alEditar(),
+        'editarTelefono' => alEditarTelefono(),
         'editarProductores' => alEditarProductores?.call(),
+        'editarFotos' => alEditarFotos?.call(),
         'estado' => alCambiarEstado(),
         'directorio' => alVerDirectorio?.call(),
         'listaFisica' => alVerListaFisica?.call(),
@@ -1137,7 +1286,28 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
         _ => alEliminar(),
       },
       itemBuilder: (context) => [
-        if (alEditarProductores != null &&
+        if (context.mostrarDirectorios && context.puede('DIRECTORIOS_EDITAR'))
+          const PopupMenuItem(
+            value: 'editarTelefono',
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.phone_outlined),
+              title: Text('Editar teléfono'),
+            ),
+          ),
+        if (puedeEditarFotos)
+          const PopupMenuItem(
+            value: 'editarFotos',
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.photo_library_outlined),
+              title: Text('Editar fotos de productores'),
+            ),
+          ),
+        if (context.mostrarEdicionRapidaProductores &&
+            alEditarProductores != null &&
             (context.puede('PRODUCTORES_EDITAR') ||
                 context.puede('NUMERO_LOTE_EDITAR') ||
                 context.puede('LOTES_EDITAR') ||
@@ -1154,7 +1324,7 @@ class _JerarquiaPaginaState extends State<JerarquiaPagina> {
           ),
         if (puedeEditar)
           const PopupMenuItem(value: 'editar', child: Text('Editar')),
-        if (alVerDirectorio != null)
+        if (context.mostrarDirectorios && alVerDirectorio != null)
           const PopupMenuItem(
             value: 'directorio',
             child: ListTile(

@@ -12,15 +12,25 @@ class TituloConEstado extends StatelessWidget {
     super.key,
     required this.nombre,
     required this.habilitado,
+    this.etiqueta,
   });
 
   final String nombre;
   final bool habilitado;
+  final Widget? etiqueta;
 
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    if (habilitado) return Text(nombre);
+    if (habilitado && etiqueta == null) return Text(nombre);
+    if (habilitado) {
+      return Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 2,
+        children: [Text(nombre), etiqueta!],
+      );
+    }
 
     return Row(
       children: [
@@ -34,6 +44,7 @@ class TituloConEstado extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         const EtiquetaDeshabilitado(),
+        if (etiqueta != null) ...[const SizedBox(width: 8), etiqueta!],
       ],
     );
   }

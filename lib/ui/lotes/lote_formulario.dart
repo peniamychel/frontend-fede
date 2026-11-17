@@ -93,7 +93,7 @@ class _LoteFormularioState extends State<LoteFormulario> {
                         labelText: 'Número de lote',
                         hintText: '74',
                         helperText:
-                            'Si se repite, las letras A-H se asignan automáticamente',
+                            'Si se repite, las letras A-Z se asignan automáticamente',
                         border: OutlineInputBorder(),
                       ),
                     ),

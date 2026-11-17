@@ -6,6 +6,7 @@ import 'package:fede/core/preferencia_tema.dart';
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/credenciales/credencial_previa_pagina.dart';
 import 'package:fede/ui/credenciales/impresion_credencial.dart';
+import 'package:fede/ui/imagen_autenticada.dart';
 import 'package:fede/ui/padron_scope.dart';
 
 /// La pantalla de vista previa de la credencial, con un servidor fingido.
@@ -251,13 +252,11 @@ void main() {
     await tester.pumpWidget(
       pantalla(previa(completa: true), configuracion: configuracion),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     final urls = tester
-        .widgetList<Image>(find.byType(Image))
-        .map((imagen) => imagen.image)
-        .whereType<NetworkImage>()
-        .map((imagen) => imagen.url);
+        .widgetList<ImagenAutenticada>(find.byType(ImagenAutenticada))
+        .map((imagen) => ApiConfig.urlAbsoluta(imagen.url));
     expect(urls, contains(ApiConfig.urlAbsoluta(cara)));
     expect(urls, contains(ApiConfig.urlAbsoluta(reverso)));
   });

@@ -60,11 +60,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.observacion, 'La fotografía no permite identificarlo');
+    await tester.tap(find.byKey(const ValueKey('ficha-antecedentes')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Observación manual'));
     expect(find.text('Observación manual'), findsOneWidget);
     expect(find.text(api.observacion!), findsOneWidget);
-    expect(find.textContaining('excluido de la impresión'), findsOneWidget);
+    expect(find.textContaining('excluido de la impresión'), findsNothing);
     expect(find.byTooltip('Editar observación'), findsOneWidget);
 
+    await tester.ensureVisible(find.byTooltip('Editar observación'));
     await tester.tap(find.byTooltip('Editar observación'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Quitar observación'));

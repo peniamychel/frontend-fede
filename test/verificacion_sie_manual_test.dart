@@ -28,13 +28,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.verificaciones, 0);
-    // Cuando hay una foto cargada, el resumen no muestra información
-    // redundante; la fotografía se consulta en su sección propia.
-    expect(find.text('Fotografía'), findsOneWidget);
+    expect(find.byType(TabBar), findsNothing);
+    expect(find.text('Revisiones y antecedentes'), findsOneWidget);
     expect(find.text('Sin foto'), findsNothing);
     expect(find.text('Marcado'), findsNothing);
-    expect(find.text('Fecha de creación'), findsOneWidget);
-    expect(find.text('23/08/2026 14:05'), findsOneWidget);
+    expect(find.text('Fecha de creación: 23/08/2026 14:05'), findsOneWidget);
+    expect(find.text('Última modificación: 28/10/2026 10:30'), findsOneWidget);
+    expect(find.text('Impresión de credencial'), findsNothing);
     await tester.ensureVisible(find.byTooltip('Verificar con SIE'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Verificar con SIE'));
@@ -58,6 +58,9 @@ void main() {
     await tester.tap(find.text('Sí, reemplazar'));
     await tester.pumpAndSettle();
     expect(api.aceptado, isTrue);
+    await tester.tap(find.byKey(const ValueKey('ficha-antecedentes')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Corrección SIE aceptada'));
     expect(find.text('Corrección SIE aceptada'), findsOneWidget);
     expect(find.text('MARÍA'), findsOneWidget);
     expect(find.text('NÚÑEZ'), findsOneWidget);
@@ -90,7 +93,11 @@ class _ApiVerificacionManual extends ApiClient {
                 'Los nombres y apellidos se corrigieron con SIE.',
             'revisionSieBloqueaImpresion': false,
           },
-          'auditoria': {'estado': true, 'creadoEn': '2026-08-23T14:05:00'},
+          'auditoria': {
+            'estado': true,
+            'creadoEn': '2026-08-23T14:05:00',
+            'editadoEn': '2026-10-28T10:30:00',
+          },
         },
         'lotes': <dynamic>[],
         'imagenes': [

@@ -1,5 +1,8 @@
 import 'tenencia.dart';
 
+/// Letras disponibles para los productores que comparten número de lote.
+const letrasCompartidasLote = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
 /// Subdivisión de una parcela, ya normalizada por el backend.
 enum ExtensionLote {
   a('A'),

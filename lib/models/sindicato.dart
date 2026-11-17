@@ -1,4 +1,5 @@
 import 'auditoria.dart';
+import 'informe_impresion_central.dart';
 
 /// Sindicato: agrupa productores y pertenece a una central.
 class Sindicato {
@@ -8,6 +9,7 @@ class Sindicato {
     required this.centralId,
     required this.centralNombre,
     this.numero,
+    this.telefono,
     this.latitud,
     this.longitud,
     this.ubicacionActualizadaEn,
@@ -15,6 +17,7 @@ class Sindicato {
     this.porcentajeImpresion,
     this.datosCompletos,
     this.huboFaseImpresion = false,
+    this.estadoImpresionFase,
     this.auditoria = Auditoria.habilitado,
   });
 
@@ -30,6 +33,7 @@ class Sindicato {
   /// Número que le asigna la federación. Único entre todos los sindicatos, y
   /// null mientras no se lo carguen.
   final String? numero;
+  final String? telefono;
 
   /// Coordenadas de la sede en grados decimales. Null mientras no se marque
   /// en el mapa. Van juntas: media coordenada no ubica nada.
@@ -44,6 +48,7 @@ class Sindicato {
   final double? porcentajeImpresion;
   final int? datosCompletos;
   final bool huboFaseImpresion;
+  final EstadoImpresionFase? estadoImpresionFase;
 
   double get porcentajeDatosCompletos =>
       totalProductores == null || totalProductores == 0
@@ -68,6 +73,7 @@ class Sindicato {
     centralId: (json['centralId'] as num?)?.toInt() ?? 0,
     centralNombre: json['centralNombre'] as String? ?? '',
     numero: json['numero'] as String?,
+    telefono: json['telefono'] as String?,
     latitud: (json['latitud'] as num?)?.toDouble(),
     longitud: (json['longitud'] as num?)?.toDouble(),
     ubicacionActualizadaEn: switch (json['ubicacionActualizadaEn']) {
@@ -84,12 +90,14 @@ class Sindicato {
     required double porcentajeImpresion,
     required int datosCompletos,
     required bool huboFaseImpresion,
+    EstadoImpresionFase? estadoImpresionFase,
   }) => Sindicato(
     id: id,
     nombre: nombre,
     centralId: centralId,
     centralNombre: centralNombre,
     numero: numero,
+    telefono: telefono,
     latitud: latitud,
     longitud: longitud,
     ubicacionActualizadaEn: ubicacionActualizadaEn,
@@ -97,6 +105,7 @@ class Sindicato {
     porcentajeImpresion: porcentajeImpresion,
     datosCompletos: datosCompletos,
     huboFaseImpresion: huboFaseImpresion,
+    estadoImpresionFase: estadoImpresionFase,
     auditoria: auditoria,
   );
 

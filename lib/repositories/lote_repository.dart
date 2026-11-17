@@ -68,6 +68,12 @@ class LoteRepository {
     return Lote.desdeJson(datos.comoObjeto);
   }
 
+  /// Quita únicamente al tenedor actual, sin permitir un nuevo destinatario.
+  Future<Lote> desasignar(int id) async {
+    final datos = await _api.reemplazar('$_ruta/$id/desasignacion', const {});
+    return Lote.desdeJson(datos.comoObjeto);
+  }
+
   /// Quiénes tuvieron el lote, del período más reciente al primero.
   Future<List<Tenencia>> historial(int id) async {
     final datos = await _api.obtener('$_ruta/$id/historial');

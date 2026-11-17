@@ -28,6 +28,7 @@ void main() {
     bool conLote = true,
     bool sindicatoFijo = true,
     bool perfilCompleto = false,
+    bool perfilRegistroRevision = false,
     Productor? productor,
   }) async {
     tester.view.physicalSize = const Size(900, 1400);
@@ -42,8 +43,24 @@ void main() {
       usuario: 'registro',
       nombreCompleto: 'Registro de central',
       rol: 'OPERADOR',
-      roles: const {'REGISTRO_PRODUCTORES_CENTRAL'},
-      permisos: perfilCompleto
+      roles: {
+        if (perfilRegistroRevision)
+          'REGISTRO_REVISION'
+        else
+          'REGISTRO_PRODUCTORES_CENTRAL',
+      },
+      permisos: perfilRegistroRevision
+          ? const {
+              'PRODUCTORES_VER',
+              'PRODUCTORES_REGISTRAR',
+              'PRODUCTORES_EDITAR',
+              'PRODUCTORES_ELIMINAR',
+              'SIE_REVISAR',
+              'FOTOS_PRODUCTORES_EDITAR',
+              'PRODUCTORES_OBSERVAR',
+              'NUMERO_LOTE_EDITAR',
+            }
+          : perfilCompleto
           ? const {
               'PRODUCTORES_VER',
               'PRODUCTORES_EDITAR',
@@ -56,7 +73,7 @@ void main() {
               'PRODUCTORES_REGISTRAR',
               if (conLote) 'NUMERO_LOTE_EDITAR',
             },
-      centralId: 3,
+      centralId: perfilRegistroRevision ? null : 3,
       expiraEn: DateTime(2100),
     );
     await tester.pumpWidget(
@@ -284,6 +301,68 @@ void main() {
     expect(find.text('Abrir registro'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'registro y revisión edita identidad sin requerir permisos de parcelas',
+    (tester) async {
+      final api = _ApiRegistro();
+      final p = Productor.desdeJson({
+        'id': 42,
+        'nombres': 'MARÍA',
+        'apellidos': 'PÉREZ',
+        'nombreCompleto': 'MARÍA PÉREZ',
+        'ci': '1234567',
+        'sindicatoId': 7,
+        'sindicatoNombre': 'LIBERTAD',
+        'centralId': 3,
+        'centralNombre': 'IVIRGARZAMA',
+      });
+      await abrir(tester, api, perfilRegistroRevision: true, productor: p);
+      await tester.enterText(_campo('Nombres *'), 'MARÍA ELENA');
+      await tester.enterText(_campo('Apellidos'), 'PÉREZ ROJAS');
+      await tester.enterText(_campo('Cédula de identidad'), '7654321');
+      await tester.tap(find.text('Guardar cambios'));
+      await tester.pumpAndSettle();
+
+      expect(api.cambios.single['nombres'], 'MARÍA ELENA');
+      expect(api.cambios.single['apellidos'], 'PÉREZ ROJAS');
+      expect(api.cambios.single['ci'], '7654321');
+      expect(api.cambios.single['sindicatoId'], 7);
+      expect(api.altas, isEmpty);
+      expect(api.lotes, isEmpty);
+      expect(find.text('Abrir registro'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'registro y revisión conserva alta con número limitado sin clasificación',
+    (tester) async {
+      final api = _ApiRegistro();
+      await abrir(tester, api, perfilRegistroRevision: true);
+      expect(find.byTooltip('Verificar cédula'), findsOneWidget);
+      expect(find.text('Clasificación de la parcela'), findsNothing);
+      expect(find.text('Existente'), findsNothing);
+      expect(api.consultas, isEmpty);
+      await tester.enterText(_campo('Cédula de identidad *'), '1234567');
+      await tester.tap(find.byTooltip('Verificar cédula'));
+      await tester.pumpAndSettle();
+      await tester.enterText(_campo('Nombres *'), 'MARÍA');
+      await tester.enterText(_campo('Apellidos'), 'PÉREZ');
+      await tester.enterText(_campo('N° de lote'), '4 B');
+      await tester.ensureVisible(find.text('Registrar'));
+      await tester.tap(find.text('Registrar'));
+      await tester.pumpAndSettle();
+
+      expect(api.altas, hasLength(1));
+      expect(api.lotes.single['numero'], '4 B');
+      expect(api.lotes.single.containsKey('estado'), isFalse);
+      expect(api.consultas, isNot(contains('/lotes')));
+      expect(api.consultasSie, ['1234567']);
+      expect(find.text('Abrir registro'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'registro de cinco permisos consulta SIE y gestiona clasificación',

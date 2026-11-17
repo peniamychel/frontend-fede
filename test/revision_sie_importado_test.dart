@@ -37,6 +37,7 @@ void main() {
     await tester.tap(find.text('Sí, reemplazar'));
     await tester.pumpAndSettle();
     expect(api.decision, isTrue);
+    await _abrirAntecedentes(tester);
     expect(find.text('Corrección SIE aceptada'), findsWidgets);
     expect(find.text('JOSÉ'), findsOneWidget);
     expect(find.text('PEÑA MUÑOZ'), findsOneWidget);
@@ -87,6 +88,7 @@ void main() {
         await tester.tap(find.byTooltip('Recargar'));
         await tester.pumpAndSettle();
         expect(api.revisiones, 1);
+        await _abrirAntecedentes(tester);
         expect(find.text('Corrección SIE pendiente'), findsOneWidget);
         expect(find.text('SIE sugiere: JOSÉ PEÑA MUÑOZ'), findsOneWidget);
         expect(find.textContaining('No se puede imprimir'), findsOneWidget);
@@ -114,7 +116,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.revisiones, 0);
-    await tester.drag(find.byType(ListView), const Offset(0, -400));
+    await _abrirAntecedentes(tester);
+    await tester.ensureVisible(find.text('Aceptar sugerencia SIE'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Aceptar sugerencia SIE'));
     await tester.pumpAndSettle();
@@ -147,7 +150,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(ListView), const Offset(0, -450));
+    await _abrirAntecedentes(tester);
+    await tester.ensureVisible(find.text('Aprobar datos existentes'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Aprobar datos existentes'));
     await tester.pumpAndSettle();
@@ -186,6 +190,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.revisiones, 0);
+      await _abrirAntecedentes(tester);
       final titulo = find.text('No encontrado en SIE');
       expect(titulo, findsOneWidget);
       expect(find.textContaining('No se puede imprimir'), findsOneWidget);
@@ -250,6 +255,11 @@ void main() {
       );
     },
   );
+}
+
+Future<void> _abrirAntecedentes(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('ficha-antecedentes')));
+  await tester.pumpAndSettle();
 }
 
 class _ApiRevisionSie extends ApiClient {

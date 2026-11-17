@@ -92,10 +92,26 @@ flutter run -d android --dart-define=API_HOST=192.168.1.X --dart-define=API_PUER
 flutter run -d windows --dart-define=API_HOST=localhost --dart-define=API_PUERTO=80
 ```
 
+Para compilar Android o Windows con HTTPS mediante Tailscale, usar el dominio
+real del servidor de producción en `API_HOST` (sin `https://`, puerto ni ruta),
+`API_ESQUEMA=https` y `API_PUERTO=443`. Ejemplo; reemplazar el dominio:
+
+```powershell
+flutter build apk --release --split-per-abi --dart-define=API_HOST=servidor.su-tailnet.ts.net --dart-define=API_ESQUEMA=https --dart-define=API_PUERTO=443
+flutter build windows --release --dart-define=API_HOST=servidor.su-tailnet.ts.net --dart-define=API_ESQUEMA=https --dart-define=API_PUERTO=443
+```
+
+Tailscale debe estar conectado y autorizado tanto en el servidor como en el
+dispositivo cliente. Usar el nombre del servidor cubierto por su certificado
+HTTPS. El destino se configura al compilar: al cambiarlo hay que generar e
+instalar una nueva versión del cliente. Sin `API_ESQUEMA`, desarrollo conserva
+HTTP y el puerto predeterminado 8080; con HTTPS el puerto predeterminado es 443.
+Flutter Web sin `API_HOST` sigue utilizando el origen del navegador.
+
 El build web de Docker incluye CanvasKit y el modelo de segmentación localmente,
-por lo que sigue cargando si la intranet pierde la salida a Internet. Por ahora
-se sirve por HTTP: el lector QR del navegador no está disponible desde otra
-máquina, pero la carga manual y el resto de la aplicación sí funcionan.
+por lo que sigue cargando si la intranet pierde la salida a Internet. Nginx usa
+HTTP dentro de Docker; el acceso externo usa HTTPS cuando Tailscale Serve está
+configurado delante de ese puerto.
 
 ## Aplicación para Windows
 
@@ -117,6 +133,87 @@ máquina con `--dart-define=API_HOST=192.168.1.X`.
 Android y web no necesitan Visual Studio.
 
 
+## Versión de la aplicación
+
+«Cuenta» muestra la versión del programa compilado en formato `AAAA.MM.DD-N`,
+igual que los paquetes de actualización. La referencia actual es `2026.11.03-1`.
+Al preparar cada nueva actualización, usar la misma versión del paquete en la
+compilación de web, Android y Windows:
+
+```powershell
+flutter build apk --release --split-per-abi --dart-define=FEDERA_VERSION=2026.11.03-1
+flutter build windows --release --dart-define=FEDERA_VERSION=2026.11.03-1
+flutter build web --release --dart-define=FEDERA_VERSION=2026.11.03-1
+```
+
+Estos parámetros se añaden a los de conexión de API que utilice cada instalación.
+En Docker, pasar `--build-arg FEDERA_VERSION=AAAA.MM.DD-N` o definir
+`FEDERA_VERSION` al compilar con Compose. Cambiar solo la etiqueta de una imagen
+ya compilada no actualiza el número que lleva dentro. Una APK conserva su
+versión aunque se actualice el servidor. No se usa la fecha del dispositivo.
+
+## Detalles de la fotografía
+
+Al abrir la fotografía del productor, el visor muestra el nombre original del
+archivo, la fecha de creación de su registro (primera carga) y la última edición.
+Estas fechas pertenecen a la fotografía, no a la ficha ni a los datos EXIF de
+la cámara. Si no están disponibles se muestra «Sin registro». El modal y el
+fondo de transparencia usan el tema claro u oscuro. En móvil horizontal, los
+detalles se sitúan junto a la imagen; en vertical, debajo.
+
+## Orden de los informes
+
+Antes de generar pre-impresión, revisión del padrón, lista de productores en
+Excel, nómina PDF o informe de fase, se pregunta el orden de la lista:
+«Apellidos» (opción inicial) o «Número de lote». Cancelar o volver atrás no
+genera ni descarga archivos. La elección se solicita en cada descarga, tanto
+en los informes de centrales como de sindicatos.
+
+Por lote se usa orden numérico ascendente (2 antes que 10), luego sus letras;
+si hay varios lotes se toma el menor y quienes no tienen lote quedan al final.
+Los empates se resuelven por apellidos y nombres. El orden se aplica dentro de
+cada sindicato y se conserva el diseño de los archivos. Requiere el backend
+que admite el parámetro `orden=APELLIDOS|NUMERO_LOTE`.
+
+## Listas de productores en Excel
+
+Los paneles de informes de centrales y sindicatos ofrecen «Lista de productores
+en Excel». Descarga un `.xlsx` con el diseño de «Nómina en PDF»: encabezados
+centrados, tabla de seis columnas con bordes y cabecera gris, observaciones
+en blanco y dos espacios de sello, firma y pie de firma manual para los
+secretarios generales de Central y Sindicato, como en revisión del padrón.
+La central descarga una hoja por sindicato autorizado. Incluye encabezados
+fijos y bloques paginados para impresión en carta vertical; las cédulas y lotes se
+conservan como texto. Usa la sesión vigente y exige
+`INFORMES_DESCARGAR`. El archivo se guarda mediante el diálogo habitual o la
+descarga del navegador.
+
+## Listas de afiliados en blanco
+
+En «Informes y reportes del sindicato», «Lista en blanco» pide la cantidad de
+afiliados antes de descargar el PDF. Propone el total registrado y permite
+indicar otro número entre 1 y 5000. Genera exactamente esa cantidad de filas
+numeradas para completar a mano, con «Detalles» como última columna y sin datos
+personales ni notas de revisión. Requiere el permiso de descarga de informes.
+
+## Pendientes de impresión y reimpresión
+
+«Impresiones faltantes» reúne las primeras impresiones y las reimpresiones
+marcadas que siguen pendientes en la fase activa y cumplen los requisitos.
+Los carnets ya impresos sin esa marca se conservan en la impresión selectiva.
+Al abrir una fase también se incorporan los productores que nunca se imprimieron,
+incluidos los registros importados sin una marca de fase anterior.
+
+En los listados, el naranja oscuro indica una reserva pendiente para la fase
+actual o la próxima; el ámbar claro indica datos completos sin esa reserva.
+El verde indica un carnet impreso sin reimpresión pendiente. Reservar o abrir una
+fase no incrementa las impresiones ni modifica el historial de fases cerradas.
+
+Mientras una fase está abierta, las altas manuales y las importadas se incorporan
+automáticamente como primeras impresiones pendientes. Al actualizar el backend
+se recuperan las altas omitidas en fases todavía abiertas; no se duplican
+participaciones ni se modifican carnets ya impresos o fases cerradas.
+
 ## Productores pendientes de lote
 
 La importación del padrón usa automáticamente CARRASCO TROPICAL, sin selector
@@ -133,6 +230,10 @@ La revisión se cierra al guardar el número y recargar la ficha, sin un botón 
 aprobación que pueda saltarse el requisito. Esto aplica a Android, web y Windows.
 La ausencia de foto u otros datos puede seguir impidiendo imprimir después.
 El informe de importación también indica cuántos productores quedan sin lote.
+
+La letra del lote permite elegir de A a Z o dejar la asignación automática.
+Se admiten hasta 26 productores por número dentro del mismo sindicato,
+respetando las letras reservadas. Este rango requiere el backend actualizado.
 
 ## Pruebas
 
@@ -162,6 +263,23 @@ lib/
     ├── calidad/      panel de duplicados, sin foto y lotes sin reconocer
     └── importacion/  carga masiva desde Excel
 ```
+
+## Subir fotografías sin procesar
+
+El editor presenta «Procesar imagen», «Cancelar» y «Subir sin procesar», en ese
+orden. Al editar una foto ya procesada, se oculta «Subir sin procesar».
+La carga rápida recorta en cuadrado (1:1), aplica los ajustes elegidos y
+comprime en JPEG hasta 400 KB, conservando hasta 1600 × 1600 px para editar
+después. No ejecuta la eliminación de fondo ni amplía las fotos pequeñas.
+
+La fotografía queda visible como pendiente de edición y bloquea la impresión
+del carnet en el servidor. Para habilitarla, abrir la foto → Editar → Procesar
+imagen con «Quitar fondo» activado. Los demás requisitos de impresión siguen
+vigentes. Al editar una foto pendiente, «Quitar fondo» se activa inicialmente;
+volver a subirla sin procesar conserva el bloqueo.
+
+La carga rápida requiere el backend actualizado. Antes de enviar los bytes,
+el cliente comprueba que el servidor admita fotografías pendientes de edición.
 
 ## Leer el QR de las credenciales
 

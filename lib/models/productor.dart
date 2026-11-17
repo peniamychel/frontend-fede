@@ -48,6 +48,7 @@ class Productor {
     this.faseImpresionPendiente = false,
     this.reimpresionFasePendiente = false,
     this.auditoria = Auditoria.habilitado,
+    this.fotografiaPendienteEdicion = false,
   });
 
   /// Código de su credencial: lo que dice el QR, y lo que se escribe a mano
@@ -91,6 +92,7 @@ class Productor {
 
   /// Tiene fotografía y los datos personales mínimos para imprimir.
   final bool credencialLista;
+  final bool fotografiaPendienteEdicion;
 
   /// Clasificación conservada del Excel o de su parcela actual.
   final EstadoLote? clasificacion;
@@ -196,6 +198,7 @@ class Productor {
     ),
     credencialLista:
         json['ciDuplicada'] != true &&
+        json['fotografiaPendienteEdicion'] != true &&
         (json['credencialLista'] as bool? ?? false),
     clasificacion: json['clasificacion'] == null
         ? null
@@ -206,6 +209,7 @@ class Productor {
     reimpresionFasePendiente:
         json['reimpresionFasePendiente'] as bool? ?? false,
     auditoria: Auditoria.desdeJson(json['auditoria'] as Map<String, dynamic>?),
+    fotografiaPendienteEdicion: json['fotografiaPendienteEdicion'] == true,
   );
 
   @override

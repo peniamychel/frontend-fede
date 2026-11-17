@@ -1,3 +1,4 @@
+import '../imagen_autenticada.dart';
 import 'package:flutter/material.dart';
 import 'fuentes_bajo_demanda.dart';
 import 'imagen_plantilla_autenticada.dart';
@@ -129,7 +130,7 @@ class TarjetaPrevia extends StatelessWidget {
         ? _plantillaPredeterminada()
         : !plantillaPorDefecto
         ? ImagenPlantillaAutenticada(url: plantillaUrl!)
-        : Image.network(
+        : ImagenAutenticada(
             ApiConfig.urlAbsoluta(plantillaUrl!),
             fit: BoxFit.fill,
             errorBuilder: (_, _, _) => _plantillaPredeterminada(),
@@ -248,7 +249,7 @@ class TarjetaPrevia extends StatelessWidget {
             : null,
       ),
       child: url != null
-          ? Image.network(
+          ? ImagenAutenticada(
               ApiConfig.urlAbsoluta(url),
               fit: esFoto && e.circular ? BoxFit.cover : BoxFit.contain,
               errorBuilder: (_, _, _) =>
@@ -324,7 +325,7 @@ class TarjetaPrevia extends StatelessWidget {
           height: _p(e.alto),
           child: Padding(
             padding: const EdgeInsets.all(2),
-            child: Image.network(
+            child: ImagenAutenticada(
               ApiConfig.urlAbsoluta(pieImagenUrl),
               fit: BoxFit.contain,
               errorBuilder: (_, _, _) =>

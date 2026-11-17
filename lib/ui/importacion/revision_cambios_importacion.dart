@@ -51,15 +51,15 @@ class RevisionCambiosImportacion extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '${diferencias.length} productores con diferencias y datos en ambos lados.',
+              '${diferencias.length} productores con número de lote diferente.',
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Se conservan los nombres y apellidos. Para un número de lote diferente, elegí '
-              'Aceptar Excel o Conservar actual (seleccionado por defecto). Podés desmarcar ambas opciones: '
-              'se conservará el lote actual y se añadirá una nota de observado con el lote del Excel. '
-              'Los lotes vacíos se completan automáticamente.',
-            ),
+            if (diferencias.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Elige qué lote conservar. Si desmarcas ambas opciones, se mantiene '
+                'el actual y se anota el lote del Excel como observado.',
+              ),
+            ],
             if (lotes > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -71,8 +71,7 @@ class RevisionCambiosImportacion extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Se aplicarán automáticamente al importar: ${resumen.join(', ')}. '
-                  'Las extensiones existentes se conservan; las notas se añaden a las actuales.',
+                  'Cambios automáticos al importar: ${resumen.join(', ')}.',
                 ),
               ),
             if (diferencias.isEmpty)
@@ -148,7 +147,7 @@ class RevisionCambiosImportacion extends StatelessWidget {
                     if (decisiones.containsKey(p.clave(c.campo)) &&
                         decisiones[p.clave(c.campo)] == null)
                       Text(
-                        'Se conservará el lote actual y se marcará como observado: N° lote según Excel: ${c.propuesto}',
+                        'Se mantiene el lote actual. Nota de observado: N° lote según Excel: ${c.propuesto}',
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.error,
                         ),

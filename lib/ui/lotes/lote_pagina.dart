@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/texto_busqueda.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../productores/asignar_parcela.dart';
 import '../widgets/estados.dart';
 import 'participantes_parcela.dart';
@@ -68,6 +69,7 @@ class _LotePaginaState extends State<LotePagina> {
                     children: [
                       _Encabezado(
                         lote: datos.lote,
+                        editable: context.puede('LOTES_EDITAR'),
                         alTraspasar: () => _traspasar(datos.lote),
                         alCambiarNumero: () => _cambiarNumero(datos.lote),
                         alCambiarClasificacion: () =>
@@ -125,6 +127,7 @@ class _LotePaginaState extends State<LotePagina> {
 
   /// Vende, hereda o cede la parcela: cambia de manos con fecha y motivo.
   Future<void> _traspasar(Lote lote) async {
+    if (!context.puede('LOTES_EDITAR')) return;
     final padron = PadronScope.of(context);
 
     final List<Productor> candidatos;
@@ -149,7 +152,7 @@ class _LotePaginaState extends State<LotePagina> {
       builder: (context) =>
           _DialogoTraspaso(lote: lote, candidatos: candidatos),
     );
-    if (decision == null || !mounted) return;
+    if (decision == null || !mounted || !context.puede('LOTES_EDITAR')) return;
 
     try {
       await padron.lotes.traspasar(
@@ -179,6 +182,7 @@ class _LotePaginaState extends State<LotePagina> {
   }
 
   Future<void> _cambiarClasificacion(Lote lote) async {
+    if (!context.puede('LOTES_EDITAR')) return;
     if (await cambiarClasificacionParcela(context, lote) && mounted) {
       _huboCambios = true;
       _recargar();
@@ -186,6 +190,7 @@ class _LotePaginaState extends State<LotePagina> {
   }
 
   Future<void> _cambiarNumero(Lote lote) async {
+    if (!context.puede('LOTES_EDITAR')) return;
     if (await cambiarNumeroParcela(context, lote) && mounted) {
       _huboCambios = true;
       _recargar();
@@ -220,12 +225,14 @@ class _Datos {
 class _Encabezado extends StatelessWidget {
   const _Encabezado({
     required this.lote,
+    required this.editable,
     required this.alTraspasar,
     required this.alCambiarNumero,
     required this.alCambiarClasificacion,
   });
 
   final Lote lote;
+  final bool editable;
   final VoidCallback alTraspasar;
   final VoidCallback alCambiarNumero;
   final VoidCallback alCambiarClasificacion;
@@ -272,34 +279,39 @@ class _Encabezado extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                // El traspaso va primero y destacado: es lo que más se hace
-                // con una parcela, porque la tierra se vende y se hereda.
-                FilledButton.icon(
-                  onPressed: alTraspasar,
-                  icon: const Icon(Icons.swap_horiz, size: 18),
-                  label: Text(
-                    lote.tieneTenedor
-                        ? 'Vender o traspasar'
-                        : 'Asignar tenedor',
+            if (editable) ...[
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  // El traspaso va primero y destacado: es lo que más se hace
+                  // con una parcela, porque la tierra se vende y se hereda.
+                  FilledButton.icon(
+                    onPressed: alTraspasar,
+                    icon: const Icon(Icons.swap_horiz, size: 18),
+                    label: Text(
+                      lote.tieneTenedor
+                          ? 'Vender o traspasar'
+                          : 'Asignar tenedor',
+                    ),
                   ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: alCambiarNumero,
-                  icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
-                  label: const Text('Cambiar número'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: alCambiarClasificacion,
-                  icon: const Icon(Icons.category_outlined, size: 18),
-                  label: const Text('Cambiar clasificación'),
-                ),
-              ],
-            ),
+                  OutlinedButton.icon(
+                    onPressed: alCambiarNumero,
+                    icon: const Icon(
+                      Icons.edit_location_alt_outlined,
+                      size: 18,
+                    ),
+                    label: const Text('Cambiar número'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: alCambiarClasificacion,
+                    icon: const Icon(Icons.category_outlined, size: 18),
+                    label: const Text('Cambiar clasificación'),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

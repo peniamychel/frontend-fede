@@ -77,6 +77,7 @@ void main() {
       expect(previa.allowPrinting, isFalse);
       expect(previa.useActions, isFalse);
       expect(printing.paginasRasterizadas, isNotEmpty);
+      expect(printing.resolucionesRasterizadas, everyElement(600));
       expect(
         printing.paginasRasterizadas.every(
           (p) => p.length == 1 && p.single == 0,
@@ -196,6 +197,101 @@ void main() {
       );
     },
   );
+
+  for (final soloReimpresion in [false, true]) {
+    testWidgets(
+      'faltantes incluye reimpresión marcada, sola: $soloReimpresion',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1200, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        Map<String, dynamic> candidato(
+          int id,
+          String nombre, {
+          required int impresiones,
+          required bool pendiente,
+          required bool reimpresion,
+        }) => {
+          'credencial': {
+            'productorId': id,
+            'nombreCompleto': nombre,
+            'nombres': nombre,
+            'apellidos': 'PRUEBA',
+            'ci': '$id',
+            'codigoQr': 'PRUEBA-$id',
+            'completa': true,
+            'faltantes': [],
+          },
+          'impresiones': impresiones,
+          'seleccionable': true,
+          'incluidoEnFase': true,
+          'pendienteEnFase': pendiente,
+          'reimpresionEnFase': reimpresion,
+        };
+        final cantidad = soloReimpresion ? 1 : 2;
+        final api = _ApiPanel(
+          listos: cantidad,
+          candidatos: [
+            if (!soloReimpresion)
+              candidato(
+                81,
+                'PRIMERA IMPRESIÓN',
+                impresiones: 0,
+                pendiente: true,
+                reimpresion: false,
+              ),
+            candidato(
+              82,
+              'REIMPRESIÓN MARCADA',
+              impresiones: 2,
+              pendiente: true,
+              reimpresion: true,
+            ),
+            candidato(
+              83,
+              'IMPRESO SIN MARCAR',
+              impresiones: 1,
+              pendiente: false,
+              reimpresion: false,
+            ),
+          ],
+        );
+        addTearDown(api.cerrar);
+        await tester.pumpWidget(
+          PadronScope(
+            padron: Padron(api: api),
+            child: const MaterialApp(
+              home: PliegoPreviaPagina(sindicato: sindicato),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final faltantes = find.text('Impresiones faltantes ($cantidad)');
+        await tester.ensureVisible(faltantes);
+        await tester.tap(faltantes);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Todos ($cantidad)'));
+        await tester.pumpAndSettle();
+        expect(find.text('REIMPRESIÓN MARCADA'), findsOneWidget);
+        expect(find.text('IMPRESO SIN MARCAR'), findsNothing);
+        expect(
+          find.text('Reimpresión pendiente · 2 impresiones previas'),
+          findsOneWidget,
+        );
+        expect(find.text('Imprimir $cantidad caras'), findsOneWidget);
+        await tester.tap(find.text('Imprimir $cantidad caras'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Abrir impresión'));
+        await tester.pumpAndSettle();
+        expect(api.seleccionesAnversos, [
+          {
+            'productorIds': [if (!soloReimpresion) 81, 82],
+            'permitirReimpresion': true,
+          },
+        ]);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('muestra cantidades y acciones de impresión para Windows', (
     tester,
@@ -326,11 +422,35 @@ void main() {
 }
 
 class _ApiPanel extends ApiClient {
-  _ApiPanel({this.conUltimoGrupo = false, this.conFase = true});
+  _ApiPanel({
+    this.conUltimoGrupo = false,
+    this.conFase = true,
+    this.candidatos = const [],
+    this.listos = 4,
+  });
 
   final bool conUltimoGrupo;
   final bool conFase;
+  final List<Map<String, dynamic>> candidatos;
+  final int listos;
+  final seleccionesAnversos = <Map<String, dynamic>>[];
   final cantidadesReverso = <int>[];
+
+  @override
+  Future<DescargaBinaria> crearBytes(
+    String ruta,
+    Object cuerpo, {
+    Map<String, dynamic>? query,
+    Duration tiempoLimite = const Duration(minutes: 5),
+  }) async {
+    expect(ruta, '/sindicatos/13/credenciales/impresion/anversos.pdf');
+    seleccionesAnversos.add(Map<String, dynamic>.from(cuerpo as Map));
+    // Se verifica la selección sin enviar ningún trabajo físico.
+    throw const ApiException(
+      estado: 503,
+      mensaje: 'Descarga simulada para prueba',
+    );
+  }
 
   @override
   Future<DescargaBinaria> obtenerBytes(
@@ -361,9 +481,9 @@ class _ApiPanel extends ApiClient {
         'impresos': 5,
         'faltantesConFoto': 4,
         'sinFoto': 3,
-        'listosParaImprimir': 4,
+        'listosParaImprimir': listos,
         'faltantesDelSindicato': const [],
-        'candidatos': const [],
+        'candidatos': candidatos,
         if (conFase) 'faseActiva': const {'id': 7, 'numero': 1},
         if (conUltimoGrupo)
           'ultimoGrupo': {
@@ -400,6 +520,7 @@ class _ApiPanel extends ApiClient {
 /// prueba identifican la cantidad: no se envía ningún trabajo físico.
 class _PrintingPruebas extends PrintingPlatform {
   final paginasRasterizadas = <List<int>>[];
+  final resolucionesRasterizadas = <double>[];
   final trabajos = <Uint8List>[];
 
   @override
@@ -413,6 +534,7 @@ class _PrintingPruebas extends PrintingPlatform {
     double dpi,
   ) async* {
     paginasRasterizadas.add(List.of(pages!));
+    resolucionesRasterizadas.add(dpi);
     yield _RasterMuestra();
   }
 

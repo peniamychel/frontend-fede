@@ -19,4 +19,35 @@ extension PermisosUi on BuildContext {
   /// Registrar no concede permiso para editar identidades ya existentes.
   bool get puedeRegistrarProductores =>
       puede('PRODUCTORES_EDITAR') || puede('PRODUCTORES_REGISTRAR');
+
+  /// La consulta de este perfil sirve únicamente para trabajar con las fotos,
+  /// las observaciones y la ficha de datos de cada productor.
+  bool get soloFotosObservaciones {
+    final sesion =
+        getInheritedWidgetOfExactType<SesionScope>()?.notifier?.sesion;
+    return sesion != null &&
+        !sesion.esAdministrador &&
+        sesion.roles.contains('FOTOS_OBSERVACIONES');
+  }
+
+  /// Este rol trabaja desde la ficha individual, sin el acceso al editor masivo.
+  /// No retira PRODUCTORES_EDITAR ni limita a los administradores.
+  bool get mostrarEdicionRapidaProductores {
+    final sesion = SesionScope.maybeOf(this)?.sesion;
+    return sesion == null ||
+        sesion.esAdministrador ||
+        (!sesion.roles.contains('REGISTRO_REVISION') &&
+            !soloFotosObservaciones);
+  }
+
+  /// Oculta los directorios para los perfiles de gestión de productores/fotos,
+  /// sin retirar
+  /// la consulta a los demás roles ni alterar sus permisos de edición.
+  bool get mostrarDirectorios {
+    final sesion = SesionScope.maybeOf(this)?.sesion;
+    return sesion == null ||
+        sesion.esAdministrador ||
+        (!sesion.roles.contains('REGISTRO_REVISION') &&
+            !soloFotosObservaciones);
+  }
 }

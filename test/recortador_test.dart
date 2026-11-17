@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/productores/recortador_imagen.dart';
@@ -95,6 +96,70 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(ultimo, isNotNull);
   });
+
+  testWidgets(
+    'cambiar y restablecer la vista ajustada conserva el encuadre original',
+    (tester) async {
+      Uint8List? vista;
+      late StateSetter actualizar;
+      final cambios = <Recorte>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                actualizar = setState;
+                return Center(
+                  child: SizedBox(
+                    width: 460,
+                    child: RecortadorImagen(
+                      bytes: foto,
+                      bytesVistaPrevia: vista,
+                      proporcionFija: Proporcion.cuadrada,
+                      alCambiar: (r) {
+                        if (r != null) cambios.add(r);
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await esperarImagen(tester);
+      await tester.drag(
+        find.byKey(const ValueKey('recorte-inferiorDerecha')),
+        const Offset(-50, 0),
+      );
+      await tester.pump();
+      final elegido = cambios.last;
+      final cantidad = cambios.length;
+      final reducida = img.copyResize(img.decodePng(foto)!, width: 20);
+      actualizar(() {
+        vista = Uint8List.fromList(img.encodePng(reducida));
+      });
+      await tester.pump();
+      await esperarImagen(tester);
+      expect(tester.widget<RawImage>(find.byType(RawImage)).image!.width, 20);
+      expect(cambios.length, cantidad);
+      actualizar(() {
+        vista = null;
+      });
+      await tester.pump();
+      await esperarImagen(tester);
+      expect(cambios.length, cantidad);
+      expect(
+        (cambios.last.x, cambios.last.y, cambios.last.ancho, cambios.last.alto),
+        (elegido.x, elegido.y, elegido.ancho, elegido.alto),
+      );
+      expect(
+        tester.widget<RawImage>(find.byType(RawImage)).image!.width,
+        img.decodePng(foto)!.width,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('la esquina cuadrada sigue un arrastre de un solo eje', (
     tester,

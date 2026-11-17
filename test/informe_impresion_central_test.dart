@@ -89,6 +89,7 @@ void main() {
     expect(find.text('Sindicatos que todavía no tienen sello'), findsOneWidget);
     expect(find.text('NUEVA ESPERANZA'), findsWidgets);
     expect(find.text('Informe general'), findsOneWidget);
+    expect(find.text('Lista de productores en Excel'), findsOneWidget);
     expect(find.text('Planilla de sellos y firmas'), findsOneWidget);
     expect(find.text('Informe nominal completo'), findsNothing);
     expect(find.text('Informe nominal por sindicatos'), findsNothing);

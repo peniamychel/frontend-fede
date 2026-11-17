@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../imagen_autenticada.dart';
 
 import '../../repositories/padron.dart';
 import '../widgets/marca_estado.dart';
@@ -34,6 +35,8 @@ class FilaProductor extends StatelessWidget {
     ].join('  ·  ');
 
     final subtitulos = [
+      if (productor.fotografiaPendienteEdicion)
+        'Fotografía pendiente de edición',
       if (documentos.isNotEmpty) documentos,
       if (productor.numeroLote?.isNotEmpty ?? false)
         'N° lote: ${productor.numeroLote}',
@@ -82,7 +85,7 @@ class FilaProductor extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             )
           : null,
-      leading: _avatar(context),
+      leading: _miniatura(context),
       title: TituloConEstado(
         nombre: productor.nombreCompleto.isEmpty
             ? productor.nombres
@@ -149,31 +152,39 @@ class FilaProductor extends StatelessWidget {
   ///
   /// El icono distingue dos ausencias que no son lo mismo: no tener imagen
   /// subida, y no tener siquiera el rótulo de la foto en la planilla.
-  Widget _avatar(BuildContext context) {
-    final tema = Theme.of(context);
+  Widget _miniatura(BuildContext context) {
+    const lado = 40.0;
+    final colores = Theme.of(context).colorScheme;
     final miniatura = productor.miniaturaUrl;
+    final fotoArchivada = miniatura == null && productor.tieneFoto;
 
-    if (miniatura != null) {
-      return CircleAvatar(
-        backgroundColor: tema.colorScheme.surfaceContainerHighest,
-        // foregroundImage y no backgroundImage: si la carga falla, se ve el
-        // child de respaldo en vez de un círculo vacío.
-        foregroundImage: NetworkImage(ApiConfig.urlAbsoluta(miniatura)),
-        child: Icon(Icons.person, size: 20, color: tema.colorScheme.outline),
-      );
-    }
-
-    return CircleAvatar(
-      backgroundColor: productor.tieneFoto
-          ? tema.colorScheme.primaryContainer
-          : tema.colorScheme.surfaceContainerHighest,
-      child: Icon(
-        productor.tieneFoto ? Icons.person : Icons.person_off_outlined,
-        size: 20,
-        color: productor.tieneFoto
-            ? tema.colorScheme.onPrimaryContainer
-            : tema.colorScheme.outline,
+    return Container(
+      width: lado,
+      height: lado,
+      alignment: Alignment.center,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: fotoArchivada
+            ? colores.primaryContainer
+            : colores.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
       ),
+      child: miniatura != null
+          ? ImagenAutenticada(
+              ApiConfig.urlAbsoluta(miniatura),
+              width: lado,
+              height: lado,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) =>
+                  Icon(Icons.person, size: 20, color: colores.outline),
+            )
+          : Icon(
+              fotoArchivada ? Icons.person : Icons.person_off_outlined,
+              size: 20,
+              color: fotoArchivada
+                  ? colores.onPrimaryContainer
+                  : colores.outline,
+            ),
     );
   }
 }
@@ -258,21 +269,29 @@ class _EstadoImpresion extends StatelessWidget {
             'Revisión SIE pendiente: excluido de impresión',
             tema.colorScheme.error,
           )
+        : productor.fotografiaPendienteEdicion
+        ? (
+            'Fotografía pendiente de edición: impresión bloqueada',
+            tema.colorScheme.error,
+          )
         : productor.revisionLotePendiente
         ? ('En revisión: falta número de lote', tema.colorScheme.outline)
         : productor.faseImpresionPendiente &&
               (productor.credencialLista || productor.reimpresionFasePendiente)
         ? (
             productor.reimpresionFasePendiente
-                ? 'Agregado a una fase para reimpresión'
-                : 'Agregado a una fase de impresión',
+                ? 'Reimpresión pendiente para la fase actual o la próxima'
+                : 'Pendiente para la fase actual o la próxima',
             Colors.orange.shade800,
           )
         : !productor.credencialLista
         ? ('Credencial incompleta o sin fotografía', tema.colorScheme.outline)
         : productor.credencialImpresa
         ? ('Credencial impresa', Colors.green)
-        : ('Lista, pendiente de impresión', Colors.amber.shade700);
+        : (
+            'Datos completos, sin marca pendiente para una fase',
+            Colors.amber.shade700,
+          );
     return Tooltip(
       message: mensaje,
       child: Icon(Icons.print, size: 19, color: color),

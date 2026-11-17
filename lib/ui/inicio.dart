@@ -11,6 +11,7 @@ import 'jerarquia/directorio_pagina.dart';
 import 'jerarquia/jerarquia_pagina.dart';
 import 'operadores/credenciales_operadores_pagina.dart';
 import 'padron_scope.dart';
+import 'permisos_ui.dart';
 import 'sesion_scope.dart';
 import 'productores/productores_pagina.dart';
 import 'reuniones/reuniones_pagina.dart';
@@ -78,13 +79,14 @@ class _InicioState extends State<Inicio> {
     final carnet = sesion == null || sesion.puede('CARNETS_DISENO');
     final respaldos = sesion == null || sesion.puede('RESPALDOS_ADMINISTRAR');
     final general = sesion?.sesion?.centralId == null;
+    final calidad = general && !context.soloFotosObservaciones;
     final operadores =
         general &&
         (sesion == null || sesion.puede('CREDENCIALES_OPERADORES_GESTIONAR'));
     final destinos = <_Destino>[
       const _Destino('Productores', Icons.people_outline, Icons.people),
       const _Destino(
-        'Jerarquía',
+        'Centrales',
         Icons.account_tree_outlined,
         Icons.account_tree,
       ),
@@ -93,15 +95,23 @@ class _InicioState extends State<Inicio> {
           'Reuniones',
           Icons.event_note_outlined,
           Icons.event_note,
+          ocultarAdministradorMovilVertical: true,
         ),
-      if (general)
+      if (calidad)
         const _Destino('Calidad', Icons.fact_check_outlined, Icons.fact_check),
-      if (carnet) const _Destino('Carnet', Icons.badge_outlined, Icons.badge),
+      if (carnet)
+        const _Destino(
+          'Carnet',
+          Icons.badge_outlined,
+          Icons.badge,
+          ocultarAdministradorMovilVertical: true,
+        ),
       if (operadores)
         const _Destino(
           'Personal operador',
           Icons.contact_emergency_outlined,
           Icons.contact_emergency,
+          ocultarAdministradorMovilVertical: true,
         ),
       if (respaldos)
         const _Destino('Respaldos', Icons.backup_outlined, Icons.backup),
@@ -113,11 +123,25 @@ class _InicioState extends State<Inicio> {
         ),
       const _Destino('Cuenta', Icons.person_outline, Icons.person),
     ];
+    final ventana = MediaQuery.sizeOf(context);
+    final administradorMovilVertical =
+        sesion?.sesion?.esAdministrador == true &&
+        ventana.width < 700 &&
+        ventana.height > ventana.width;
+    // Conserva los índices originales de las páginas al cambiar la orientación.
+    final indicesVisibles = [
+      for (var i = 0; i < destinos.length; i++)
+        if (!administradorMovilVertical ||
+            !destinos[i].ocultarAdministradorMovilVertical)
+          i,
+    ];
+    _historialSecciones.removeWhere((i) => !indicesVisibles.contains(i));
+    if (!indicesVisibles.contains(_seccion)) _seccion = 0;
     final paginas = <Widget>[
       ProductoresPagina(controlador: _productores),
       JerarquiaPagina(controlador: _jerarquia),
       if (reuniones) const ReunionesPagina(),
-      if (general) const CalidadPagina(),
+      if (calidad) const CalidadPagina(),
       if (carnet) const EditorCredencialPagina(),
       if (operadores) const CredencialesOperadoresPagina(),
       if (respaldos) const BackupsPagina(),
@@ -146,14 +170,14 @@ class _InicioState extends State<Inicio> {
           return Scaffold(
             body: contenido,
             bottomNavigationBar: NavigationBar(
-              selectedIndex: _seccion,
-              onDestinationSelected: _ir,
+              selectedIndex: indicesVisibles.indexOf(_seccion),
+              onDestinationSelected: (i) => _ir(indicesVisibles[i]),
               destinations: [
-                for (final d in destinos)
+                for (final i in indicesVisibles)
                   NavigationDestination(
-                    icon: Icon(d.icono),
-                    selectedIcon: Icon(d.iconoActivo),
-                    label: d.etiqueta,
+                    icon: Icon(destinos[i].icono),
+                    selectedIcon: Icon(destinos[i].iconoActivo),
+                    label: destinos[i].etiqueta,
                   ),
               ],
             ),
@@ -171,44 +195,29 @@ class _InicioState extends State<Inicio> {
                     ? NavigationRailLabelType.none
                     : NavigationRailLabelType.all,
                 leading: menuExtendido && general
-                    ? PopupMenuButton<String>(
-                        key: const ValueKey('menu-directorio-federacion'),
-                        tooltip: 'Opciones de la federación',
-                        onSelected: (opcion) {
-                          if (opcion == 'directorio') {
-                            _abrirDirectorioFederacion();
-                          }
-                        },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
-                            value: 'directorio',
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: Icon(Icons.groups_2_outlined),
-                              title: Text('Directorio de la federación'),
-                            ),
-                          ),
-                        ],
-                        child: const Padding(
-                          padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-                          child: Row(
-                            children: [
-                              Icon(Icons.badge_outlined),
-                              SizedBox(width: 12),
-                              Text(
-                                'PADRÓN FEDERACIÓN\nCARRASCO TROPICAL',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
+                    ? context.mostrarDirectorios
+                          ? PopupMenuButton<String>(
+                              key: const ValueKey('menu-directorio-federacion'),
+                              tooltip: 'Opciones de la federación',
+                              onSelected: (opcion) {
+                                if (opcion == 'directorio') {
+                                  _abrirDirectorioFederacion();
+                                }
+                              },
+                              itemBuilder: (context) => const [
+                                PopupMenuItem(
+                                  value: 'directorio',
+                                  child: ListTile(
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(Icons.groups_2_outlined),
+                                    title: Text('Directorio de la federación'),
+                                  ),
                                 ),
-                              ),
-                              SizedBox(width: 4),
-                              Icon(Icons.arrow_drop_down, size: 18),
-                            ],
-                          ),
-                        ),
-                      )
+                              ],
+                              child: _marcaPadron(conMenu: true),
+                            )
+                          : _marcaPadron(conMenu: false)
                     : const SizedBox(height: 8),
                 destinations: [
                   for (final d in destinos)
@@ -242,6 +251,24 @@ class _InicioState extends State<Inicio> {
     );
   }
 
+  Widget _marcaPadron({required bool conMenu}) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+    child: Row(
+      children: [
+        const Icon(Icons.badge_outlined),
+        const SizedBox(width: 12),
+        const Text(
+          'PADRÓN FEDERACIÓN\nCARRASCO TROPICAL',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
+        if (conMenu) ...[
+          const SizedBox(width: 4),
+          const Icon(Icons.arrow_drop_down, size: 18),
+        ],
+      ],
+    ),
+  );
+
   void _ir(int indice) {
     if (indice == _seccion) return;
     setState(() {
@@ -255,9 +282,10 @@ class _InicioState extends State<Inicio> {
   }
 
   Future<void> _abrirDirectorioFederacion() async {
+    if (!context.mostrarDirectorios) return;
     try {
       final federacion = await PadronScope.of(context).federaciones.deTrabajo();
-      if (!mounted) return;
+      if (!mounted || !context.mostrarDirectorios) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => DirectorioPagina.deFederacion(federacion),
@@ -315,9 +343,15 @@ class _InicioState extends State<Inicio> {
 }
 
 class _Destino {
-  const _Destino(this.etiqueta, this.icono, this.iconoActivo);
+  const _Destino(
+    this.etiqueta,
+    this.icono,
+    this.iconoActivo, {
+    this.ocultarAdministradorMovilVertical = false,
+  });
 
   final String etiqueta;
   final IconData icono;
   final IconData iconoActivo;
+  final bool ocultarAdministradorMovilVertical;
 }

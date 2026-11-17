@@ -99,7 +99,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
         codigo,
       ) ??
       true;
-  bool get _registroLimitado => !_esEdicion && !_permiso('PRODUCTORES_EDITAR');
+  bool get _soloNumeroLote => !_permiso('LOTES_EDITAR');
   bool get _puedeConsultarSie => _permiso('SIE_REVISAR');
   bool get _datosHabilitados =>
       _esEdicion ||
@@ -319,7 +319,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   /// lo dice.
   Future<void> _cargarDisponibles() async {
     final sindicato = _sindicato;
-    if (_esEdicion || _registroLimitado || sindicato == null) return;
+    if (_esEdicion || _soloNumeroLote || sindicato == null) return;
 
     setState(() => _cargandoDisponibles = true);
     try {
@@ -385,7 +385,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     if (_esEdicion || !_puedeConsultarSie || _verificandoCedula) return;
     final buscado = _ci.text.trim();
     if (buscado.isEmpty) {
-      mostrarAviso(context, 'Ingresá la cédula de identidad.');
+      mostrarAviso(context, 'Ingresa la cédula de identidad.');
       return;
     }
 
@@ -492,7 +492,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
             ],
           ),
           const SizedBox(height: 8),
-          for (final p in _yaRegistrados)
+          for (final p in _yaRegistrados) ...[
             Material(
               type: MaterialType.transparency,
               child: ListTile(
@@ -517,12 +517,22 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                 onTap: () => _abrirFicha(p),
               ),
             ),
+            TextButton.icon(
+              key: ValueKey('completar-datos-${p.id}'),
+              onPressed: _guardando
+                  ? null
+                  : () {
+                      _nombres.text = p.nombres;
+                      _apellidos.text = p.apellidos ?? '';
+                    },
+              icon: const Icon(Icons.content_copy_outlined, size: 18),
+              label: const Text('Completar nombres y apellidos'),
+            ),
+          ],
           const SizedBox(height: 8),
           Text(
-            'Podés registrar otro productor con esta misma CI, sin añadir X. '
-            'Todos los registros con esta CI se mostrarán en rojo y no podrán imprimir '
-            'hasta corregir la cédula repetida. En los informes figurará Revisión CI. '
-            'Los vetos siguen impidiendo registrar esa cédula.',
+            'Puedes registrar esta CI repetida. Los productores con esta CI quedarán '
+            'en rojo, con Revisión CI y sin impresión hasta corregirla.',
             style: TextStyle(color: tema.colorScheme.error),
           ),
         ],
@@ -556,7 +566,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   // ------------------------------------------------ la sección de parcela
 
   List<Widget> _seccionParcela(BuildContext context) {
-    if (_registroLimitado) {
+    if (_soloNumeroLote) {
       if (!_permiso('NUMERO_LOTE_EDITAR')) return const [];
       return [
         const SizedBox(height: 24),
@@ -617,9 +627,9 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
         else if (_parcelasLibres.isEmpty)
           _Aviso(
             texto: _sindicato == null
-                ? 'Elegí primero el sindicato.'
+                ? 'Elige primero el sindicato.'
                 : 'En ${_sindicato!.nombre} no hay parcelas sin tenedor. '
-                      'Podés crear una nueva.',
+                      'Puedes crear una nueva.',
           )
         else
           DropdownButtonFormField<Lote?>(
@@ -644,7 +654,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                 _clasificacionParcela = v.estado;
               }
             }),
-            validator: (v) => v == null ? 'Elegí una parcela' : null,
+            validator: (v) => v == null ? 'Elige una parcela' : null,
           ),
       ],
       if (_opcionParcela != _OpcionParcela.ninguna)
@@ -686,7 +696,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   Widget _resumenNumeroCompartido(BuildContext context) {
     final tema = Theme.of(context);
     final ocupantes = _ocupantesDelNumero;
-    final lleno = ocupantes.length >= 8;
+    final lleno = ocupantes.length >= letrasCompartidasLote.length;
     final cantidadConSistema = ocupantes
         .where((lote) => lote.estado == EstadoLote.conSistema)
         .length;
@@ -714,7 +724,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
             ocupantes.isEmpty
                 ? 'Este número todavía no tiene productores: el lote irá sin letra.'
                 : lleno
-                ? 'Este número ya tiene ocho productores; no admite otra letra.'
+                ? 'Este número ya tiene 26 productores; no admite otra letra.'
                 : _clasificacionParcela == EstadoLote.conSistema
                 ? 'Este número ya tiene ${ocupantes.length} productor(es). Como el nuevo tiene Sistema, se asignará la letra $proxima y se reordenarán las demás.'
                 : cantidadConSistema > 0
@@ -752,7 +762,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
   Future<void> _asignarParcela(Productor productor, Sindicato sindicato) async {
     final padron = PadronScope.of(context);
 
-    if (_registroLimitado) {
+    if (_soloNumeroLote) {
       await padron.lotes.guardarNumeroProductor(
         productor.id,
         _texto(_parcelaNumero)!,
@@ -811,7 +821,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     if (_esEdicion
         ? !_permiso('PRODUCTORES_EDITAR')
         : !context.puedeRegistrarProductores) {
-      mostrarAviso(context, 'No tenés permiso para guardar estos datos.');
+      mostrarAviso(context, 'No tienes permiso para guardar estos datos.');
       return;
     }
     setState(() => _erroresServidor = const {});
@@ -824,17 +834,17 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
     if (!_formulario.currentState!.validate()) return;
 
     if (_opcionParcela == _OpcionParcela.nueva &&
-        _ocupantesDelNumero.length >= 8) {
+        _ocupantesDelNumero.length >= letrasCompartidasLote.length) {
       mostrarAviso(
         context,
-        'Ese número de lote ya usa todas las letras de A a H.',
+        'Ese número de lote ya usa todas las letras de A a Z.',
       );
       return;
     }
 
     final sindicato = _sindicato;
     if (sindicato == null) {
-      mostrarAviso(context, 'Elegí el sindicato al que pertenece.');
+      mostrarAviso(context, 'Elige el sindicato al que pertenece.');
       return;
     }
     final centralAsignada = context
@@ -843,7 +853,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
         ?.sesion
         ?.centralId;
     if (centralAsignada != null && sindicato.centralId != centralAsignada) {
-      mostrarAviso(context, 'Elegí un sindicato de la central asignada.');
+      mostrarAviso(context, 'Elige un sindicato de la central asignada.');
       return;
     }
 
@@ -882,7 +892,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
       final creado = await repo.crear(request);
       if (!mounted) return;
       setState(() => _registroCompletado = true);
-      if (_registroLimitado
+      if (_soloNumeroLote
           ? _texto(_parcelaNumero) != null && _permiso('NUMERO_LOTE_EDITAR')
           : _opcionParcela != _OpcionParcela.ninguna) {
         if (!mounted) return;
@@ -899,8 +909,8 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
             '${creado.nombreCompleto} quedó registrado, pero no se le pudo '
             'asignar la parcela.',
             detalle: e is ApiException
-                ? '${e.descripcion} Se la podés dar desde su ficha.'
-                : 'Se la podés dar desde su ficha.',
+                ? '${e.descripcion} Se la puedes dar desde su ficha.'
+                : 'Se la puedes dar desde su ficha.',
           );
           await _finalizarAlta(creado);
           return;
@@ -1056,7 +1066,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                                   ? null
                                   : _elegirCentral,
                               validator: (v) =>
-                                  v == null ? 'Elegí una central' : null,
+                                  v == null ? 'Elige una central' : null,
                             ),
                             const SizedBox(height: 12),
                             DropdownButtonFormField<Sindicato?>(
@@ -1065,7 +1075,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                               decoration: InputDecoration(
                                 labelText: 'Sindicato *',
                                 helperText: _central == null
-                                    ? 'Elegí una central primero'
+                                    ? 'Elige una central primero'
                                     : null,
                                 errorText: _erroresServidor['sindicatoId'],
                               ),
@@ -1080,7 +1090,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
                                   ? null
                                   : _elegirSindicato,
                               validator: (v) =>
-                                  v == null ? 'Elegí un sindicato' : null,
+                                  v == null ? 'Elige un sindicato' : null,
                             ),
                           ],
                           if (!_esEdicion) ..._seccionParcela(context),
@@ -1159,7 +1169,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
           if (servidor != null) return servidor;
           final limpio = (valor ?? '').trim();
           if (!_esEdicion && limpio.isEmpty) {
-            return 'Ingresá la cédula de identidad';
+            return 'Ingresa la cédula de identidad';
           }
           if (limpio.length > ProductorRequest.maxCi) {
             return 'No puede superar los ${ProductorRequest.maxCi} caracteres';
@@ -1178,7 +1188,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
         context,
         icono: Icons.lock_outline,
         texto:
-            'Ingresá la cédula y presioná buscar para habilitar los demás datos.',
+            'Ingresa la cédula y presiona buscar para habilitar los demás datos.',
         color: tema.colorScheme.surfaceContainerHighest,
       ),
       _EstadoCedula.buscando => _panelCedula(
@@ -1198,7 +1208,7 @@ class _ProductorFormularioState extends State<ProductorFormulario> {
         icono: Icons.edit_outlined,
         texto:
             _mensajeCedula ??
-            'La persona no fue encontrada. Completá sus datos manualmente.',
+            'La persona no fue encontrada. Completa sus datos manualmente.',
         color: tema.colorScheme.secondaryContainer,
       ),
       _EstadoCedula.noDisponible => _panelCedula(

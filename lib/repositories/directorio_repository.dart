@@ -22,6 +22,18 @@ class DirectorioRepository {
     return Directorio.desdeJson(datos.comoObjeto);
   }
 
+  Future<Directorio> actualizarTelefono(
+    Ambito ambito,
+    int id,
+    String telefono,
+  ) async {
+    final datos = await _api.parchear(
+      '${_base(ambito, id)}/telefono',
+      cuerpo: {'telefono': telefono},
+    );
+    return Directorio.desdeJson(datos.comoObjeto);
+  }
+
   /// Todos los períodos, del más reciente al más antiguo.
   Future<List<Cargo>> historial(Ambito ambito, int id) async {
     final datos = await _api.obtener('${_base(ambito, id)}/historial');

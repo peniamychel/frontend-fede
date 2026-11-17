@@ -22,7 +22,7 @@ void main() {
       ),
     );
     expect(
-      find.textContaining('3 productores sin número de lote'),
+      find.textContaining('3 productores sin N° de lote'),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);

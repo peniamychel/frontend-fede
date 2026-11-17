@@ -1,5 +1,4 @@
-import 'dart:convert';
-
+import 'package:flutter/painting.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
@@ -11,24 +10,30 @@ class AutenticacionRepository {
 
   static const _claveSesion = 'federa.sesion';
   final ApiClient api;
+  Sesion? _sesion;
 
   Future<Sesion> acceder(String codigo) async {
-    final respuesta = await api.crear('/auth/acceso', {'codigo': codigo.trim()});
+    final respuesta = await api.crear('/auth/acceso', {
+      'codigo': codigo.trim(),
+    });
     final sesion = Sesion.desdeLogin(respuesta.comoObjeto);
     api.usarToken(sesion.token);
-    await _guardar(sesion);
+    _sesion = sesion;
+    await _borrarSesionPersistida();
     return sesion;
   }
 
   Future<Sesion?> restaurar() async {
-    final preferencias = await SharedPreferences.getInstance();
-    final guardada = preferencias.getString(_claveSesion);
-    if (guardada == null) return null;
+    // Retirar los tokens guardados por versiones anteriores. La sesión nueva
+    // vive en memoria: cerrar la aplicación o recargar exige iniciar sesión.
+    await _borrarSesionPersistida();
+    final sesion = _sesion;
+    if (sesion == null) {
+      api.usarToken(null);
+      return null;
+    }
 
     try {
-      final sesion = Sesion.desdeJson(
-        jsonDecode(guardada) as Map<String, dynamic>,
-      );
       if (sesion.expirada) {
         await cerrarSesion();
         return null;
@@ -41,7 +46,7 @@ class AutenticacionRepository {
         return null;
       }
       final renovada = sesion.conAutorizaciones(actual);
-      await _guardar(renovada);
+      _sesion = renovada;
       return renovada;
     } on ApiException {
       await cerrarSesion();
@@ -60,19 +65,19 @@ class AutenticacionRepository {
         // El cierre local debe funcionar aunque la sesión ya haya vencido.
       }
     }
-    api.usarToken(null);
-    final preferencias = await SharedPreferences.getInstance();
-    await preferencias.remove(_claveSesion);
+    await descartarSesionLocal();
   }
 
   Future<void> descartarSesionLocal() async {
     api.usarToken(null);
-    final preferencias = await SharedPreferences.getInstance();
-    await preferencias.remove(_claveSesion);
+    _sesion = null;
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    await _borrarSesionPersistida();
   }
 
-  Future<void> _guardar(Sesion sesion) async {
+  Future<void> _borrarSesionPersistida() async {
     final preferencias = await SharedPreferences.getInstance();
-    await preferencias.setString(_claveSesion, jsonEncode(sesion.toJson()));
+    await preferencias.remove(_claveSesion);
   }
 }

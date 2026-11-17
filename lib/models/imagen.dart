@@ -158,6 +158,8 @@ class Imagen {
     required this.alto,
     required this.nombreOriginal,
     required this.actualizadaEn,
+    this.creadaEn,
+    this.pendienteEdicion = false,
   });
 
   final TipoImagen tipo;
@@ -171,6 +173,8 @@ class Imagen {
   final int alto;
   final String? nombreOriginal;
   final DateTime? actualizadaEn;
+  final DateTime? creadaEn;
+  final bool pendienteEdicion;
 
   String get tamanoLegible => pesoLegible(tamanoBytes);
 
@@ -188,5 +192,10 @@ class Imagen {
       final String s => DateTime.tryParse(s),
       _ => null,
     },
+    creadaEn: switch (json['creadaEn']) {
+      final String s => DateTime.tryParse(s),
+      _ => null,
+    },
+    pendienteEdicion: json['pendienteEdicion'] == true,
   );
 }

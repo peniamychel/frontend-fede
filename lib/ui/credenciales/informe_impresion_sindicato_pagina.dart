@@ -4,7 +4,10 @@ import '../../core/guardar_archivo.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../permisos_ui.dart';
+import '../widgets/descargar_observaciones_preimpresion_boton.dart';
 import '../widgets/estados.dart';
+import '../widgets/descargar_productores_excel_boton.dart';
+import '../widgets/elegir_orden_informe.dart';
 
 /// Resumen y descarga del informe de revisión de un solo sindicato.
 class InformeImpresionSindicatoPagina extends StatefulWidget {
@@ -23,7 +26,20 @@ class _InformeImpresionSindicatoPaginaState
   bool _descargando = false;
   bool _descargandoPreImpresion = false;
   bool _descargandoNomina = false;
+  bool _descargandoListaEnBlanco = false;
+  bool _configurandoListaEnBlanco = false;
   final Set<int> _descargandoFases = <int>{};
+  bool _eligiendoOrden = false;
+
+  Future<OrdenInformes?> _elegirOrden() async {
+    if (_eligiendoOrden) return null;
+    _eligiendoOrden = true;
+    try {
+      return await elegirOrdenInforme(context);
+    } finally {
+      _eligiendoOrden = false;
+    }
+  }
 
   @override
   void initState() {
@@ -45,11 +61,15 @@ class _InformeImpresionSindicatoPaginaState
   }
 
   Future<void> _descargar() async {
-    setState(() => _descargando = true);
+    if (_descargando) return;
     try {
+      final orden = await _elegirOrden();
+      if (orden == null || !mounted) return;
+      setState(() => _descargando = true);
       final archivo = await PadronScope.of(
         context,
-      ).sindicatos.descargarRevisionPadron(widget.sindicato.id);
+      ).sindicatos.descargarRevisionPadron(widget.sindicato.id, orden: orden);
+      if (!mounted) return;
       await guardarArchivo(
         archivo.bytes,
         archivo.nombreArchivo,
@@ -64,11 +84,14 @@ class _InformeImpresionSindicatoPaginaState
   }
 
   Future<void> _descargarPreImpresion() async {
-    setState(() => _descargandoPreImpresion = true);
+    if (_descargandoPreImpresion) return;
     try {
-      final archivo = await PadronScope.of(
-        context,
-      ).sindicatos.descargarInformePreImpresion(widget.sindicato.id);
+      final orden = await _elegirOrden();
+      if (orden == null || !mounted) return;
+      setState(() => _descargandoPreImpresion = true);
+      final archivo = await PadronScope.of(context).sindicatos
+          .descargarInformePreImpresion(widget.sindicato.id, orden: orden);
+      if (!mounted) return;
       await guardarArchivo(
         archivo.bytes,
         archivo.nombreArchivo,
@@ -82,12 +105,51 @@ class _InformeImpresionSindicatoPaginaState
     }
   }
 
-  Future<void> _descargarNomina() async {
-    setState(() => _descargandoNomina = true);
+  Future<void> _descargarListaEnBlanco(int cantidadInicial) async {
+    if (_descargandoListaEnBlanco || _configurandoListaEnBlanco) return;
+    setState(() => _configurandoListaEnBlanco = true);
     try {
+      final filas = await showDialog<int>(
+        context: context,
+        builder: (_) => _DialogoListaEnBlanco(cantidadInicial: cantidadInicial),
+      );
+      if (filas == null || !mounted) return;
+      setState(() {
+        _configurandoListaEnBlanco = false;
+        _descargandoListaEnBlanco = true;
+      });
       final archivo = await PadronScope.of(
         context,
-      ).sindicatos.descargarNomina(widget.sindicato.id);
+      ).sindicatos.descargarListaEnBlanco(widget.sindicato.id, filas);
+      if (!mounted) return;
+      await guardarArchivo(
+        archivo.bytes,
+        archivo.nombreArchivo,
+        archivo.tipoMime,
+      );
+      if (mounted) mostrarExito(context, 'Lista en blanco descargada.');
+    } catch (error) {
+      if (mounted) mostrarError(context, error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _descargandoListaEnBlanco = false;
+          _configurandoListaEnBlanco = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _descargarNomina() async {
+    if (_descargandoNomina) return;
+    try {
+      final orden = await _elegirOrden();
+      if (orden == null || !mounted) return;
+      setState(() => _descargandoNomina = true);
+      final archivo = await PadronScope.of(
+        context,
+      ).sindicatos.descargarNomina(widget.sindicato.id, orden: orden);
+      if (!mounted) return;
       await guardarArchivo(
         archivo.bytes,
         archivo.nombreArchivo,
@@ -102,11 +164,14 @@ class _InformeImpresionSindicatoPaginaState
   }
 
   Future<void> _descargarFase(FaseInformeSindicato fase) async {
-    setState(() => _descargandoFases.add(fase.id));
+    if (_descargandoFases.contains(fase.id)) return;
     try {
-      final archivo = await PadronScope.of(
-        context,
-      ).sindicatos.descargarInformeFase(widget.sindicato.id, fase.id);
+      final orden = await _elegirOrden();
+      if (orden == null || !mounted) return;
+      setState(() => _descargandoFases.add(fase.id));
+      final archivo = await PadronScope.of(context).sindicatos
+          .descargarInformeFase(widget.sindicato.id, fase.id, orden: orden);
+      if (!mounted) return;
       await guardarArchivo(
         archivo.bytes,
         archivo.nombreArchivo,
@@ -204,6 +269,10 @@ class _InformeImpresionSindicatoPaginaState
                   children: [
                     Text('Generar informes', style: tema.textTheme.titleMedium),
                     const SizedBox(height: 10),
+                    DescargarProductoresExcelBoton.sindicato(
+                      id: widget.sindicato.id,
+                    ),
+                    const SizedBox(height: 10),
                     FilledButton.tonalIcon(
                       onPressed: _descargando ? null : _descargar,
                       icon: _descargando
@@ -226,6 +295,25 @@ class _InformeImpresionSindicatoPaginaState
                             )
                           : const Icon(Icons.description_outlined),
                       label: const Text('Informe pre-impresión'),
+                    ),
+                    const SizedBox(height: 10),
+                    DescargarObservacionesPreimpresionBoton.sindicato(
+                      id: widget.sindicato.id,
+                    ),
+                    const SizedBox(height: 10),
+                    FilledButton.tonalIcon(
+                      onPressed:
+                          _descargandoListaEnBlanco ||
+                              _configurandoListaEnBlanco
+                          ? null
+                          : () => _descargarListaEnBlanco(avance.total),
+                      icon: _descargandoListaEnBlanco
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.table_rows_outlined),
+                      label: const Text('Lista en blanco'),
                     ),
                     const SizedBox(height: 10),
                     FilledButton.tonalIcon(
@@ -334,6 +422,74 @@ class _InformeImpresionSindicatoPaginaState
         ),
       ),
     ),
+  );
+}
+
+class _DialogoListaEnBlanco extends StatefulWidget {
+  const _DialogoListaEnBlanco({required this.cantidadInicial});
+  final int cantidadInicial;
+
+  @override
+  State<_DialogoListaEnBlanco> createState() => _DialogoListaEnBlancoState();
+}
+
+class _DialogoListaEnBlancoState extends State<_DialogoListaEnBlanco> {
+  final _formulario = GlobalKey<FormState>();
+  late final _cantidad = TextEditingController(
+    text: widget.cantidadInicial > 0 ? '${widget.cantidadInicial}' : '',
+  );
+
+  @override
+  void dispose() {
+    _cantidad.dispose();
+    super.dispose();
+  }
+
+  void _generar() {
+    if (!_formulario.currentState!.validate()) return;
+    Navigator.of(context).pop(int.parse(_cantidad.text.trim()));
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Generar lista en blanco'),
+    content: SizedBox(
+      width: 380,
+      child: Form(
+        key: _formulario,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Se generará una fila vacía por afiliado.'),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _cantidad,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Cantidad de afiliados',
+              ),
+              validator: (valor) {
+                final cantidad = int.tryParse(valor?.trim() ?? '');
+                return cantidad == null || cantidad < 1 || cantidad > 5000
+                    ? 'Ingresá un número entre 1 y 5000.'
+                    : null;
+              },
+              onFieldSubmitted: (_) => _generar(),
+            ),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(onPressed: _generar, child: const Text('Generar PDF')),
+    ],
   );
 }
 

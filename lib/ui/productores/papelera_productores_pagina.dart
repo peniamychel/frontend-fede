@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/texto_busqueda.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../widgets/estados.dart';
@@ -14,16 +15,26 @@ class PapeleraProductoresPagina extends StatefulWidget {
 
 class _PapeleraProductoresPaginaState extends State<PapeleraProductoresPagina> {
   late Future<List<ProductorPapelera>> _futuro;
+  final _busqueda = TextEditingController();
   bool _procesando = false;
 
   @override
   void initState() {
     super.initState();
-    _recargar();
+    _futuro = PadronScope.of(context).productores.papelera();
   }
 
   void _recargar() {
-    setState(() => _futuro = PadronScope.of(context).productores.papelera());
+    final consulta = PadronScope.of(context).productores.papelera();
+    setState(() {
+      _futuro = consulta;
+    });
+  }
+
+  @override
+  void dispose() {
+    _busqueda.dispose();
+    super.dispose();
   }
 
   Future<void> _restaurar(ProductorPapelera productor) async {
@@ -118,79 +129,125 @@ class _PapeleraProductoresPaginaState extends State<PapeleraProductoresPagina> {
         ),
       ],
     ),
-    body: CargaAsync<List<ProductorPapelera>>(
-      futuro: _futuro,
-      alReintentar: _recargar,
-      constructor: (context, productores) {
-        if (productores.isEmpty) {
-          return const SinResultados(
-            icono: Icons.delete_outline,
-            mensaje: 'La papelera está vacía.',
-          );
-        }
-        return ListView.separated(
-          itemCount: productores.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, i) {
-            final p = productores[i];
-            final fecha = p.eliminadoEn;
-            final fechaTexto =
-                '${fecha.day.toString().padLeft(2, '0')}/'
-                '${fecha.month.toString().padLeft(2, '0')}/${fecha.year}';
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        p.nombre,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      if (p.ci != null && p.ci!.isNotEmpty) Text('CI ${p.ci}'),
-                      Text('${p.central} › ${p.sindicato}'),
-                      Text('En papelera desde $fechaTexto'),
-                      if (!p.restaurable)
-                        Text(
-                          p.impedimento ?? 'No se puede restaurar',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      Wrap(
-                        alignment: WrapAlignment.end,
-                        children: [
-                          TextButton.icon(
-                            onPressed: p.restaurable && !_procesando
-                                ? () => _restaurar(p)
-                                : null,
-                            icon: const Icon(Icons.restore),
-                            label: const Text('Restaurar'),
-                          ),
-                          TextButton.icon(
-                            onPressed: _procesando
-                                ? null
-                                : () => _eliminarDefinitivamente(p),
-                            icon: const Icon(Icons.delete_forever),
-                            label: const Text('Eliminar definitivamente'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Theme.of(
-                                context,
-                              ).colorScheme.error,
+    body: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: TextField(
+            controller: _busqueda,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: 'Buscar por nombre, apellidos o CI',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _busqueda.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Limpiar búsqueda',
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => setState(() {
+                        _busqueda.clear();
+                      }),
+                    ),
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ),
+        Expanded(
+          child: CargaAsync<List<ProductorPapelera>>(
+            futuro: _futuro,
+            alReintentar: _recargar,
+            constructor: (context, productores) {
+              if (productores.isEmpty) {
+                return const SinResultados(
+                  icono: Icons.delete_outline,
+                  mensaje: 'La papelera está vacía.',
+                );
+              }
+              final consulta = textoParaBusqueda(_busqueda.text).trim();
+              final porCi = RegExp(r'^\d').hasMatch(consulta);
+              final visibles = productores.where((p) {
+                if (consulta.isEmpty) return true;
+                if (porCi) {
+                  return textoParaBusqueda(p.ci ?? '').startsWith(consulta);
+                }
+                return textoParaBusqueda(p.nombre).contains(consulta);
+              }).toList();
+              if (visibles.isEmpty) {
+                return const SinResultados(
+                  icono: Icons.search_off,
+                  mensaje: 'No se encontraron productores con esa búsqueda.',
+                );
+              }
+              return ListView.separated(
+                itemCount: visibles.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, i) {
+                  final p = visibles[i];
+                  final fecha = p.eliminadoEn;
+                  final fechaTexto =
+                      '${fecha.day.toString().padLeft(2, '0')}/'
+                      '${fecha.month.toString().padLeft(2, '0')}/${fecha.year}';
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.nombre,
+                              style: Theme.of(context).textTheme.titleMedium,
                             ),
-                          ),
-                        ],
+                            if (p.ci != null && p.ci!.isNotEmpty)
+                              Text('CI ${p.ci}'),
+                            Text('${p.central} › ${p.sindicato}'),
+                            Text('En papelera desde $fechaTexto'),
+                            if (!p.restaurable)
+                              Text(
+                                p.impedimento ?? 'No se puede restaurar',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                              ),
+                            Wrap(
+                              alignment: WrapAlignment.end,
+                              children: [
+                                TextButton.icon(
+                                  onPressed: p.restaurable && !_procesando
+                                      ? () => _restaurar(p)
+                                      : null,
+                                  icon: const Icon(Icons.restore),
+                                  label: const Text('Restaurar'),
+                                ),
+                                TextButton.icon(
+                                  onPressed: _procesando
+                                      ? null
+                                      : () => _eliminarDefinitivamente(p),
+                                  icon: const Icon(Icons.delete_forever),
+                                  label: const Text('Eliminar definitivamente'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Theme.of(
+                                      context,
+                                    ).colorScheme.error,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     ),
   );
 }

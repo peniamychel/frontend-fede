@@ -76,6 +76,105 @@ Future<void> _abrir(
 
 void main() {
   final buscador = find.byKey(const ValueKey('buscar-edicion-productores'));
+
+  testWidgets('buscador de media anchura y acciones al extremo derecho', (
+    tester,
+  ) async {
+    await _abrir(tester, _ApiEdicion());
+    final caja = tester.getRect(buscador);
+    expect(caja.left, 12);
+    expect(caja.right, 600);
+
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pump();
+    final eliminar = tester.getCenter(find.text('Eliminar (1)'));
+    final limpiar = tester.getRect(
+      find.widgetWithText(TextButton, 'Limpiar selección'),
+    );
+    expect(tester.getRect(buscador), caja);
+    expect(eliminar.dy, closeTo(caja.center.dy, 1));
+    expect(eliminar.dx, greaterThan(caja.right));
+    expect(limpiar.center.dy, caja.center.dy);
+    expect(limpiar.right, 1188);
+  });
+
+  testWidgets('muestra Falta solo cuando no hay foto cargada', (tester) async {
+    final api = _ApiEdicion();
+    api.datos[1]!['fotoUrl'] = '/api/v1/archivos/originales/maria.jpg';
+    api.datos[2]!['tieneFoto'] = true;
+    await _abrir(tester, api);
+
+    expect(find.text('Foto'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey(1)),
+        matching: find.text('Falta'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey(2)),
+        matching: find.text('Falta'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(Image), findsNothing);
+  });
+
+  testWidgets('envía los seleccionados a papelera y conserva los bloqueados', (
+    tester,
+  ) async {
+    final api = _ApiEdicion()..eliminacionesBloqueadas.add(2);
+    await _abrir(tester, api, ancho: 430);
+    final casillas = find.byType(Checkbox);
+    await tester.tap(casillas.at(0));
+    await tester.pump();
+    await tester.enterText(buscador, 'JUAN');
+    await tester.pumpAndSettle();
+    await tester.tap(casillas);
+    await tester.pump();
+    final eliminarDos = find.byTooltip('Eliminar (2)');
+    final limpiar = find.byTooltip('Limpiar selección');
+    expect(tester.getCenter(eliminarDos).dy, tester.getCenter(buscador).dy);
+    expect(
+      tester.getCenter(limpiar).dx,
+      greaterThan(tester.getCenter(eliminarDos).dx),
+    );
+    await tester.tap(eliminarDos);
+    await tester.pumpAndSettle();
+    expect(find.text('MARIA PEREZ'), findsOneWidget);
+    expect(find.text('JUAN ZARATE'), findsOneWidget);
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+    expect(api.eliminaciones, isEmpty);
+
+    await tester.tap(eliminarDos);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mover a la papelera'));
+    await tester.pumpAndSettle();
+    expect(api.eliminaciones, [1, 2]);
+    expect(find.text('Se movió 1 productor a la papelera.'), findsOneWidget);
+    expect(
+      find.text('JUAN ZARATE: Tiene una parcela asignada.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Entendido'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(casillas).value, isTrue);
+    expect(api.datos.keys, [2]);
+
+    api.eliminacionesBloqueadas.clear();
+    await tester.tap(find.byTooltip('Eliminar (1)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mover a la papelera'));
+    await tester.pumpAndSettle();
+    expect(api.eliminaciones, [1, 2, 2]);
+    expect(find.byType(Checkbox), findsNothing);
+    expect(find.text('No se encontraron productores.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'nuevo abre el formulario en el sindicato y cancelarlo conserva la búsqueda',
     (tester) async {
@@ -587,15 +686,15 @@ void main() {
   ) async {
     final api = _ApiEdicion();
     await _abrir(tester, api);
-    await tester.enterText(campo(1, 'numeroLote'), '4 B');
+    await tester.enterText(campo(1, 'numeroLote'), '4 Z');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(api.lotes, [
-      {'numero': '4', 'loteId': null, 'letra': 'B'},
+      {'numero': '4', 'loteId': null, 'letra': 'Z'},
     ]);
     expect(
       tester.widget<TextField>(campo(1, 'numeroLote')).controller!.text,
-      '4 B',
+      '4 Z',
     );
     expect(
       tester.widget<TextField>(campo(2, 'numeroLote')).controller!.text,
@@ -662,6 +761,7 @@ void main() {
       expect(tester.widget<TextField>(campo(1, 'numeroLote')).enabled, isTrue);
       expect(find.byKey(const ValueKey('sie-1')), findsNothing);
       expect(find.byType(Image), findsNothing);
+      expect(find.byType(Checkbox), findsNothing);
       expect(find.byTooltip('Nuevo productor'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -1103,6 +1203,8 @@ class _ApiEdicion extends ApiClient {
   final lotes = <Object?>[];
   final reimpresiones = <int>[];
   final altas = <Map<String, dynamic>>[];
+  final eliminaciones = <int>[];
+  final eliminacionesBloqueadas = <int>{};
   bool fallarRefrescoAlta = false;
   Completer<void>? bloqueo;
   bool fallar = false;
@@ -1132,6 +1234,20 @@ class _ApiEdicion extends ApiClient {
     'clasificacion': 'FRACCIONADO',
     'fotoDescripcion': 'Foto existente',
   };
+
+  @override
+  Future<void> eliminar(String ruta) async {
+    expect(ruta, matches(r'^/productores/\d+$'));
+    final id = int.parse(ruta.split('/').last);
+    eliminaciones.add(id);
+    if (eliminacionesBloqueadas.contains(id)) {
+      throw const ApiException(
+        estado: 409,
+        mensaje: 'Tiene una parcela asignada.',
+      );
+    }
+    datos.remove(id);
+  }
 
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
@@ -1223,12 +1339,13 @@ class _ApiEdicion extends ApiClient {
   }) async {
     final mapa = cuerpo as Map<String, dynamic>;
     lotes.add(mapa);
-    datos[1]!['numeroLote'] = '4 B';
+    final codigo = '4 ${mapa['letra'] ?? 'B'}';
+    datos[1]!['numeroLote'] = codigo;
     datos[2]!['numeroLote'] = '4 A';
     return {
       'id': 1,
       'numero': mapa['numero'],
-      'codigo': '4 B',
+      'codigo': codigo,
       'sindicatoId': 30,
       'sindicatoNombre': 'SINDICATO DE PRUEBA',
     };

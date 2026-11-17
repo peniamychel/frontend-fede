@@ -1,3 +1,4 @@
+import '../imagen_autenticada.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -535,7 +536,7 @@ class _ListaFisicaSindicatoPaginaState
                 color: tema.colorScheme.surfaceContainerHighest,
                 child: RotatedBox(
                   quarterTurns: pagina.giros,
-                  child: Image.network(
+                  child: ImagenAutenticada(
                     ApiConfig.urlAbsoluta(pagina.url),
                     fit: BoxFit.contain,
                     errorBuilder: (_, _, _) => const Center(
@@ -643,7 +644,7 @@ class _VisorPaginaListaFisica extends StatelessWidget {
         child: Center(
           child: RotatedBox(
             quarterTurns: pagina.giros,
-            child: Image.network(
+            child: ImagenAutenticada(
               ApiConfig.urlAbsoluta(pagina.url),
               fit: BoxFit.contain,
               loadingBuilder: (_, imagen, progreso) => progreso == null

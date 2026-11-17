@@ -54,6 +54,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Nómina en PDF'), findsOneWidget);
+    expect(find.text('Lista de productores en Excel'), findsOneWidget);
     expect(find.text('Informe pre-impresión'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

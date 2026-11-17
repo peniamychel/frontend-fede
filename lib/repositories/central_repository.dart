@@ -3,6 +3,7 @@ import '../core/api_config.dart';
 import '../models/central.dart';
 import '../models/fase_impresion.dart';
 import '../models/informe_impresion_central.dart';
+import '../models/orden_informes.dart';
 import '../models/sindicato.dart';
 
 class CentralRepository {
@@ -58,13 +59,36 @@ class CentralRepository {
   Uri urlInformeImpresion(int id) =>
       ApiConfig.uri('$_ruta/$id/credenciales/impresion/informe.pdf');
 
-  Future<DescargaBinaria> descargarInformePreImpresion(int id) =>
-      _api.obtenerBytes(
-        '$_ruta/$id/credenciales/impresion/informe-pre-impresion.pdf',
-      );
+  Future<DescargaBinaria> descargarInformePreImpresion(
+    int id, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
+    '$_ruta/$id/credenciales/impresion/informe-pre-impresion.pdf',
+    query: {'orden': orden.valor},
+  );
 
-  Future<DescargaBinaria> descargarRevisionPadron(int id) => _api.obtenerBytes(
+  Future<DescargaBinaria> descargarObservacionesPreImpresion(
+    int id, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
+    '$_ruta/$id/credenciales/impresion/pre-impresion-observaciones.pdf',
+    query: {'orden': orden.valor},
+  );
+
+  Future<DescargaBinaria> descargarRevisionPadron(
+    int id, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
     '$_ruta/$id/credenciales/impresion/revision-padron.pdf',
+    query: {'orden': orden.valor},
+  );
+
+  Future<DescargaBinaria> descargarProductoresExcel(
+    int id, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
+    '$_ruta/$id/credenciales/impresion/productores.xlsx',
+    query: {'orden': orden.valor},
   );
 
   Future<EstadoFasesImpresionCentral> estadoFasesImpresion(int id) async {
@@ -91,8 +115,14 @@ class CentralRepository {
     return EstadoFasesImpresionCentral.desdeJson(datos.comoObjeto);
   }
 
-  Future<DescargaBinaria> descargarInformeFase(int id, int faseId) =>
-      _api.obtenerBytes('$_ruta/$id/fases-impresion/$faseId/informe.pdf');
+  Future<DescargaBinaria> descargarInformeFase(
+    int id,
+    int faseId, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
+    '$_ruta/$id/fases-impresion/$faseId/informe.pdf',
+    query: {'orden': orden.valor},
+  );
 
   Future<DescargaBinaria> descargarContabilidadFase(int id, int faseId) =>
       _api.obtenerBytes('$_ruta/$id/fases-impresion/$faseId/contabilidad.pdf');
@@ -115,10 +145,12 @@ class CentralRepository {
 
   Future<DescargaBinaria> descargarInformeNominalImpresion(
     int id,
-    List<int> sindicatoIds,
-  ) => _api.crearBytes(
+    List<int> sindicatoIds, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.crearBytes(
     '$_ruta/$id/credenciales/impresion/informe-nominal.pdf',
     {'sindicatoIds': sindicatoIds},
+    query: {'orden': orden.valor},
   );
 
   Future<Central> crear(CentralRequest request) async {

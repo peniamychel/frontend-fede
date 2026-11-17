@@ -4,6 +4,7 @@ import '../models/credencial_previa.dart';
 import '../models/fase_impresion.dart';
 import '../models/informe_impresion_central.dart';
 import '../models/lista_fisica_sindicato.dart';
+import '../models/orden_informes.dart';
 import '../models/sindicato.dart';
 
 class SindicatoRepository {
@@ -29,14 +30,51 @@ class SindicatoRepository {
     return AvanceImpresionSindicato.desdeJson(datos.comoObjeto);
   }
 
-  Future<DescargaBinaria> descargarRevisionPadron(int id) =>
-      _api.obtenerBytes('$_ruta/$id/informes/revision-padron.pdf');
+  Future<DescargaBinaria> descargarRevisionPadron(
+    int id, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
+    '$_ruta/$id/informes/revision-padron.pdf',
+    query: {'orden': orden.valor},
+  );
 
-  Future<DescargaBinaria> descargarInformePreImpresion(int id) =>
-      _api.obtenerBytes('$_ruta/$id/informes/pre-impresion.pdf');
+  Future<DescargaBinaria> descargarInformePreImpresion(
+    int id, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
+    '$_ruta/$id/informes/pre-impresion.pdf',
+    query: {'orden': orden.valor},
+  );
 
-  Future<DescargaBinaria> descargarNomina(int id) =>
-      _api.obtenerBytes('$_ruta/$id/informes/nomina.pdf');
+  Future<DescargaBinaria> descargarObservacionesPreImpresion(
+    int id, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
+    '$_ruta/$id/informes/pre-impresion-observaciones.pdf',
+    query: {'orden': orden.valor},
+  );
+
+  Future<DescargaBinaria> descargarListaEnBlanco(int id, int filas) =>
+      _api.obtenerBytes(
+        '$_ruta/$id/informes/lista-en-blanco.pdf',
+        query: {'filas': filas},
+      );
+
+  Future<DescargaBinaria> descargarNomina(
+    int id, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
+    '$_ruta/$id/informes/nomina.pdf',
+    query: {'orden': orden.valor},
+  );
+
+  Future<DescargaBinaria> descargarProductoresExcel(
+    int id, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
+    '$_ruta/$id/informes/productores.xlsx',
+    query: {'orden': orden.valor},
+  );
 
   Future<List<FaseInformeSindicato>> fasesInforme(int id) async {
     final datos = await _api.obtener('$_ruta/$id/informes/fases');
@@ -45,8 +83,14 @@ class SindicatoRepository {
         .toList(growable: false);
   }
 
-  Future<DescargaBinaria> descargarInformeFase(int id, int faseId) =>
-      _api.obtenerBytes('$_ruta/$id/informes/fases/$faseId/informe.pdf');
+  Future<DescargaBinaria> descargarInformeFase(
+    int id,
+    int faseId, {
+    OrdenInformes orden = OrdenInformes.apellidos,
+  }) => _api.obtenerBytes(
+    '$_ruta/$id/informes/fases/$faseId/informe.pdf',
+    query: {'orden': orden.valor},
+  );
 
   Future<ListaFisicaSindicato> listaFisica(int id) async {
     final datos = await _api.obtener('$_ruta/$id/lista-fisica');

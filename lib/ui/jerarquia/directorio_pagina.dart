@@ -7,6 +7,7 @@ import '../padron_scope.dart';
 import '../permisos_ui.dart';
 import '../productores/productor_detalle_pagina.dart';
 import '../widgets/estados.dart';
+import 'editar_telefono_directorio.dart';
 import 'firmas_cargo.dart';
 import 'sello_directorio.dart';
 
@@ -109,6 +110,10 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (widget.ambito != Ambito.federacion) ...[
+                      _telefonoInstitucional(datos),
+                      const SizedBox(height: 12),
+                    ],
                     SelloDirectorio(
                       directorio: datos.directorio,
                       alCambiar: _recargar,
@@ -126,6 +131,45 @@ class _DirectorioPaginaState extends State<DirectorioPagina> {
         ),
       ),
     );
+  }
+
+  Widget _telefonoInstitucional(_Datos datos) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.phone_outlined),
+        title: Text(
+          widget.ambito == Ambito.central
+              ? 'Teléfono de la central'
+              : 'Teléfono del sindicato',
+        ),
+        subtitle: SelectableText(datos.directorio.telefono ?? 'Sin registrar'),
+        trailing: context.puede('DIRECTORIOS_EDITAR')
+            ? IconButton(
+                tooltip: 'Editar teléfono',
+                onPressed: _ocupado ? null : () => _editarTelefono(datos),
+                icon: const Icon(Icons.edit_outlined),
+              )
+            : null,
+      ),
+    );
+  }
+
+  Future<void> _editarTelefono(_Datos datos) async {
+    setState(() => _ocupado = true);
+    final actualizado = await mostrarEditorTelefonoDirectorio(
+      context,
+      ambito: widget.ambito,
+      id: widget.id,
+      nombre: widget.nombre,
+      directorio: datos.directorio,
+    );
+    if (!mounted) return;
+    setState(() {
+      _ocupado = false;
+      if (actualizado != null) {
+        _futuro = Future.value(_Datos(actualizado, datos.historial));
+      }
+    });
   }
 
   /// Las tarjetas, en tantas columnas como entren.

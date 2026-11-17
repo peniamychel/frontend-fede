@@ -1,4 +1,7 @@
+import '../imagen_autenticada.dart';
 import 'package:flutter/material.dart';
+import '../../models/imagen.dart';
+import '../../models/auditoria.dart';
 
 /// Visor cuadrado y centrado de una imagen del padrón, con zoom.
 ///
@@ -13,6 +16,7 @@ class VisorImagen extends StatefulWidget {
     this.alDescargar,
     this.alEditar,
     this.giros = 0,
+    this.detalles,
   });
 
   final String url;
@@ -21,6 +25,7 @@ class VisorImagen extends StatefulWidget {
   final Future<void> Function()? alDescargar;
   final VoidCallback? alEditar;
   final int giros;
+  final Imagen? detalles;
 
   static Future<void> mostrar(
     BuildContext context, {
@@ -30,10 +35,10 @@ class VisorImagen extends StatefulWidget {
     Future<void> Function()? alDescargar,
     Future<void> Function()? alEditar,
     int giros = 0,
+    Imagen? detalles,
   }) async {
     final editar = await showDialog<bool>(
       context: context,
-      barrierColor: const Color(0x996D7470),
       builder: (contextoVisor) => VisorImagen(
         url: url,
         titulo: titulo,
@@ -43,6 +48,7 @@ class VisorImagen extends StatefulWidget {
             ? null
             : () => Navigator.of(contextoVisor).pop(true),
         giros: giros,
+        detalles: detalles,
       ),
     );
     if (editar == true && alEditar != null && context.mounted) {
@@ -71,21 +77,36 @@ class _VisorImagenState extends State<VisorImagen> {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    const fondoVisor = Color(0xFFADB3B0);
-    const textoOscuro = Color(0xFF1B211D);
+    final fondoVisor =
+        DialogTheme.of(context).backgroundColor ??
+        tema.colorScheme.surfaceContainerHigh;
+    final texto = tema.colorScheme.onSurface;
 
     return LayoutBuilder(
       builder: (context, limites) {
         final lado = (limites.biggest.shortestSide - 32).clamp(0.0, 640.0);
+        final conDetalles = widget.detalles != null;
+        final horizontal =
+            conDetalles && limites.maxHeight < 500 && limites.maxWidth >= 600;
+        final ancho = conDetalles
+            ? (limites.maxWidth - 32).clamp(0.0, horizontal ? 900.0 : 640.0)
+            : lado;
+        final alto = conDetalles
+            ? (horizontal ? limites.maxHeight - 32 : ancho + 220).clamp(
+                0.0,
+                (limites.maxHeight - 32).clamp(0.0, 780.0),
+              )
+            : lado;
         return Dialog(
           constraints: const BoxConstraints(minWidth: 0),
           insetPadding: const EdgeInsets.all(16),
           backgroundColor: fondoVisor,
           surfaceTintColor: Colors.transparent,
           elevation: 8,
-          child: SizedBox.square(
+          child: SizedBox(
             key: const ValueKey('visor-fotografia-cuadrado'),
-            dimension: lado,
+            width: ancho,
+            height: alto,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -100,7 +121,7 @@ class _VisorImagenState extends State<VisorImagen> {
                             Text(
                               widget.titulo,
                               style: tema.textTheme.titleMedium?.copyWith(
-                                color: textoOscuro,
+                                color: texto,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -109,8 +130,10 @@ class _VisorImagenState extends State<VisorImagen> {
                               Text(
                                 widget.subtitulo!,
                                 style: tema.textTheme.bodySmall?.copyWith(
-                                  color: textoOscuro.withValues(alpha: .7),
+                                  color: tema.colorScheme.onSurfaceVariant,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                           ],
                         ),
@@ -119,10 +142,7 @@ class _VisorImagenState extends State<VisorImagen> {
                         IconButton(
                           tooltip: 'Editar fotografía',
                           onPressed: _descargando ? null : widget.alEditar,
-                          icon: const Icon(
-                            Icons.edit_outlined,
-                            color: textoOscuro,
-                          ),
+                          icon: Icon(Icons.edit_outlined, color: texto),
                         ),
                       if (widget.alDescargar != null)
                         IconButton(
@@ -135,62 +155,70 @@ class _VisorImagenState extends State<VisorImagen> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(
-                                  Icons.download_outlined,
-                                  color: textoOscuro,
-                                ),
+                              : Icon(Icons.download_outlined, color: texto),
                         ),
                       IconButton(
                         tooltip: 'Cerrar',
                         onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close, color: textoOscuro),
+                        icon: Icon(Icons.close, color: texto),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: ColoredBox(
-                        color: fondoVisor,
-                        child: Center(
-                          child: InteractiveViewer(
-                            minScale: 1,
-                            maxScale: 5,
-                            child: RotatedBox(
-                              quarterTurns: widget.giros,
-                              child: Image.network(
-                                widget.url,
-                                fit: BoxFit.contain,
-                                loadingBuilder: (context, hijo, progreso) =>
-                                    progreso == null
-                                    ? CustomPaint(
-                                        painter: const _FondoTransparencia(),
-                                        child: hijo,
-                                      )
-                                    : const SizedBox(
-                                        height: 240,
-                                        child: Center(
+                    child: _conDetalles(
+                      horizontal: horizontal,
+                      fotografia: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: ColoredBox(
+                          color: fondoVisor,
+                          child: Center(
+                            child: InteractiveViewer(
+                              minScale: 1,
+                              maxScale: 5,
+                              child: RotatedBox(
+                                quarterTurns: widget.giros,
+                                child: ImagenAutenticada(
+                                  widget.url,
+                                  fit: BoxFit.contain,
+                                  loadingBuilder: (context, hijo, progreso) =>
+                                      progreso == null
+                                      ? CustomPaint(
+                                          painter: _FondoTransparencia(
+                                            claro: tema
+                                                .colorScheme
+                                                .surfaceContainerLow,
+                                            gris: tema
+                                                .colorScheme
+                                                .surfaceContainerHighest,
+                                          ),
+                                          child: hijo,
+                                        )
+                                      : const Center(
                                           child: CircularProgressIndicator(),
                                         ),
+                                  errorBuilder: (context, error, _) =>
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(32),
+                                          color: fondoVisor,
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.broken_image_outlined,
+                                                size: 40,
+                                                color: tema.colorScheme.error,
+                                              ),
+                                              const SizedBox(height: 8),
+                                              const Text(
+                                                'No se pudo cargar la imagen.',
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
-                                errorBuilder: (context, error, _) => Container(
-                                  padding: const EdgeInsets.all(32),
-                                  color: fondoVisor,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.broken_image_outlined,
-                                        size: 40,
-                                        color: tema.colorScheme.error,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      const Text(
-                                        'No se pudo cargar la imagen.',
-                                      ),
-                                    ],
-                                  ),
                                 ),
                               ),
                             ),
@@ -203,7 +231,7 @@ class _VisorImagenState extends State<VisorImagen> {
                   Text(
                     'Arrastrá o pellizcá para acercar',
                     style: tema.textTheme.bodySmall?.copyWith(
-                      color: textoOscuro.withValues(alpha: .6),
+                      color: tema.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -214,18 +242,127 @@ class _VisorImagenState extends State<VisorImagen> {
       },
     );
   }
+
+  Widget _conDetalles({required Widget fotografia, required bool horizontal}) {
+    final detalles = widget.detalles;
+    if (detalles == null) return fotografia;
+    final panel = _DetallesFotografia(imagen: detalles);
+    if (horizontal) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: fotografia),
+          const SizedBox(width: 12),
+          SizedBox(width: 230, child: SingleChildScrollView(child: panel)),
+        ],
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, limites) => Column(
+        children: [
+          Expanded(child: fotografia),
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: (limites.maxHeight * .5).clamp(0.0, 190.0),
+            ),
+            child: SingleChildScrollView(child: panel),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetallesFotografia extends StatelessWidget {
+  const _DetallesFotografia({required this.imagen});
+  final Imagen imagen;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    Widget dato(String etiqueta, String valor) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          etiqueta,
+          style: tema.textTheme.labelSmall?.copyWith(
+            color: tema.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          valor,
+          style: tema.textTheme.bodySmall?.copyWith(
+            color: tema.colorScheme.onSurface,
+          ),
+        ),
+      ],
+    );
+    final nombre = imagen.nombreOriginal?.trim();
+    return Container(
+      key: const ValueKey('detalles-fotografia'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: tema.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: tema.colorScheme.outlineVariant),
+      ),
+      child: SelectionArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (imagen.pendienteEdicion) ...[
+              Text(
+                'Pendiente de edición · Impresión bloqueada',
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.error,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            dato(
+              'Nombre del archivo',
+              nombre == null || nombre.isEmpty
+                  ? 'Sin nombre registrado'
+                  : nombre,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 24,
+              runSpacing: 10,
+              children: [
+                dato(
+                  'Fecha de creación',
+                  Auditoria.formatear(imagen.creadaEn) ?? 'Sin registro',
+                ),
+                dato(
+                  'Última edición',
+                  Auditoria.formatear(imagen.actualizadaEn) ?? 'Sin registro',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// El damero permite ver los píxeles transparentes sin alterar el PNG.
 class _FondoTransparencia extends CustomPainter {
-  const _FondoTransparencia();
+  const _FondoTransparencia({required this.claro, required this.gris});
+  final Color claro;
+  final Color gris;
 
   @override
   void paint(Canvas canvas, Size size) {
     const lado = 16.0;
-    final claro = Paint()..color = const Color(0xFFE2E2E2);
-    final gris = Paint()..color = const Color(0xFFC5C5C5);
-    canvas.drawRect(Offset.zero & size, claro);
+    final pinturaClara = Paint()..color = claro;
+    final pinturaGris = Paint()..color = gris;
+    canvas.drawRect(Offset.zero & size, pinturaClara);
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     for (var fila = 0; fila * lado < size.height; fila++) {
@@ -233,7 +370,7 @@ class _FondoTransparencia extends CustomPainter {
         if ((fila + columna).isOdd) {
           canvas.drawRect(
             Rect.fromLTWH(columna * lado, fila * lado, lado, lado),
-            gris,
+            pinturaGris,
           );
         }
       }
@@ -242,5 +379,6 @@ class _FondoTransparencia extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _FondoTransparencia oldDelegate) => false;
+  bool shouldRepaint(covariant _FondoTransparencia oldDelegate) =>
+      oldDelegate.claro != claro || oldDelegate.gris != gris;
 }

@@ -38,9 +38,22 @@ class RecortadorImagen extends StatefulWidget {
     this.alCargarImagen,
     this.proporcionFija,
     this.alCambiarInteraccion,
+    this.bytesVistaPrevia,
+    this.expandir = false,
+    this.mostrarControles = true,
   });
 
   final Uint8List bytes;
+
+  /// Cambia solo la imagen dibujada, conservando el encuadre y las coordenadas
+  /// del archivo original aunque la vista previa tenga menos píxeles.
+  final Uint8List? bytesVistaPrevia;
+
+  /// Usa la altura disponible en un editor sin desplazamiento.
+  final bool expandir;
+
+  /// Permite colocar la indicación del formato fuera del lienzo del editor.
+  final bool mostrarControles;
 
   /// Avisa el recorte elegido en píxeles de la imagen, o null mientras todavía
   /// no se conocen sus dimensiones.
@@ -77,6 +90,8 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
   };
 
   ui.Image? _imagen;
+  ui.Image? _imagenVistaPrevia;
+  int _versionVistaPrevia = 0;
   Object? _error;
 
   late Proporcion _proporcion;
@@ -92,18 +107,33 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
     super.initState();
     _proporcion = widget.proporcionFija ?? Proporcion.libre;
     _decodificar();
+    if (widget.bytesVistaPrevia != null) _decodificarVistaPrevia();
+  }
+
+  @override
+  void didUpdateWidget(covariant RecortadorImagen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.bytesVistaPrevia, widget.bytesVistaPrevia)) {
+      _decodificarVistaPrevia();
+    }
   }
 
   @override
   void dispose() {
     _imagen?.dispose();
+    _imagenVistaPrevia?.dispose();
     super.dispose();
   }
 
   Future<void> _decodificar() async {
     try {
       final codec = await ui.instantiateImageCodec(widget.bytes);
-      final cuadro = await codec.getNextFrame();
+      final ui.FrameInfo cuadro;
+      try {
+        cuadro = await codec.getNextFrame();
+      } finally {
+        codec.dispose();
+      }
       if (!mounted) {
         cuadro.image.dispose();
         return;
@@ -112,6 +142,35 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
       widget.alCargarImagen?.call(cuadro.image.width, cuadro.image.height);
     } catch (e) {
       if (mounted) setState(() => _error = e);
+    }
+  }
+
+  Future<void> _decodificarVistaPrevia() async {
+    final version = ++_versionVistaPrevia;
+    final bytes = widget.bytesVistaPrevia;
+    if (bytes == null) {
+      final anterior = _imagenVistaPrevia;
+      setState(() => _imagenVistaPrevia = null);
+      anterior?.dispose();
+      return;
+    }
+    try {
+      final codec = await ui.instantiateImageCodec(bytes);
+      final ui.FrameInfo cuadro;
+      try {
+        cuadro = await codec.getNextFrame();
+      } finally {
+        codec.dispose();
+      }
+      if (!mounted || version != _versionVistaPrevia) {
+        cuadro.image.dispose();
+        return;
+      }
+      final anterior = _imagenVistaPrevia;
+      setState(() => _imagenVistaPrevia = cuadro.image);
+      anterior?.dispose();
+    } catch (_) {
+      // Conserva la última imagen válida; no altera la selección del recorte.
     }
   }
 
@@ -128,26 +187,28 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
       );
     }
     if (imagen == null) {
-      return const SizedBox(
-        height: 280,
-        child: Center(child: CircularProgressIndicator()),
-      );
+      const carga = Center(child: CircularProgressIndicator());
+      if (widget.expandir) return carga;
+      return const SizedBox(height: 280, child: carga);
     }
 
+    final lienzo = LayoutBuilder(
+      builder: (context, restricciones) {
+        _recalcularArea(restricciones.biggest, imagen);
+        return _lienzo(context, imagen);
+      },
+    );
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: widget.expandir ? MainAxisSize.max : MainAxisSize.min,
       children: [
-        SizedBox(
-          height: 320,
-          child: LayoutBuilder(
-            builder: (context, restricciones) {
-              _recalcularArea(restricciones.biggest, imagen);
-              return _lienzo(context, imagen);
-            },
-          ),
-        ),
-        const SizedBox(height: 12),
-        _controles(context),
+        if (widget.expandir)
+          Expanded(child: lienzo)
+        else
+          SizedBox(height: 320, child: lienzo),
+        if (widget.mostrarControles) ...[
+          SizedBox(height: widget.expandir ? 4 : 12),
+          _controles(context),
+        ],
       ],
     );
   }
@@ -155,9 +216,13 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
   /// Calcula dónde entra la imagen en el área disponible, respetando su
   /// proporción, y coloca el recorte inicial la primera vez.
   void _recalcularArea(Size disponible, ui.Image imagen) {
+    final areaAnterior = _areaImagen;
+    // Deja las esquinas dentro del lienzo para poder tocarlas incluso cuando
+    // la fotografía ocupa toda la altura o el ancho disponibles.
+    final margen = widget.expandir ? 12.0 : 0.0;
     final escala = math.min(
-      disponible.width / imagen.width,
-      disponible.height / imagen.height,
+      math.max(0, disponible.width - 2 * margen) / imagen.width,
+      math.max(0, disponible.height - 2 * margen) / imagen.height,
     );
     final ancho = imagen.width * escala;
     final alto = imagen.height * escala;
@@ -172,6 +237,17 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
       _recorte = _rectanguloInicial();
       // Después del primer cuadro, para no notificar durante el build.
       WidgetsBinding.instance.addPostFrameCallback((_) => _notificar());
+    } else if (!areaAnterior.isEmpty && areaAnterior != _areaImagen) {
+      // El encuadre pertenece a la imagen: girar el teléfono solo cambia
+      // sus coordenadas de pantalla, no la región elegida para guardar.
+      final anterior = _recorte!;
+      final escala = _areaImagen.width / areaAnterior.width;
+      _recorte = Rect.fromLTWH(
+        _areaImagen.left + (anterior.left - areaAnterior.left) * escala,
+        _areaImagen.top + (anterior.top - areaAnterior.top) * escala,
+        anterior.width * escala,
+        anterior.height * escala,
+      );
     }
   }
 
@@ -183,7 +259,11 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
       children: [
         Positioned.fromRect(
           rect: _areaImagen,
-          child: RawImage(image: imagen, fit: BoxFit.fill),
+          child: RawImage(
+            image: _imagenVistaPrevia ?? imagen,
+            fit: BoxFit.fill,
+            filterQuality: FilterQuality.high,
+          ),
         ),
         // Oscurece lo que quedaría afuera: es la forma más directa de mostrar
         // qué se conserva y qué se descarta.
@@ -261,10 +341,6 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
   }
 
   Widget _controles(BuildContext context) {
-    final tema = Theme.of(context);
-    final imagen = _imagen!;
-    final actual = _aCoordenadasDeImagen();
-
     return Column(
       children: [
         if (widget.proporcionFija == null)
@@ -294,17 +370,11 @@ class _RecortadorImagenState extends State<RecortadorImagen> {
             ],
           )
         else
-          const Text('Formato de fotografía: cuadrado (1:1)'),
-        const SizedBox(height: 8),
-        Text(
-          actual == null
-              ? '${imagen.width} × ${imagen.height}'
-              : 'Se guardará ${actual.ancho} × ${actual.alto} '
-                    'de ${imagen.width} × ${imagen.height}',
-          style: tema.textTheme.bodySmall?.copyWith(
-            color: tema.colorScheme.outline,
+          const Text(
+            'Formato de fotografía: cuadrado (1:1)',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        ),
       ],
     );
   }

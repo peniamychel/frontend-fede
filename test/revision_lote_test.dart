@@ -62,7 +62,10 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('ficha-antecedentes')));
+        await tester.pumpAndSettle();
         expect(find.text('Revisión pendiente: número de lote'), findsOneWidget);
+        await tester.ensureVisible(find.text('Completar número de lote'));
         await tester.tap(find.text('Completar número de lote'));
         await tester.pumpAndSettle();
         if (!existente) {
@@ -101,58 +104,125 @@ void main() {
     );
   }
 
-  testWidgets('permite reservar B al registrar el primer lote número 4', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(900, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final api = _ApiLote();
-    final tema = PreferenciaTema();
-    addTearDown(tema.dispose);
-    await tester.pumpWidget(
-      TemaScope(
-        preferencia: tema,
-        child: PadronScope(
-          padron: Padron(api: api),
-          child: const MaterialApp(
-            home: ProductorDetallePagina(productorId: 42),
+  for (final letra in ['B', 'I', 'Z']) {
+    testWidgets(
+      'permite reservar $letra al registrar el primer lote número 4',
+      (tester) async {
+        tester.view.physicalSize = const Size(900, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final api = _ApiLote();
+        final tema = PreferenciaTema();
+        addTearDown(tema.dispose);
+        await tester.pumpWidget(
+          TemaScope(
+            preferencia: tema,
+            child: PadronScope(
+              padron: Padron(api: api),
+              child: const MaterialApp(
+                home: ProductorDetallePagina(productorId: 42),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('ficha-antecedentes')));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Completar número de lote'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Completar número de lote'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find
+              .descendant(
+                of: find.byType(AlertDialog),
+                matching: find.byType(TextFormField),
+              )
+              .first,
+          '4',
+        );
+        await tester.pumpAndSettle();
+        final selector = find.byType(DropdownButton<String?>);
+        await tester.ensureVisible(selector);
+        await tester.tap(selector);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text(letra).last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(letra).last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Asignar'));
+        await tester.pumpAndSettle();
+
+        expect(api.peticion?['numero'], '4');
+        expect(api.peticion?['letra'], letra);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final ocupantes in [8, 25, 26]) {
+    testWidgets('asignación con $ocupantes letras ocupadas', (tester) async {
+      tester.view.physicalSize = const Size(900, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final api = _ApiLote(ocupantes: ocupantes);
+      addTearDown(api.cerrar);
+      final tema = PreferenciaTema();
+      addTearDown(tema.dispose);
+      await tester.pumpWidget(
+        TemaScope(
+          preferencia: tema,
+          child: PadronScope(
+            padron: Padron(api: api),
+            child: const MaterialApp(
+              home: ProductorDetallePagina(productorId: 42),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Completar número de lote'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find
-          .descendant(
-            of: find.byType(AlertDialog),
-            matching: find.byType(TextFormField),
-          )
-          .first,
-      '4',
-    );
-    await tester.pumpAndSettle();
-    final selector = find.byType(DropdownButton<String?>);
-    await tester.ensureVisible(selector);
-    await tester.tap(selector);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('B').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Asignar'));
-    await tester.pumpAndSettle();
-
-    expect(api.peticion?['numero'], '4');
-    expect(api.peticion?['letra'], 'B');
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Completar número de lote'));
+      await tester.tap(find.text('Completar número de lote'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find
+            .descendant(
+              of: find.byType(AlertDialog),
+              matching: find.byType(TextFormField),
+            )
+            .first,
+        '4',
+      );
+      await tester.pumpAndSettle();
+      final asignar = find.widgetWithText(FilledButton, 'Asignar');
+      expect(
+        tester.widget<FilledButton>(asignar).onPressed,
+        ocupantes < 26 ? isNotNull : isNull,
+      );
+      final selector = tester.widget<DropdownButton<String?>>(
+        find.byType(DropdownButton<String?>),
+      );
+      expect(
+        selector.items!.where((item) => item.value == 'A').single.enabled,
+        isFalse,
+      );
+      expect(
+        selector.items!.where((item) => item.value == 'Z').single.enabled,
+        ocupantes < 26,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
 
 class _ApiLote extends ApiClient {
-  _ApiLote({this.existente = false, this.estado = 'CON_SISTEMA'});
+  _ApiLote({
+    this.existente = false,
+    this.estado = 'CON_SISTEMA',
+    this.ocupantes = 0,
+  });
   final bool existente;
   final String? estado;
+  final int ocupantes;
   bool guardado = false;
   int creaciones = 0;
   Map<String, dynamic>? peticion;
@@ -192,7 +262,26 @@ class _ApiLote extends ApiClient {
         'imagenes': <dynamic>[],
       };
     }
-    if (ruta == '/lotes') return [if (existente || guardado) lote];
+    if (ruta == '/lotes') {
+      return [
+        if (existente || guardado) lote,
+        for (var i = 0; i < ocupantes; i++)
+          {
+            'id': 100 + i,
+            'numero': '4',
+            'codigo': '4 ${String.fromCharCode(65 + i)}',
+            'sindicatoId': 7,
+            'estado': 'BLANCO',
+            'tenedor': {
+              'productorId': 100 + i,
+              'nombre': 'OTRO PRODUCTOR $i',
+              'desde': '2026-01-01',
+              'letra': String.fromCharCode(65 + i),
+              'letraReservada': String.fromCharCode(65 + i),
+            },
+          },
+      ];
+    }
     return <dynamic>[];
   }
 

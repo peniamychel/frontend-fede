@@ -47,7 +47,12 @@ class ApiClient {
     }
     return obtenerBytes(
       url.path.substring(ApiConfig.prefijo.length),
-      query: url.queryParametersAll,
+      query: {
+        ...url.queryParametersAll,
+        // Evitar reutilizar respuestas públicas almacenadas por versiones antiguas.
+        if (url.path.startsWith('${ApiConfig.prefijo}/archivos/'))
+          'accesoPrivado': '2',
+      },
     );
   }
 

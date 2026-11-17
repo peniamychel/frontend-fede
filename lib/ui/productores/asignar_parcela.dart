@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../widgets/estados.dart';
 
 /// Conserva la clasificación y la identidad del productor.
@@ -112,6 +113,9 @@ Future<bool> quitarParcela(
   Lote lote,
   Productor productor,
 ) async {
+  if (!context.puede('LOTES_EDITAR') && !context.puede('LOTES_DESASIGNAR')) {
+    return false;
+  }
   final confirmado = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
@@ -134,12 +138,20 @@ Future<bool> quitarParcela(
     ),
   );
   if (confirmado != true || !context.mounted) return false;
+  if (!context.puede('LOTES_EDITAR') && !context.puede('LOTES_DESASIGNAR')) {
+    return false;
+  }
 
   try {
-    await PadronScope.of(context).lotes.traspasar(
-      lote.id,
-      const TraspasoRequest(motivo: MotivoTraspaso.otro),
-    );
+    final lotes = PadronScope.of(context).lotes;
+    if (context.puede('LOTES_EDITAR')) {
+      await lotes.traspasar(
+        lote.id,
+        const TraspasoRequest(motivo: MotivoTraspaso.otro),
+      );
+    } else {
+      await lotes.desasignar(lote.id);
+    }
     if (context.mounted) {
       mostrarExito(context, '${lote.codigo} quedó sin tenedor');
     }
@@ -152,7 +164,7 @@ Future<bool> quitarParcela(
 
 /// Corrige el número sin cambiar de productor ni abrir otro
 /// período de tenencia. Si el número queda compartido, el backend recalcula
-/// automáticamente las letras A-H de ambos grupos.
+/// automáticamente las letras A-Z de ambos grupos.
 Future<bool> cambiarNumeroParcela(BuildContext context, Lote lote) async {
   final List<Lote> lotes;
   try {
@@ -309,7 +321,7 @@ Widget _selectorLetra({
                 value: null,
                 child: Text('Automática'),
               ),
-              for (final letra in 'ABCDEFGH'.split(''))
+              for (final letra in letrasCompartidasLote.split(''))
                 DropdownMenuItem<String?>(
                   value: letra,
                   enabled: !reservadas.contains(letra),
@@ -392,7 +404,7 @@ class _DialogoCambiarNumeroState extends State<_DialogoCambiarNumero> {
   @override
   Widget build(BuildContext context) {
     final ocupantes = _ocupantes;
-    final lleno = ocupantes.length >= 8;
+    final lleno = ocupantes.length >= letrasCompartidasLote.length;
     final tema = Theme.of(context);
     return AlertDialog(
       title: Text(
@@ -445,7 +457,7 @@ class _DialogoCambiarNumeroState extends State<_DialogoCambiarNumero> {
                       children: [
                         Text(
                           lleno
-                              ? 'Ese número ya tiene ocho productores (A-H).'
+                              ? 'Ese número ya tiene 26 productores (A-Z).'
                               : _letraManual != null
                               ? 'La letra $_letraManual quedará reservada; las demás usarán las letras disponibles.'
                               : ocupantes.isEmpty
@@ -589,10 +601,6 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
               children: [
                 if (widget.productor.revisionLotePendiente) ...[
                   Text(widget.productor.resumenRevisionLote),
-                  const Text(
-                    'Completá el número de lote para salir de la revisión. '
-                    'La clasificación del Excel queda preseleccionada si existe.',
-                  ),
                   const SizedBox(height: 16),
                 ],
                 SegmentedButton<bool>(
@@ -690,7 +698,9 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          onPressed: _nueva && _ocupantes.length >= 8 ? null : _aceptar,
+          onPressed: _nueva && _ocupantes.length >= letrasCompartidasLote.length
+              ? null
+              : _aceptar,
           child: const Text('Asignar'),
         ),
       ],
@@ -723,7 +733,7 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
   Widget _resumenNumero(BuildContext context) {
     final tema = Theme.of(context);
     final ocupantes = _ocupantes;
-    final lleno = ocupantes.length >= 8;
+    final lleno = ocupantes.length >= letrasCompartidasLote.length;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -737,7 +747,7 @@ class _DialogoParcelaState extends State<_DialogoParcela> {
         children: [
           Text(
             lleno
-                ? 'Ya tiene ocho productores (A-H).'
+                ? 'Ya tiene 26 productores (A-Z).'
                 : _letraManual != null
                 ? 'La letra $_letraManual quedará reservada para este productor.'
                 : ocupantes.isEmpty

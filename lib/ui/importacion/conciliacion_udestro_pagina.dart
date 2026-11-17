@@ -1,3 +1,4 @@
+import '../imagen_autenticada.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -454,7 +455,7 @@ class _ConciliacionUdestroPaginaState extends State<ConciliacionUdestroPagina> {
               if (candidato.fotoUrl != null) ...[
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
+                  child: ImagenAutenticada(
                     ApiConfig.urlAbsoluta(candidato.fotoUrl!),
                     width: 58,
                     height: 58,

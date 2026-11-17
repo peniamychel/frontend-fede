@@ -134,7 +134,7 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('1. Elegí la planilla', style: tema.textTheme.titleMedium),
+            Text('1. Elige la planilla', style: tema.textTheme.titleMedium),
             const SizedBox(height: 16),
             const Text(
               'Destino: CARRASCO TROPICAL. '
@@ -291,7 +291,7 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('2. Confirmá qué hacer', style: tema.textTheme.titleMedium),
+            Text('2. Confirma qué hacer', style: tema.textTheme.titleMedium),
             const SizedBox(height: 8),
             if (informe.sindicatosNuevos.isNotEmpty)
               CheckboxListTile(
@@ -347,12 +347,12 @@ class _ImportacionPaginaState extends State<ImportacionPagina> {
               const SizedBox(height: 8),
               Text(
                 _analisisPendiente
-                    ? 'Volvé a analizar para actualizar la selección antes de importar.'
+                    ? 'Vuelve a analizar para actualizar la selección antes de importar.'
                     : informe.hayAlgoQueImportar
                     ? informe.sindicatosNuevos.isNotEmpty &&
                               !_sindicatosAprobados
-                          ? 'Revisá y aprobá la lista de sindicatos nuevos.'
-                          : 'Hay filas con errores. Corregí la planilla, o activá '
+                          ? 'Revisa y aprueba la lista de sindicatos nuevos.'
+                          : 'Hay filas con errores. Corrige la planilla, o activa '
                                 'la opción de arriba para importar solo las válidas.'
                     : 'Ninguna fila de la planilla se puede importar.',
                 style: tema.textTheme.bodySmall?.copyWith(

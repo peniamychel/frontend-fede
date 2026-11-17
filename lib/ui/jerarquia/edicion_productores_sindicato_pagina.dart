@@ -23,9 +23,12 @@ class EdicionProductoresSindicatoPagina extends StatefulWidget {
 }
 
 class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
+  static const _anchoSeleccion = 48.0;
+  static const _anchoFoto = 64.0;
   final _filas = <_Fila>[];
   final _visibles = <_Fila>[];
   final _busqueda = TextEditingController();
+  final _seleccionados = <int>{};
   final _impresosEditados = <int>{};
   Future<void> _cola = Future.value();
   OrdenProductores _orden = OrdenProductores.apellidos;
@@ -35,6 +38,7 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
   bool _saliendo = false;
   bool _permitirSalir = false;
   bool _creando = false;
+  bool _eliminando = false;
   bool _recargaPendiente = false;
   int? _filaSie;
   bool _decisionSieAbierta = false;
@@ -45,8 +49,10 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
   Timer? _temporizadorGlobo;
   _Campo? _campoConGlobo;
 
-  bool get _ocupado => _creando || _filaSie != null || _filaObservacion != null;
+  bool get _ocupado =>
+      _creando || _eliminando || _filaSie != null || _filaObservacion != null;
   bool get _puedeCrear => context.puedeRegistrarProductores;
+  bool get _puedeEliminar => context.puede('PRODUCTORES_ELIMINAR');
   bool get _puedeObservar =>
       context.puede('PRODUCTORES_OBSERVAR') ||
       context.puede('PRODUCTORES_EDITAR');
@@ -190,6 +196,136 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
     }
   }
 
+  Future<void> _eliminarSeleccionados() async {
+    if (_ocupado || _saliendo || !_puedeEliminar || _seleccionados.isEmpty) {
+      return;
+    }
+    final filas = _filas
+        .where((fila) => _seleccionados.contains(fila.productor.id))
+        .toList();
+    if (filas.isEmpty) return;
+
+    _ocultarGlobo();
+    setState(() => _eliminando = true);
+    FocusManager.instance.primaryFocus?.unfocus();
+    try {
+      final confirmada = await showDialog<bool>(
+        context: context,
+        builder: (context) {
+          final colores = Theme.of(context).colorScheme;
+          return AlertDialog(
+            scrollable: true,
+            title: Text(
+              filas.length == 1
+                  ? '¿Mover al productor a la papelera?'
+                  : '¿Mover ${filas.length} productores a la papelera?',
+            ),
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Las fichas, fotos e historial se conservarán.'),
+                const SizedBox(height: 12),
+                for (final fila in filas) Text(fila.productor.nombreCompleto),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: colores.error,
+                  foregroundColor: colores.onError,
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Mover a la papelera'),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmada != true || !mounted || !_puedeEliminar) return;
+      await _cola;
+      if (!mounted || !_puedeEliminar) return;
+
+      final movidas = <_Fila>{};
+      final fallos = <String>[];
+      for (final fila in filas) {
+        if (fila.borradorObservacion != null ||
+            fila.campos.values.any((campo) => campo.error != null)) {
+          fallos.add(
+            '${fila.productor.nombreCompleto}: tiene cambios sin guardar.',
+          );
+          continue;
+        }
+        try {
+          await _padron.productores.eliminar(fila.productor.id);
+          movidas.add(fila);
+        } catch (error) {
+          final motivo = error is ApiException ? error.mensaje : '$error';
+          fallos.add('${fila.productor.nombreCompleto}: $motivo');
+        }
+        if (!mounted) return;
+      }
+
+      if (movidas.isNotEmpty) {
+        setState(() {
+          _cambio = true;
+          for (final fila in movidas) {
+            _seleccionados.remove(fila.productor.id);
+            _impresosEditados.remove(fila.productor.id);
+          }
+          _filas.removeWhere(movidas.contains);
+          _visibles.removeWhere(movidas.contains);
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          for (final fila in movidas) {
+            fila.dispose();
+          }
+        });
+      }
+
+      final resumen = switch (movidas.length) {
+        0 => 'Ningún productor fue movido a la papelera.',
+        1 => 'Se movió 1 productor a la papelera.',
+        _ => 'Se movieron ${movidas.length} productores a la papelera.',
+      };
+      if (fallos.isEmpty) {
+        mostrarExito(context, resumen);
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          scrollable: true,
+          title: const Text('Resultado de la eliminación'),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(resumen),
+              for (final fallo in fallos)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(fallo),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _eliminando = false);
+    }
+  }
+
   void _ordenar() {
     String valor(_Fila f, String campo) =>
         f.campos[campo]!.guardado.toUpperCase();
@@ -298,7 +434,7 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
           final referencia = actuales.isEmpty ? null : actuales.first;
           // «4 B» reserva B; un número sin letra usa el orden automático.
           final partes = RegExp(
-            r'^(.*?)\s+([A-H])$',
+            r'^(.*?)\s+([A-Z])$',
             caseSensitive: false,
           ).firstMatch(valor);
           var numero = partes?.group(1) ?? valor;
@@ -705,7 +841,7 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
 
   Future<void> _salir() async {
     _ocultarGlobo();
-    if (_saliendo || _creando) return;
+    if (_saliendo || _creando || _eliminando) return;
     setState(() => _saliendo = true);
     FocusManager.instance.primaryFocus?.unfocus();
     for (final f in _filas) {
@@ -796,9 +932,7 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
     _campoConGlobo = null;
     _busqueda.dispose();
     for (final f in _filas) {
-      for (final c in f.campos.values) {
-        c.dispose();
-      }
+      f.dispose();
     }
     super.dispose();
   }
@@ -887,37 +1021,7 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
                             : '${_busqueda.text.trim().isEmpty ? '${_filas.length}' : '${_visibles.length} de ${_filas.length}'} productores · Guardado automático al salir del campo o pulsar Enter. Lote: por ejemplo 4 o 4 B. No se modifican fotos ni clasificación.',
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      child: TextField(
-                        key: const ValueKey('buscar-edicion-productores'),
-                        controller: _busqueda,
-                        enabled: !_saliendo && !_ocupado,
-                        onChanged: (_) => _buscar(),
-                        onEditingComplete: () =>
-                            FocusManager.instance.primaryFocus?.unfocus(),
-                        textInputAction: TextInputAction.search,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          border: const OutlineInputBorder(),
-                          labelText: 'Buscar productor',
-                          hintText: 'Nombre, apellido, CI o código',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _busqueda.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: 'Limpiar búsqueda',
-                                  onPressed: _saliendo || _ocupado
-                                      ? null
-                                      : () {
-                                          _busqueda.clear();
-                                          _buscar();
-                                        },
-                                  icon: const Icon(Icons.clear),
-                                ),
-                        ),
-                      ),
-                    ),
+                    _barraBusqueda(),
                     const Divider(height: 1),
                     if (_recargaPendiente)
                       TextButton.icon(
@@ -937,6 +1041,8 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
                             width: math.max(
                               limites.maxWidth,
                               852.0 +
+                                  _anchoFoto +
+                                  (_puedeEliminar ? _anchoSeleccion : 0) +
                                   (context.puede('SIE_REVISAR') ? 160 : 0) +
                                   (_puedeObservar ? 88 : 0),
                             ),
@@ -981,16 +1087,110 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
     ),
   );
 
+  Widget _barraBusqueda() => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+    child: LayoutBuilder(
+      builder: (context, limites) => Row(
+        children: [
+          Expanded(
+            child: TextField(
+              key: const ValueKey('buscar-edicion-productores'),
+              controller: _busqueda,
+              enabled: !_saliendo && !_ocupado,
+              onChanged: (_) => _buscar(),
+              onEditingComplete: () =>
+                  FocusManager.instance.primaryFocus?.unfocus(),
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                isDense: true,
+                border: const OutlineInputBorder(),
+                labelText: 'Buscar productor',
+                hintText: 'Nombre, apellido, CI o código',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _busqueda.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Limpiar búsqueda',
+                        onPressed: _saliendo || _ocupado
+                            ? null
+                            : () {
+                                _busqueda.clear();
+                                _buscar();
+                              },
+                        icon: const Icon(Icons.clear),
+                      ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _puedeEliminar && _seleccionados.isNotEmpty
+                ? _accionesSeleccion(
+                    compactas:
+                        limites.maxWidth / 2 <
+                        MediaQuery.textScalerOf(context).scale(260) + 8,
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _accionesSeleccion({required bool compactas}) {
+    final habilitadas = !_ocupado && !_saliendo;
+    final eliminar = habilitadas ? _eliminarSeleccionados : null;
+    final limpiar = habilitadas ? () => setState(_seleccionados.clear) : null;
+    final etiquetaEliminar = _eliminando
+        ? 'Moviendo a la papelera…'
+        : 'Eliminar (${_seleccionados.length})';
+    final colorEliminar = Theme.of(context).colorScheme.error;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: compactas
+          ? [
+              IconButton(
+                tooltip: etiquetaEliminar,
+                color: colorEliminar,
+                onPressed: eliminar,
+                icon: Badge.count(
+                  count: _seleccionados.length,
+                  child: const Icon(Icons.delete_outline),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Limpiar selección',
+                onPressed: limpiar,
+                icon: const Icon(Icons.clear),
+              ),
+            ]
+          : [
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: colorEliminar),
+                onPressed: eliminar,
+                icon: const Icon(Icons.delete_outline),
+                label: Text(_eliminando ? 'Moviendo…' : etiquetaEliminar),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: limpiar,
+                child: const Text('Limpiar selección'),
+              ),
+            ],
+    );
+  }
+
   Widget _cabecera() => Container(
     color: Theme.of(context).colorScheme.surfaceContainerHighest,
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     child: Row(
       children: [
+        if (_puedeEliminar) const SizedBox(width: _anchoSeleccion),
         const SizedBox(width: 44, child: Text('N°')),
         const Expanded(flex: 3, child: Text('Nombres')),
         const Expanded(flex: 4, child: Text('Apellidos')),
         const Expanded(flex: 2, child: Text('CI')),
         const SizedBox(width: 80, child: Text('N° lote')),
+        const SizedBox(width: _anchoFoto, child: Text('Foto')),
         if (context.puede('SIE_REVISAR'))
           const SizedBox(width: 160, child: Text('Revisión SIE')),
         if (_puedeObservar)
@@ -1024,6 +1224,24 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_puedeEliminar)
+                SizedBox(
+                  width: _anchoSeleccion,
+                  child: Checkbox(
+                    semanticLabel:
+                        'Seleccionar ${fila.productor.nombreCompleto}',
+                    value: _seleccionados.contains(fila.productor.id),
+                    onChanged: _saliendo || _ocupado
+                        ? null
+                        : (seleccionado) => setState(() {
+                            if (seleccionado == true) {
+                              _seleccionados.add(fila.productor.id);
+                            } else {
+                              _seleccionados.remove(fila.productor.id);
+                            }
+                          }),
+                  ),
+                ),
               SizedBox(
                 width: 44,
                 child: Padding(
@@ -1056,6 +1274,18 @@ class _EdicionState extends State<EdicionProductoresSindicatoPagina> {
                   padding: const EdgeInsets.only(right: 8),
                   child: _celda(fila, 'numeroLote'),
                 ),
+              ),
+              SizedBox(
+                width: _anchoFoto,
+                child: fila.productor.tieneOriginal
+                    ? null
+                    : Padding(
+                        padding: const EdgeInsets.only(top: 15),
+                        child: Text(
+                          'Falta',
+                          style: TextStyle(color: colores.error),
+                        ),
+                      ),
               ),
               if (context.puede('SIE_REVISAR')) _accionSie(fila),
               if (_puedeObservar) _accionObservacion(fila),
@@ -1319,6 +1549,12 @@ class _Fila {
   String? avisoSie;
   String? borradorObservacion;
   final Map<String, _Campo> campos;
+
+  void dispose() {
+    for (final campo in campos.values) {
+      campo.dispose();
+    }
+  }
 }
 
 class _Campo {

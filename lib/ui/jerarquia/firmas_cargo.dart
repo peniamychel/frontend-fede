@@ -1,9 +1,11 @@
+import '../imagen_autenticada.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../productores/visor_imagen.dart';
 import '../widgets/estados.dart';
 import '../widgets/zona_soltar_archivos.dart';
@@ -33,6 +35,10 @@ class FirmasCargo extends StatefulWidget {
 
 class _FirmasCargoState extends State<FirmasCargo> {
   bool _ocupado = false;
+  bool get _editable => widget.editable && context.puede('DIRECTORIOS_EDITAR');
+  bool _puedeEditarImagen(TipoImagenCargo tipo) =>
+      _editable &&
+      (tipo != TipoImagenCargo.pieFirma || widget.permitePieFirmaImagen);
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +71,7 @@ class _FirmasCargoState extends State<FirmasCargo> {
               tipo: TipoImagenCargo.firma,
               clase: ClaseImagenDirectorio.firma,
               url: widget.cargo.firmaUrl,
-              habilitada: widget.editable,
+              habilitada: _editable,
               obligatoria: widget.firmaObligatoria,
             );
             final pie = _ranuraImagen(
@@ -74,7 +80,7 @@ class _FirmasCargoState extends State<FirmasCargo> {
               tipo: TipoImagenCargo.pieFirma,
               clase: ClaseImagenDirectorio.pieFirma,
               url: widget.cargo.pieFirmaUrl,
-              habilitada: widget.editable && widget.permitePieFirmaImagen,
+              habilitada: _editable && widget.permitePieFirmaImagen,
               obligatoria: false,
             );
             if (restricciones.maxWidth < 520) {
@@ -177,7 +183,9 @@ class _FirmasCargoState extends State<FirmasCargo> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'No disponible para sindicatos',
+                            _editable
+                                ? 'No disponible para sindicatos'
+                                : 'Sin imagen',
                             textAlign: TextAlign.center,
                             style: tema.textTheme.bodySmall,
                           ),
@@ -186,37 +194,44 @@ class _FirmasCargoState extends State<FirmasCargo> {
                     ),
                   ),
           ),
-          Wrap(
-            alignment: WrapAlignment.center,
-            children: [
-              TextButton(
-                onPressed: _ocupado || !habilitada
-                    ? null
-                    : () => _subir(tipo, clase),
-                child: Text(
-                  url == null ? 'Subir ${clase.etiqueta}' : 'Cambiar',
+          if (_editable)
+            Wrap(
+              alignment: WrapAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: _ocupado || !habilitada
+                      ? null
+                      : () => _subir(tipo, clase),
+                  child: Text(
+                    url == null ? 'Subir ${clase.etiqueta}' : 'Cambiar',
+                  ),
                 ),
-              ),
-              if (url != null)
-                TextButton.icon(
-                  onPressed: _ocupado ? null : () => _editar(tipo, clase),
-                  icon: const Icon(Icons.tune, size: 17),
-                  label: const Text('Editar'),
-                ),
-              if (url != null)
-                IconButton(
-                  tooltip: 'Borrar ${clase.etiqueta}',
-                  onPressed: _ocupado ? null : () => _borrar(tipo),
-                  visualDensity: VisualDensity.compact,
-                  iconSize: 16,
-                  icon: Icon(Icons.close, color: tema.colorScheme.error),
-                ),
-            ],
-          ),
+                if (url != null)
+                  TextButton.icon(
+                    onPressed: _ocupado || !habilitada
+                        ? null
+                        : () => _editar(tipo, clase),
+                    icon: const Icon(Icons.tune, size: 17),
+                    label: const Text('Editar'),
+                  ),
+                if (url != null)
+                  IconButton(
+                    tooltip: 'Borrar ${clase.etiqueta}',
+                    onPressed: _ocupado || !habilitada
+                        ? null
+                        : () => _borrar(tipo),
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 16,
+                    icon: Icon(Icons.close, color: tema.colorScheme.error),
+                  ),
+              ],
+            ),
           if (habilitada) const AyudaArrastrarArchivo(),
           if (!habilitada)
             Text(
-              'Puede habilitarse más adelante desde la configuración del backend.',
+              _editable
+                  ? 'Puede habilitarse más adelante desde la configuración del backend.'
+                  : 'Solo consulta.',
               textAlign: TextAlign.center,
               style: tema.textTheme.bodySmall?.copyWith(
                 color: tema.colorScheme.outline,
@@ -304,7 +319,7 @@ class _FirmasCargoState extends State<FirmasCargo> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(4),
-        child: Image.network(
+        child: ImagenAutenticada(
           absoluta,
           fit: BoxFit.contain,
           errorBuilder: (_, _, _) => const Center(
@@ -316,6 +331,7 @@ class _FirmasCargoState extends State<FirmasCargo> {
   }
 
   Future<void> _subir(TipoImagenCargo tipo, ClaseImagenDirectorio clase) async {
+    if (!mounted || !_puedeEditarImagen(tipo) || _ocupado) return;
     late final PlatformFile elegido;
     try {
       final archivo = await elegirImagenDirectorio(context);
@@ -334,12 +350,13 @@ class _FirmasCargoState extends State<FirmasCargo> {
     ClaseImagenDirectorio clase,
     PlatformFile elegido,
   ) async {
+    if (!mounted || !_puedeEditarImagen(tipo) || _ocupado) return;
     final preparada = await prepararImagenDirectorio(
       context,
       archivo: elegido,
       clase: clase,
     );
-    if (preparada == null || !mounted) return;
+    if (preparada == null || !mounted || !_puedeEditarImagen(tipo)) return;
 
     setState(() => _ocupado = true);
     try {
@@ -370,6 +387,7 @@ class _FirmasCargoState extends State<FirmasCargo> {
     TipoImagenCargo tipo,
     ClaseImagenDirectorio clase,
   ) async {
+    if (!mounted || !_puedeEditarImagen(tipo) || _ocupado) return;
     setState(() => _ocupado = true);
     try {
       final descarga = await PadronScope.of(
@@ -391,6 +409,7 @@ class _FirmasCargoState extends State<FirmasCargo> {
   }
 
   Future<void> _borrar(TipoImagenCargo tipo) async {
+    if (!mounted || !_puedeEditarImagen(tipo) || _ocupado) return;
     setState(() => _ocupado = true);
     try {
       await PadronScope.of(

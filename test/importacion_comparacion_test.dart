@@ -104,9 +104,7 @@ void main() {
             isFalse,
           );
           expect(
-            find.textContaining(
-              'se marcará como observado: N° lote según Excel: 4',
-            ),
+            find.textContaining('Nota de observado: N° lote según Excel: 4'),
             findsOneWidget,
           );
           if (eleccion == false) {
@@ -182,9 +180,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<ChoiceChip>(actual).selected, isFalse);
       expect(
-        find.textContaining(
-          'se marcará como observado: N° lote según Excel: 4',
-        ),
+        find.textContaining('Nota de observado: N° lote según Excel: 4'),
         findsOneWidget,
       );
       await tester.ensureVisible(fila3);

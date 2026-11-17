@@ -117,6 +117,8 @@ class InformeImpresionFederacion {
       );
 }
 
+enum EstadoImpresionFase { imprimiendo, impreso }
+
 /// Avance de un sindicato dentro del consolidado de su central.
 class AvanceImpresionSindicato {
   const AvanceImpresionSindicato({
@@ -134,6 +136,7 @@ class AvanceImpresionSindicato {
     required this.sistema,
     required this.sinSistema,
     required this.porcentajeAvance,
+    this.estadoImpresionFase,
   });
 
   final int sindicatoId;
@@ -150,6 +153,7 @@ class AvanceImpresionSindicato {
   final int sistema;
   final int sinSistema;
   final double porcentajeAvance;
+  final EstadoImpresionFase? estadoImpresionFase;
 
   factory AvanceImpresionSindicato.desdeJson(Map<String, dynamic> json) =>
       AvanceImpresionSindicato(
@@ -167,6 +171,11 @@ class AvanceImpresionSindicato {
         sistema: (json['sistema'] as num?)?.toInt() ?? 0,
         sinSistema: (json['sinSistema'] as num?)?.toInt() ?? 0,
         porcentajeAvance: (json['porcentajeAvance'] as num?)?.toDouble() ?? 0,
+        estadoImpresionFase: switch (json['estadoImpresionFase']) {
+          'IMPRIMIENDO' => EstadoImpresionFase.imprimiendo,
+          'IMPRESO' => EstadoImpresionFase.impreso,
+          _ => null,
+        },
       );
 }
 

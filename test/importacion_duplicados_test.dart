@@ -169,7 +169,7 @@ void main() {
       expect(tester.widget<CheckboxListTile>(fila(3)).value, isFalse);
       expect(tester.widget<FilledButton>(confirmar).onPressed, isNull);
       expect(
-        find.textContaining('Volvé a analizar para actualizar la selección'),
+        find.textContaining('Vuelve a analizar para actualizar la selección'),
         findsOneWidget,
       );
       await tester.ensureVisible(find.text('Volver a analizar'));

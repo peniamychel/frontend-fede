@@ -1,9 +1,11 @@
+import '../imagen_autenticada.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
 
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
+import '../permisos_ui.dart';
 import '../productores/visor_imagen.dart';
 import '../widgets/estados.dart';
 import '../widgets/zona_soltar_archivos.dart';
@@ -27,13 +29,14 @@ class SelloDirectorio extends StatefulWidget {
 
 class _SelloDirectorioState extends State<SelloDirectorio> {
   bool _ocupado = false;
+  bool get _editable => context.puede('DIRECTORIOS_EDITAR');
 
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final url = widget.directorio.selloUrl;
     return ZonaSoltarArchivos(
-      habilitada: !_ocupado,
+      habilitada: _editable && !_ocupado,
       extensionesPermitidas: extensionesImagen,
       alSoltar: (archivos) async {
         final elegido = await archivoSoltadoAPlatformFile(archivos.first);
@@ -64,7 +67,7 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
                       )
                     : url == null
                     ? InkWell(
-                        onTap: _subir,
+                        onTap: _editable ? _subir : null,
                         child: const Center(
                           child: Icon(
                             Icons.approval_outlined,
@@ -112,40 +115,42 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
                         color: tema.colorScheme.outline,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        FilledButton.tonalIcon(
-                          onPressed: _ocupado ? null : _subir,
-                          icon: const Icon(Icons.upload_outlined, size: 18),
-                          label: Text(
-                            url == null ? 'Subir sello' : 'Cambiar sello',
-                          ),
-                        ),
-                        if (url != null)
-                          TextButton.icon(
-                            onPressed: _ocupado ? null : _editar,
-                            icon: const Icon(Icons.tune, size: 18),
-                            label: const Text('Editar imagen'),
-                          ),
-                        if (url != null)
-                          TextButton.icon(
-                            onPressed: _ocupado ? null : _borrar,
-                            icon: Icon(
-                              Icons.delete_outline,
-                              size: 18,
-                              color: tema.colorScheme.error,
-                            ),
+                    if (_editable) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilledButton.tonalIcon(
+                            onPressed: _ocupado ? null : _subir,
+                            icon: const Icon(Icons.upload_outlined, size: 18),
                             label: Text(
-                              'Borrar',
-                              style: TextStyle(color: tema.colorScheme.error),
+                              url == null ? 'Subir sello' : 'Cambiar sello',
                             ),
                           ),
-                      ],
-                    ),
-                    const AyudaArrastrarArchivo(),
+                          if (url != null)
+                            TextButton.icon(
+                              onPressed: _ocupado ? null : _editar,
+                              icon: const Icon(Icons.tune, size: 18),
+                              label: const Text('Editar imagen'),
+                            ),
+                          if (url != null)
+                            TextButton.icon(
+                              onPressed: _ocupado ? null : _borrar,
+                              icon: Icon(
+                                Icons.delete_outline,
+                                size: 18,
+                                color: tema.colorScheme.error,
+                              ),
+                              label: Text(
+                                'Borrar',
+                                style: TextStyle(color: tema.colorScheme.error),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const AyudaArrastrarArchivo(),
+                    ],
                   ],
                 ),
               ),
@@ -166,7 +171,7 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(6),
-        child: Image.network(
+        child: ImagenAutenticada(
           absoluta,
           fit: BoxFit.contain,
           errorBuilder: (context, error, _) => const Center(
@@ -178,6 +183,7 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
   }
 
   Future<void> _subir() async {
+    if (!mounted || !_editable || _ocupado) return;
     late final PlatformFile elegido;
     try {
       final archivo = await elegirImagenDirectorio(context);
@@ -193,12 +199,13 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
   }
 
   Future<void> _prepararYSubir(PlatformFile elegido) async {
+    if (!mounted || !_editable || _ocupado) return;
     final preparada = await prepararImagenDirectorio(
       context,
       archivo: elegido,
       clase: ClaseImagenDirectorio.sello,
     );
-    if (preparada == null || !mounted) return;
+    if (preparada == null || !mounted || !_editable) return;
 
     setState(() => _ocupado = true);
     try {
@@ -226,6 +233,7 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
   }
 
   Future<void> _editar() async {
+    if (!mounted || !_editable || _ocupado) return;
     setState(() => _ocupado = true);
     try {
       final descarga = await PadronScope.of(context).directorios
@@ -250,6 +258,7 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
   }
 
   Future<void> _borrar() async {
+    if (!mounted || !_editable || _ocupado) return;
     final confirmado = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -269,7 +278,7 @@ class _SelloDirectorioState extends State<SelloDirectorio> {
         ],
       ),
     );
-    if (confirmado != true || !mounted) return;
+    if (confirmado != true || !mounted || !_editable) return;
 
     setState(() => _ocupado = true);
     try {

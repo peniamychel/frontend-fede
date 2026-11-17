@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,8 +20,482 @@ import 'package:fede/ui/padron_scope.dart';
 import 'package:fede/ui/sesion_scope.dart';
 import 'miniatura_prueba.dart';
 
+Future<void> _editarTelefonoDesdeMenu(
+  WidgetTester tester, {
+  required String nombre,
+  required String actual,
+  required String nuevo,
+}) async {
+  final primeraOpcion = find.byType(PopupMenuItem<String>).first;
+  expect(
+    tester.widget<PopupMenuItem<String>>(primeraOpcion).value,
+    'editarTelefono',
+  );
+  await tester.tap(primeraOpcion);
+  await tester.pumpAndSettle();
+  final dialogo = find.byType(AlertDialog);
+  expect(
+    find.descendant(of: dialogo, matching: find.text(nombre)),
+    findsOneWidget,
+  );
+  final campo = find.widgetWithText(TextFormField, 'Número de teléfono');
+  expect(tester.widget<TextFormField>(campo).initialValue, actual);
+  final entrada = find.descendant(
+    of: campo,
+    matching: find.byType(EditableText),
+  );
+  expect(tester.widget<EditableText>(entrada).focusNode.hasFocus, isTrue);
+  await tester.enterText(campo, nuevo);
+  await tester.tap(find.text('Guardar'));
+  await tester.pumpAndSettle();
+  expect(dialogo, findsNothing);
+  expect(find.text('Teléfono actualizado'), findsOneWidget);
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUpAll(() async {
+    await (FontLoader('JerarquiaTablet')..addFont(
+          Future.value(
+            ByteData.sublistView(
+              File('test/fixtures/fonts/roboto-regular.ttf').readAsBytesSync(),
+            ),
+          ),
+        ))
+        .load();
+  });
+
+  for (final ancho in [430.0, 1400.0]) {
+    testWidgets(
+      'acciones e informes seleccionan su fila sin navegar por accidente, $ancho px',
+      (tester) async {
+        tester.view.physicalSize = Size(ancho, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final api = _ApiSeleccionJerarquia();
+        addTearDown(api.cerrar);
+        final tema = PreferenciaTema();
+        addTearDown(tema.dispose);
+        await tester.pumpWidget(
+          TemaScope(
+            preferencia: tema,
+            child: PadronScope(
+              padron: Padron(api: api),
+              child: const MaterialApp(home: JerarquiaPagina()),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final alfa = find.byKey(const ValueKey('central-19'));
+        final central = find.byKey(const ValueKey('central-20'));
+        expect(find.text('ALF (74311223)'), findsOneWidget);
+        expect(tester.widget<ListTile>(alfa).selected, isFalse);
+        await tester.tap(
+          find.descendant(of: alfa, matching: find.byTooltip('Acciones')),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.widget<ListTile>(alfa).selected, isTrue);
+        expect(tester.widget<ListTile>(central).selected, isFalse);
+        await _editarTelefonoDesdeMenu(
+          tester,
+          nombre: 'ALFA CENTRAL',
+          actual: '74311223',
+          nuevo: '+591 70001001',
+        );
+        expect(api.telefonos['/centrales/19/directorio'], '+591 70001001');
+        expect(find.text('ALF (+591 70001001)'), findsOneWidget);
+        expect(tester.widget<ListTile>(alfa).selected, isTrue);
+
+        await tester.tap(
+          find.descendant(
+            of: central,
+            matching: find.byTooltip('Informes y reportes central'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Informes y reportes de la central'), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(tester.widget<ListTile>(central).selected, isTrue);
+        expect(tester.widget<ListTile>(alfa).selected, isFalse);
+
+        await tester.tap(find.text('CENTRAL DE PRUEBA'));
+        await tester.pumpAndSettle();
+        final uno = find.byKey(const ValueKey('sindicato-30'));
+        final dos = find.byKey(const ValueKey('sindicato-31'));
+        expect(
+          find.descendant(of: uno, matching: find.text('(74550123)')),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.descendant(of: dos, matching: find.byTooltip('Acciones')),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.widget<ListTile>(dos).selected, isTrue);
+        await _editarTelefonoDesdeMenu(
+          tester,
+          nombre: 'SINDICATO DOS',
+          actual: '',
+          nuevo: '+591 70001002',
+        );
+        expect(api.telefonos['/sindicatos/31/directorio'], '+591 70001002');
+        expect(
+          find.descendant(of: dos, matching: find.text('Total: 6')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: dos, matching: find.text('(+591 70001002)')),
+          findsOneWidget,
+        );
+        expect(tester.widget<ListTile>(dos).selected, isTrue);
+        expect(find.byType(SindicatoProductoresPagina), findsNothing);
+
+        await tester.tap(
+          find.descendant(
+            of: uno,
+            matching: find.byTooltip('Informes y reportes del sindicato'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Informes y reportes del sindicato'), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(tester.widget<ListTile>(uno).selected, isTrue);
+        expect(tester.widget<ListTile>(dos).selected, isFalse);
+        expect(find.byType(SindicatoProductoresPagina), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'el menú de acciones del usuario limitado también selecciona el sindicato',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final api = _ApiSeleccionJerarquia();
+      addTearDown(api.cerrar);
+      final tema = PreferenciaTema();
+      addTearDown(tema.dispose);
+      final sesion = SesionControlador(AutenticacionRepository(api));
+      addTearDown(sesion.dispose);
+      sesion.sesion = Sesion(
+        token: 'prueba',
+        usuario: 'operador',
+        nombreCompleto: 'Operador',
+        rol: 'OPERADOR',
+        roles: const {},
+        permisos: const {'PRODUCTORES_VER', 'LOTES_EDITAR'},
+        centralId: 20,
+        expiraEn: DateTime(2100),
+      );
+      await tester.pumpWidget(
+        TemaScope(
+          preferencia: tema,
+          child: PadronScope(
+            padron: Padron(api: api),
+            child: SesionScope(
+              controlador: sesion,
+              child: const MaterialApp(home: JerarquiaPagina()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('CENTRAL DE PRUEBA'));
+      await tester.pumpAndSettle();
+      final sindicato = find.byKey(const ValueKey('sindicato-31'));
+      await tester.tap(
+        find.descendant(of: sindicato, matching: find.byTooltip('Acciones')),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.widget<ListTile>(sindicato).selected, isTrue);
+      expect(find.text('Parcelas'), findsOneWidget);
+      expect(find.text('Editar'), findsNothing);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(tester.widget<ListTile>(sindicato).selected, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final plataforma in [TargetPlatform.android, TargetPlatform.iOS]) {
+    for (final ancho in [600.0, 768.0, 1024.0]) {
+      testWidgets('jerarquía de tablet $plataforma a $ancho px', (
+        tester,
+      ) async {
+        debugDefaultTargetPlatformOverride = plataforma;
+        try {
+          tester.view.physicalSize = Size(ancho, 1100);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final api = _ApiFichaJerarquia();
+          addTearDown(api.cerrar);
+          final tema = PreferenciaTema();
+          addTearDown(tema.dispose);
+          await tester.pumpWidget(
+            TemaScope(
+              preferencia: tema,
+              child: PadronScope(
+                padron: Padron(api: api),
+                child: MaterialApp(
+                  theme: ThemeData(fontFamily: 'JerarquiaTablet'),
+                  home: const Inicio(),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Centrales'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('CENTRAL DE PRUEBA'));
+          await tester.pumpAndSettle();
+          if (ancho < 900) {
+            expect(
+              find
+                  .byTooltip('Cambiar central: CENTRAL DE PRUEBA')
+                  .hitTestable(),
+              findsOneWidget,
+            );
+          }
+          await tester.tap(find.text('SINDICATO UNO'));
+          await tester.pumpAndSettle();
+          expect(find.byType(FilaProductor), findsNWidgets(2));
+          await tester.tap(find.byType(FilaProductor).first);
+          await tester.pumpAndSettle();
+          final ficha = find.byType(ProductorDetallePagina);
+          expect(ficha.hitTestable(), findsOneWidget);
+          for (final nombre in ['CENTRAL DE PRUEBA', 'SINDICATO UNO']) {
+            expect(
+              find
+                  .descendant(
+                    of: find.byType(RotatedBox),
+                    matching: find.text(nombre),
+                  )
+                  .hitTestable(),
+              findsOneWidget,
+            );
+          }
+          expect(tester.takeException(), isNull);
+
+          if (ancho == 768) {
+            final estadoFicha = tester.state(ficha);
+            tester.view.physicalSize = const Size(1280, 800);
+            await tester.pumpAndSettle();
+            expect(tester.state(ficha), same(estadoFicha));
+            expect(find.byType(FilaProductor), findsNWidgets(2));
+            tester.view.physicalSize = Size(ancho, 1100);
+            await tester.pumpAndSettle();
+            expect(tester.state(ficha), same(estadoFicha));
+            expect(tester.takeException(), isNull);
+          }
+
+          await tester.tap(find.byTooltip('Cambiar sindicato: SINDICATO UNO'));
+          await tester.pumpAndSettle();
+          expect(ficha, findsNothing);
+          expect(find.text('Sindicatos de CENTRAL DE PRUEBA'), findsOneWidget);
+          if (ancho < 900) {
+            await tester.tap(
+              find.byTooltip('Cambiar central: CENTRAL DE PRUEBA'),
+            );
+            await tester.pumpAndSettle();
+            expect(find.text('Centrales de CARRASCO TROPICAL'), findsOneWidget);
+          }
+          expect(tester.takeException(), isNull);
+        } finally {
+          debugDefaultTargetPlatformOverride = null;
+        }
+      });
+    }
+  }
+
+  for (final centralId in [null, 20]) {
+    for (final ancho in [1700.0, 430.0]) {
+      testWidgets(
+        'fotos y observaciones solo navega a productores y cuenta, central $centralId, $ancho px',
+        (tester) async {
+          tester.view.physicalSize = Size(ancho, 1000);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final api = _ApiFichaJerarquia();
+          addTearDown(api.cerrar);
+          final sesion = SesionControlador(AutenticacionRepository(api));
+          addTearDown(sesion.dispose);
+          sesion.sesion = Sesion(
+            token: 'prueba',
+            usuario: 'fotografo',
+            nombreCompleto: 'Fotos y observaciones',
+            rol: 'OPERADOR',
+            roles: const {'FOTOS_OBSERVACIONES'},
+            permisos: const {
+              'PRODUCTORES_VER',
+              'FOTOS_PRODUCTORES_ACTUALIZAR',
+              'PRODUCTORES_OBSERVAR',
+            },
+            centralId: centralId,
+            expiraEn: DateTime(2100),
+          );
+          final tema = PreferenciaTema();
+          addTearDown(tema.dispose);
+          await tester.pumpWidget(
+            TemaScope(
+              preferencia: tema,
+              child: PadronScope(
+                padron: Padron(api: api),
+                child: SesionScope(
+                  controlador: sesion,
+                  child: const MaterialApp(home: Inicio()),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          for (final texto in [
+            'Nuevo',
+            'Calidad',
+            'Reuniones',
+            'Carnet',
+            'Personal operador',
+            'Respaldos',
+            'Accesos',
+          ]) {
+            expect(find.text(texto), findsNothing, reason: texto);
+          }
+          expect(
+            find.byKey(const ValueKey('menu-directorio-federacion')),
+            findsNothing,
+          );
+          expect(find.byTooltip('Papelera de productores'), findsNothing);
+          await tester.tap(find.text('Centrales'));
+          await tester.pumpAndSettle();
+          final central = find.byKey(const ValueKey('central-20'));
+          expect(
+            find.descendant(
+              of: central,
+              matching: find.byType(PopupMenuButton<String>),
+            ),
+            findsNothing,
+          );
+          expect(find.byTooltip('Informes y reportes central'), findsNothing);
+          await tester.tap(find.text('CENTRAL DE PRUEBA'));
+          await tester.pumpAndSettle();
+          final sindicato = find.ancestor(
+            of: find.text('SINDICATO UNO'),
+            matching: find.byType(ListTile),
+          );
+          expect(
+            find.descendant(
+              of: sindicato,
+              matching: find.byType(PopupMenuButton<String>),
+            ),
+            findsNothing,
+          );
+          await tester.tap(find.text('SINDICATO UNO'));
+          await tester.pumpAndSettle();
+          expect(find.byType(FilaProductor), findsNWidgets(2));
+          expect(find.text('Nuevo'), findsNothing);
+          expect(find.byTooltip('Edición rápida de productores'), findsNothing);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  for (final centralId in [null, 20]) {
+    for (final ancho in [1700, 430]) {
+      testWidgets(
+        'registro y revisión sin edición rápida ni directorios, central $centralId, ancho $ancho',
+        (tester) async {
+          tester.view.physicalSize = Size(ancho.toDouble(), 1000);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final api = _ApiFichaJerarquia();
+          final sesion = SesionControlador(AutenticacionRepository(api));
+          addTearDown(sesion.dispose);
+          sesion.sesion = Sesion(
+            token: 'prueba',
+            usuario: 'registro',
+            nombreCompleto: 'Registro y revisión',
+            rol: 'OPERADOR',
+            roles: const {'REGISTRO_REVISION'},
+            permisos: const {
+              'PRODUCTORES_VER',
+              'PRODUCTORES_REGISTRAR',
+              'PRODUCTORES_EDITAR',
+              'PRODUCTORES_ELIMINAR',
+              'SIE_REVISAR',
+              'FOTOS_PRODUCTORES_EDITAR',
+              'PRODUCTORES_OBSERVAR',
+              'NUMERO_LOTE_EDITAR',
+            },
+            centralId: centralId,
+            expiraEn: DateTime(2100),
+          );
+          await tester.pumpWidget(
+            TemaScope(
+              preferencia: PreferenciaTema(),
+              child: PadronScope(
+                padron: Padron(api: api),
+                child: SesionScope(
+                  controlador: sesion,
+                  child: const MaterialApp(home: JerarquiaPagina()),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final central = find.ancestor(
+            of: find.text('CENTRAL DE PRUEBA'),
+            matching: find.byType(ListTile),
+          );
+          final menuCentral = find.descendant(
+            of: central,
+            matching: find.byType(PopupMenuButton<String>),
+          );
+          if (centralId == null) {
+            await tester.tap(menuCentral);
+            await tester.pumpAndSettle();
+            expect(find.text('Directorio'), findsNothing);
+            expect(find.text('Editar teléfono'), findsNothing);
+            await tester.binding.handlePopRoute();
+            await tester.pumpAndSettle();
+          } else {
+            expect(menuCentral, findsNothing);
+          }
+          await tester.tap(find.text('CENTRAL DE PRUEBA'));
+          await tester.pumpAndSettle();
+          final sindicato = find.ancestor(
+            of: find.text('SINDICATO UNO'),
+            matching: find.byType(ListTile),
+          );
+          final menu = find.descendant(
+            of: sindicato,
+            matching: find.byType(PopupMenuButton<String>),
+          );
+          if (centralId == null) {
+            await tester.tap(menu);
+            await tester.pumpAndSettle();
+            expect(find.text('Edición rápida de productores'), findsNothing);
+            expect(find.text('Directorio'), findsNothing);
+            await tester.binding.handlePopRoute();
+            await tester.pumpAndSettle();
+          } else {
+            expect(menu, findsNothing);
+          }
+          await tester.tap(find.text('SINDICATO UNO'));
+          await tester.pumpAndSettle();
+          expect(find.byType(SindicatoProductoresPagina), findsOneWidget);
+          expect(find.byTooltip('Edición rápida de productores'), findsNothing);
+          expect(find.text('Nuevo'), findsOneWidget);
+          expect(find.byType(FilaProductor), findsNWidgets(2));
+          expect(sesion.puede('PRODUCTORES_EDITAR'), isTrue);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
 
   for (final completo in [true, false]) {
     testWidgets('menú central respeta perfil completo: $completo', (
@@ -112,7 +589,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Jerarquía'));
+        await tester.tap(find.text('Centrales'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('CENTRAL DE PRUEBA'));
         await tester.pumpAndSettle();
@@ -181,6 +658,7 @@ void main() {
           final estadoLista = tester.state(lista);
           await prepararMiniaturaPrueba(tester, '/miniatura-nueva-42.png');
           api.fotoActualizada = true;
+          expect(find.byType(TabBar), findsNothing);
           tester
               .widget<ImagenesProductor>(find.byType(ImagenesProductor))
               .alCambiar();
@@ -236,7 +714,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Jerarquía'));
+        await tester.tap(find.text('Centrales'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('CENTRAL DE PRUEBA'));
         await tester.pumpAndSettle();
@@ -445,6 +923,62 @@ void main() {
     );
   });
 
+  testWidgets(
+    'muestra el avance del sindicato y la fase cerrada de la central',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final api = _ApiJerarquia()..faseIniciada = true;
+      final controlador = JerarquiaControlador();
+      addTearDown(controlador.dispose);
+      addTearDown(api.cerrar);
+      await tester.pumpWidget(
+        TemaScope(
+          preferencia: PreferenciaTema(),
+          child: PadronScope(
+            padron: Padron(api: api),
+            child: MaterialApp(home: JerarquiaPagina(controlador: controlador)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('CENTRAL DE PRUEBA'));
+      await tester.pumpAndSettle();
+      final primero = find.byKey(const ValueKey('sindicato-30'));
+      final segundo = find.byKey(const ValueKey('sindicato-31'));
+      Finder estado(Finder fila, String texto) =>
+          find.descendant(of: fila, matching: find.text(texto));
+      expect(find.textContaining('fase impresión habilitada'), findsOneWidget);
+      expect(find.text('Imprimiendo'), findsNothing);
+      expect(find.text('Impreso'), findsNothing);
+
+      api.estadoFaseSindicato = 'IMPRIMIENDO';
+      controlador.refrescarConteos();
+      await tester.pumpAndSettle();
+      expect(estado(primero, 'Imprimiendo'), findsOneWidget);
+      expect(estado(segundo, 'Imprimiendo'), findsNothing);
+
+      api.estadoFaseSindicato = 'IMPRESO';
+      controlador.refrescarConteos();
+      await tester.pumpAndSettle();
+      expect(estado(primero, 'Impreso'), findsOneWidget);
+      expect(find.text('Imprimiendo'), findsNothing);
+
+      api.faseCerrada = true;
+      api.estadoFaseSindicato = null;
+      controlador.refrescarConteos();
+      await tester.pumpAndSettle();
+      expect(find.text('Impreso'), findsNothing);
+      expect(find.textContaining('fase impresión habilitada'), findsNothing);
+      expect(
+        estado(find.byKey(const ValueKey('central-20')), 'f1 Impreso'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('conserva el scroll de centrales al entrar y volver', (
     tester,
   ) async {
@@ -500,6 +1034,8 @@ void main() {
 class _ApiJerarquia extends ApiClient {
   int? ultimoSindicatoConsultado;
   bool faseIniciada = false;
+  bool faseCerrada = false;
+  String? estadoFaseSindicato;
 
   @override
   Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
@@ -522,6 +1058,8 @@ class _ApiJerarquia extends ApiClient {
           'nombre': 'CENTRAL DE PRUEBA',
           'federacionId': 10,
           'federacionNombre': 'CARRASCO TROPICAL',
+          if (faseIniciada) 'ultimaFaseImpresionNumero': 1,
+          if (faseIniciada && !faseCerrada) 'faseImpresionActivaNumero': 1,
         },
       ];
     }
@@ -573,6 +1111,7 @@ class _ApiJerarquia extends ApiClient {
             'listosParaImprimir': 3,
             'datosCompletos': 7,
             'porcentajeAvance': 40,
+            'estadoImpresionFase': estadoFaseSindicato,
           },
           {
             'sindicatoId': 31,
@@ -598,6 +1137,71 @@ class _ApiJerarquia extends ApiClient {
       };
     }
     return <dynamic>[];
+  }
+}
+
+class _ApiSeleccionJerarquia extends _ApiJerarquia {
+  final telefonos = <String, String?>{
+    '/centrales/19/directorio': '74311223',
+    '/sindicatos/30/directorio': '74550123',
+    '/sindicatos/31/directorio': null,
+  };
+
+  @override
+  Future<Object?> obtener(String ruta, {Map<String, dynamic>? query}) async {
+    if (telefonos.containsKey(ruta)) return _directorio(ruta);
+    if (ruta == '/centrales/20/fases-impresion') {
+      return {'centralId': 20, 'central': 'CENTRAL DE PRUEBA', 'historial': []};
+    }
+    if (ruta == '/sindicatos/30/informes/avance') {
+      return {'sindicatoId': 30, 'sindicato': 'SINDICATO UNO', 'total': 0};
+    }
+    if (ruta == '/sindicatos/30/informes/fases') return [];
+    if (ruta == '/federaciones/10/centrales' ||
+        ruta == '/centrales/20/sindicatos') {
+      final recurso = ruta.split('/').last;
+      final filas =
+          await super.obtener(ruta, query: query) as List<Map<String, Object?>>;
+      return [
+        for (final fila in filas)
+          {
+            ...fila,
+            if (recurso == 'centrales' && fila['id'] == 19)
+              'abreviatura': 'ALF',
+            'telefono': telefonos['/$recurso/${fila['id']}/directorio'],
+          },
+      ];
+    }
+    return super.obtener(ruta, query: query);
+  }
+
+  @override
+  Future<Object?> parchear(String ruta, {Object? cuerpo}) async {
+    expect(ruta, endsWith('/telefono'));
+    final directorio = ruta.substring(0, ruta.length - '/telefono'.length);
+    expect(telefonos.containsKey(directorio), isTrue);
+    telefonos[directorio] =
+        (cuerpo as Map<String, Object?>)['telefono'] as String;
+    return _directorio(directorio);
+  }
+
+  Map<String, Object?> _directorio(String ruta) => {
+    'ambito': ruta.startsWith('/centrales/') ? 'CENTRAL' : 'SINDICATO',
+    'ambitoId': int.parse(ruta.split('/')[2]),
+    'telefono': telefonos[ruta],
+    'puestos': [],
+  };
+
+  @override
+  Future<Object?> crear(String ruta, Object cuerpo) async {
+    if (ruta == '/centrales/20/credenciales/impresion/informe-nominal') {
+      return {
+        'centralId': 20,
+        'central': 'CENTRAL DE PRUEBA',
+        'sindicatos': [],
+      };
+    }
+    throw StateError('Solicitud inesperada: $ruta');
   }
 }
 

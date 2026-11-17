@@ -1,3 +1,4 @@
+import '../imagen_autenticada.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -157,7 +158,7 @@ class _OperadorFormularioPaginaState extends State<OperadorFormularioPagina> {
             child: pendiente != null
                 ? Image.memory(pendiente, fit: BoxFit.cover)
                 : url != null
-                ? Image.network(
+                ? ImagenAutenticada(
                     ApiConfig.urlAbsoluta(url),
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) =>

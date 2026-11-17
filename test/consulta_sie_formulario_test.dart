@@ -65,21 +65,53 @@ void main() {
     expect(api.consultasSie, 1);
   });
 
-  testWidgets('si la cédula ya está en el padrón no consulta SIE', (
-    tester,
-  ) async {
-    ampliar(tester);
-    final api = _ApiPersona(conProductorLocal: true);
-    await tester.pumpWidget(formulario(api));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'CI repetida permite copiar nombres sin consultar SIE ni registrar',
+    (tester) async {
+      ampliar(tester);
+      final api = _ApiPersona(conProductorLocal: true);
+      await tester.pumpWidget(formulario(api));
+      await tester.pumpAndSettle();
 
-    await tester.enterText(campo('Cédula de identidad *'), '4487439');
-    await tester.tap(find.byTooltip('Verificar cédula'));
-    await tester.pumpAndSettle();
+      await tester.enterText(campo('Cédula de identidad *'), '4487439');
+      await tester.tap(find.byTooltip('Verificar cédula'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Esa cédula ya está registrada.'), findsOneWidget);
-    expect(api.consultasSie, 0);
-  });
+      expect(find.text('Esa cédula ya está registrada.'), findsOneWidget);
+      expect(api.consultasSie, 0);
+      final completar = find.byKey(const ValueKey('completar-datos-15'));
+      await tester.ensureVisible(completar);
+      await tester.tap(completar);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextFormField>(campo('Nombres *')).controller!.text,
+        'INOCENTES',
+      );
+      expect(
+        tester.widget<TextFormField>(campo('Apellidos')).controller!.text,
+        'YAURI PUCHO',
+      );
+      expect(
+        tester
+            .widget<TextFormField>(campo('Cédula de identidad *'))
+            .controller!
+            .text,
+        '4487439',
+      );
+      expect(find.byType(ProductorFormulario), findsOneWidget);
+      expect(
+        find.textContaining('sin impresión hasta corregirla'),
+        findsOneWidget,
+      );
+      expect(api.consultasSie, 0);
+      await tester.enterText(campo('Nombres *'), 'INOCENTES MANUEL');
+      expect(
+        tester.widget<TextFormField>(campo('Nombres *')).controller!.text,
+        'INOCENTES MANUEL',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('si SIE no encuentra la cédula habilita el ingreso manual', (
     tester,

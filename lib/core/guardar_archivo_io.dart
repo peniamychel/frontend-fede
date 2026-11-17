@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -8,14 +7,12 @@ Future<void> guardarArchivo(
   String nombreArchivo,
   String tipoMime,
 ) async {
-  final ruta = await FilePicker.saveFile(
+  // Con bytes, file_picker guarda el archivo en móviles y escritorio.
+  // Android puede devolver una referencia como /document/336, que no es una
+  // ruta de dart:io. Volver a escribirla provocaría un error tras guardar bien.
+  await FilePicker.saveFile(
     dialogTitle: 'Guardar archivo',
     fileName: nombreArchivo,
     bytes: Uint8List.fromList(bytes),
   );
-  // En algunas plataformas file_picker guarda los bytes; en otras solamente
-  // devuelve la ruta elegida. Solo se escribe cuando el archivo aún no existe.
-  if (ruta != null && !await File(ruta).exists()) {
-    await File(ruta).writeAsBytes(bytes, flush: true);
-  }
 }

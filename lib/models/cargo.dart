@@ -224,6 +224,7 @@ class Directorio {
     required this.ambitoId,
     required this.ambitoNombre,
     required this.puestos,
+    this.telefono,
     this.selloUrl,
     this.permitePieFirmaImagen = false,
     this.firmaObligatoria = true,
@@ -233,6 +234,7 @@ class Directorio {
   final Ambito ambito;
   final int ambitoId;
   final String ambitoNombre;
+  final String? telefono;
   final String? selloUrl;
   final bool permitePieFirmaImagen;
   final bool firmaObligatoria;
@@ -257,6 +259,7 @@ class Directorio {
       ambito: ambito,
       ambitoId: (json['ambitoId'] as num?)?.toInt() ?? 0,
       ambitoNombre: json['ambitoNombre'] as String? ?? '',
+      telefono: json['telefono'] as String?,
       selloUrl: json['selloUrl'] as String?,
       permitePieFirmaImagen:
           json['permitePieFirmaImagen'] as bool? ?? ambito != Ambito.sindicato,

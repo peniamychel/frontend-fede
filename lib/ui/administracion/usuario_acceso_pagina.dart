@@ -16,10 +16,13 @@ class _UsuarioAccesoPaginaState extends State<UsuarioAccesoPagina> {
     'PRODUCTORES_VER',
     'PRODUCTORES_REGISTRAR',
     'PRODUCTORES_EDITAR',
+    'PRODUCTORES_ELIMINAR',
     'SIE_REVISAR',
     'LOTES_EDITAR',
+    'LOTES_DESASIGNAR',
     'IMAGENES_EDITAR',
     'FOTOS_PRODUCTORES_EDITAR',
+    'FOTOS_PRODUCTORES_ACTUALIZAR',
     'PRODUCTORES_OBSERVAR',
     'NUMERO_LOTE_EDITAR',
     'INFORMES_DESCARGAR',
@@ -247,19 +250,21 @@ class _UsuarioAccesoPaginaState extends State<UsuarioAccesoPagina> {
                 TextFormField(
                   onChanged: (v) => codigoManual = v,
                   autofocus: true,
-                  maxLength: 5,
+                  maxLength: 64,
                   autocorrect: false,
                   enableSuggestions: false,
                   decoration: const InputDecoration(
-                    labelText: 'Código de 5 letras',
-                    helperText: 'Distingue mayúsculas y minúsculas.',
+                    labelText: 'Código de acceso seguro',
+                    helperText:
+                        '16 a 64 letras o números. Distingue mayúsculas.',
                   ),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp('[A-Za-z]')),
+                    FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]')),
                   ],
-                  validator: (v) => RegExp(r'^[A-Za-z]{5}$').hasMatch(v ?? '')
+                  validator: (v) =>
+                      RegExp(r'^[A-Za-z0-9]{16,64}$').hasMatch(v ?? '')
                       ? null
-                      : 'Ingresá exactamente 5 letras.',
+                      : 'Ingresá entre 16 y 64 letras o números.',
                 ),
             ],
           ),
@@ -378,7 +383,7 @@ class _UsuarioAccesoPaginaState extends State<UsuarioAccesoPagina> {
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'Solo podrá trabajar en la central y los sindicatos autorizados. El rol Registro de productores permite registrar y editar productores, revisar por SIE, gestionar parcelas y fotos. No concede eliminación, impresión ni importación. El rol de fotos mantiene sus permisos específicos.',
+                          'Solo podrá trabajar en la central y los sindicatos autorizados. Gestor de productores permite crear, editar y eliminar productores, revisar por SIE, gestionar fotos y observaciones, cambiar el número de lote y quitar la parcela asignada. Este rol no concede impresión, importación ni acceso a directorios. Los demás roles conservan sus permisos específicos.',
                         ),
                         if (_centralId != null) ...[
                           SwitchListTile(
@@ -543,7 +548,7 @@ class _UsuarioAccesoPaginaState extends State<UsuarioAccesoPagina> {
                             OutlinedButton.icon(
                               onPressed: () => _cambiarCodigo(manual: false),
                               icon: const Icon(Icons.refresh),
-                              label: const Text('Generar código de 5 letras'),
+                              label: const Text('Generar código seguro'),
                             ),
                           ],
                         ),

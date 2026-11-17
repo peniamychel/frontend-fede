@@ -133,6 +133,7 @@ void main() {
         );
 
         // Simula el guardado de una nueva foto y datos, sin cerrar la ficha.
+        expect(find.byType(TabBar), findsNothing);
         final miniatura = '/miniatura-nueva-$otroId.png';
         await prepararMiniaturaPrueba(tester, miniatura);
         api.actualizados.add(otroId);

@@ -5,7 +5,10 @@ import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../permisos_ui.dart';
 import '../widgets/descargas.dart';
+import '../widgets/descargar_observaciones_preimpresion_boton.dart';
 import '../widgets/estados.dart';
+import '../widgets/descargar_productores_excel_boton.dart';
+import '../widgets/elegir_orden_informe.dart';
 
 /// Informe global del avance de impresión de todos los sindicatos de una central.
 class InformeImpresionCentralPagina extends StatefulWidget {
@@ -25,6 +28,17 @@ class _InformeImpresionCentralPaginaState
   bool _descargandoRevisionPadron = false;
   bool _cambiandoFase = false;
   final Set<int> _descargandoFases = <int>{};
+  bool _eligiendoOrden = false;
+
+  Future<OrdenInformes?> _elegirOrden() async {
+    if (_eligiendoOrden) return null;
+    _eligiendoOrden = true;
+    try {
+      return await elegirOrdenInforme(context);
+    } finally {
+      _eligiendoOrden = false;
+    }
+  }
 
   @override
   void initState() {
@@ -51,11 +65,15 @@ class _InformeImpresionCentralPaginaState
   }
 
   Future<void> _descargarPreImpresion() async {
-    setState(() => _descargandoPreImpresion = true);
+    if (_descargandoPreImpresion) return;
     try {
+      final orden = await _elegirOrden();
+      if (orden == null || !mounted) return;
+      setState(() => _descargandoPreImpresion = true);
       final descarga = await PadronScope.of(
         context,
-      ).centrales.descargarInformePreImpresion(widget.central.id);
+      ).centrales.descargarInformePreImpresion(widget.central.id, orden: orden);
+      if (!mounted) return;
       await guardarArchivo(
         descarga.bytes,
         descarga.nombreArchivo,
@@ -70,11 +88,15 @@ class _InformeImpresionCentralPaginaState
   }
 
   Future<void> _descargarRevisionPadron() async {
-    setState(() => _descargandoRevisionPadron = true);
+    if (_descargandoRevisionPadron) return;
     try {
+      final orden = await _elegirOrden();
+      if (orden == null || !mounted) return;
+      setState(() => _descargandoRevisionPadron = true);
       final descarga = await PadronScope.of(
         context,
-      ).centrales.descargarRevisionPadron(widget.central.id);
+      ).centrales.descargarRevisionPadron(widget.central.id, orden: orden);
+      if (!mounted) return;
       await guardarArchivo(
         descarga.bytes,
         descarga.nombreArchivo,
@@ -142,15 +164,24 @@ class _InformeImpresionCentralPaginaState
     bool contabilidad = false,
   }) async {
     if (_descargandoFases.contains(fase.id)) return;
-    setState(() => _descargandoFases.add(fase.id));
     try {
+      final orden = contabilidad
+          ? OrdenInformes.apellidos
+          : await _elegirOrden();
+      if (orden == null || !mounted) return;
+      setState(() => _descargandoFases.add(fase.id));
       final repositorio = PadronScope.of(context).centrales;
       final descarga = contabilidad
           ? await repositorio.descargarContabilidadFase(
               widget.central.id,
               fase.id,
             )
-          : await repositorio.descargarInformeFase(widget.central.id, fase.id);
+          : await repositorio.descargarInformeFase(
+              widget.central.id,
+              fase.id,
+              orden: orden,
+            );
+      if (!mounted) return;
       await guardarArchivo(
         descarga.bytes,
         descarga.nombreArchivo,
@@ -305,6 +336,7 @@ class _Contenido extends StatelessWidget {
           const SizedBox(height: 12),
           if (puedeDescargar) ...[
             _AccionesInformes(
+              centralId: central.id,
               descargandoPreImpresion: descargandoPreImpresion,
               descargandoRevisionPadron: descargandoRevisionPadron,
               alDescargarGeneral: () =>
@@ -422,6 +454,7 @@ class _Contenido extends StatelessWidget {
 
 class _AccionesInformes extends StatelessWidget {
   const _AccionesInformes({
+    required this.centralId,
     required this.descargandoPreImpresion,
     required this.descargandoRevisionPadron,
     required this.alDescargarGeneral,
@@ -430,6 +463,7 @@ class _AccionesInformes extends StatelessWidget {
     required this.alDescargarRevisionPadron,
   });
 
+  final int centralId;
   final bool descargandoPreImpresion;
   final bool descargandoRevisionPadron;
   final Future<void> Function() alDescargarGeneral;
@@ -454,6 +488,7 @@ class _AccionesInformes extends StatelessWidget {
               spacing: 10,
               runSpacing: 10,
               children: [
+                DescargarProductoresExcelBoton.central(id: centralId),
                 OutlinedButton.icon(
                   onPressed: alDescargarGeneral,
                   icon: const Icon(Icons.assessment_outlined),
@@ -476,6 +511,7 @@ class _AccionesInformes extends StatelessWidget {
                       : const Icon(Icons.rule_folder_outlined),
                   label: const Text('Informe pre-impresión'),
                 ),
+                DescargarObservacionesPreimpresionBoton.central(id: centralId),
                 FilledButton.tonalIcon(
                   onPressed: descargandoRevisionPadron
                       ? null

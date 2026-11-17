@@ -90,6 +90,14 @@ class _VistaPreviaImpresionReverso extends StatelessWidget {
         build: (_) async => bytes,
         pages: const [0],
         maxPageWidth: 400,
+        initialPageFormat: const PdfPageFormat(
+          85.6 * PdfPageFormat.mm,
+          53.98 * PdfPageFormat.mm,
+          marginAll: 0,
+        ),
+        // La resolución del PDF no depende del ancho de la muestra en pantalla.
+        // El cálculo automático usa A4 por defecto y reduce demasiado el carnet.
+        dpi: 600,
         pdfFileName: descarga.nombreArchivo,
         allowPrinting: false,
         allowSharing: false,

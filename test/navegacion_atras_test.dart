@@ -98,7 +98,7 @@ void main() {
 
     final barra = find.byType(NavigationBar);
     await tester.tap(
-      find.descendant(of: barra, matching: find.text('Jerarquía')),
+      find.descendant(of: barra, matching: find.text('Centrales')),
     );
     await tester.pumpAndSettle();
 

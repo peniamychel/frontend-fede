@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
+import '../../core/guardar_archivo.dart';
 import '../../repositories/padron.dart';
 import '../padron_scope.dart';
 import '../permisos_ui.dart';
@@ -9,6 +12,7 @@ import '../widgets/estados.dart';
 import 'asignar_parcela.dart';
 import '../widgets/marca_estado.dart';
 import 'imagenes_productor.dart';
+import 'ficha_resumen_productor.dart';
 import 'productor_formulario.dart';
 
 /// Cierra una ficha integrada respetando sus avisos de salida.
@@ -56,6 +60,38 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
 
   bool _verificandoSie = false;
   bool _agregandoReimpresion = false;
+  bool _descargandoFicha = false;
+  final _claveFotoFicha = GlobalKey();
+  final _claveAntecedentes = GlobalKey();
+
+  Future<void> _descargarFicha(ProductorDetalle detalle) async {
+    if (_descargandoFicha) return;
+    final repositorio = PadronScope.of(context).productores;
+    setState(() => _descargandoFicha = true);
+    try {
+      Uint8List? foto;
+      if (detalle.imagen(TipoImagen.original) != null) {
+        final descarga = await repositorio.descargarFotografia(
+          detalle.productor.id,
+        );
+        foto = Uint8List.fromList(descarga.bytes);
+      }
+      final bytes = await generarFichaResumenProductor(
+        detalle,
+        fotografia: foto,
+      );
+      if (!mounted) return;
+      await guardarArchivo(
+        bytes,
+        'ficha-productor-${detalle.productor.id}.png',
+        'image/png',
+      );
+    } catch (e) {
+      if (mounted) mostrarError(context, e);
+    } finally {
+      if (mounted) setState(() => _descargandoFicha = false);
+    }
+  }
 
   /// Nombre ya cargado, solo para nombrarlo en el aviso de la descarga. Se
   /// anota al dibujar la ficha y no dispara redibujado: no se muestra en
@@ -234,10 +270,10 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     setState(() {
       _revisionSie = null;
       _futuro = _sincronizarDetalle(_cargarDetalleConRevision(padron));
-      _cargos = context.accesoCentral
+      _cargos = context.accesoCentral || context.soloFotosObservaciones
           ? Future.value(<Cargo>[])
           : padron.productores.cargos(widget.productorId);
-      _vetos = context.accesoCentral
+      _vetos = context.accesoCentral || context.soloFotosObservaciones
           ? Future.value(<Veto>[])
           : padron.vetos.historialDe(widget.productorId);
     });
@@ -742,7 +778,36 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
         leading: widget.alCerrar == null ? null : BackButton(onPressed: _salir),
         title: const Text('Ficha del productor'),
         actions: [
-          if (!context.accesoCentral)
+          FutureBuilder<ProductorDetalle>(
+            future: _futuro,
+            builder: (context, snapshot) {
+              final p = snapshot.data?.productor;
+              final pendiente = p != null && _requiereAtencion(p);
+              return IconButton(
+                key: const ValueKey('ficha-antecedentes'),
+                tooltip: pendiente
+                    ? 'Revisiones pendientes'
+                    : 'Revisiones y antecedentes',
+                onPressed: p == null
+                    ? null
+                    : () {
+                        final contexto = _claveAntecedentes.currentContext;
+                        if (contexto != null) {
+                          Scrollable.ensureVisible(
+                            contexto,
+                            duration: const Duration(milliseconds: 250),
+                            alignment: 0,
+                          );
+                        }
+                      },
+                icon: Icon(
+                  pendiente ? Icons.warning_amber_rounded : Icons.history,
+                  color: pendiente ? Theme.of(context).colorScheme.error : null,
+                ),
+              );
+            },
+          ),
+          if (!context.accesoCentral && !context.soloFotosObservaciones)
             IconButton(
               tooltip: 'Ver e imprimir la credencial',
               onPressed: _verCredencial,
@@ -754,6 +819,34 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
             icon: const Icon(Icons.refresh),
           ),
         ],
+      ),
+      bottomNavigationBar: FutureBuilder<ProductorDetalle>(
+        future: _futuro,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done ||
+              !snapshot.hasData) {
+            return const SizedBox.shrink();
+          }
+          return SafeArea(
+            top: false,
+            child: Align(
+              heightFactor: 1,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1180),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
+                  child: Card(
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: _crearEncabezado(snapshot.data!).acciones(context),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
       body: Stack(
         children: [
@@ -782,170 +875,232 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     );
   }
 
-  Widget _contenido(BuildContext context, ProductorDetalle detalle) {
+  _Encabezado _crearEncabezado(
+    ProductorDetalle detalle, {
+    Widget? fotografia,
+    bool compacto = false,
+  }) {
     final p = detalle.productor;
     final tieneFotografia = detalle.imagen(TipoImagen.original) != null;
     final puedeEditar = context.puede('PRODUCTORES_EDITAR');
     final puedeEliminar = context.puede('PRODUCTORES_ELIMINAR');
     final puedeSie = context.puede('SIE_REVISAR');
     final puedeImprimir = context.puede('CARNETS_IMPRIMIR');
+    return _Encabezado(
+      fotografia: fotografia,
+      compacto: compacto,
+      productor: p,
+      numeroLote: detalle.lotes.isEmpty ? null : detalle.lotes.first.codigo,
+      tieneFotografia: tieneFotografia,
+      puedeEditar: puedeEditar,
+      puedeEliminar: puedeEliminar,
+      puedeSie: puedeSie,
+      puedeImprimir: puedeImprimir,
+      verificandoSie: _verificandoSie,
+      alVerificarConSie: p.tieneSugerenciaSie
+          ? () => _aceptarSugerenciaSie(p)
+          : () => _verificarConSie(p),
+      alEditarObservacion: () => _editarObservacion(p),
+      agregandoReimpresion: _agregandoReimpresion,
+      alAgregarReimpresion: () => _agregarReimpresion(p),
+      alEditar: () => _editar(p),
+      alCambiarEstado: () => _cambiarEstado(p, detalle.lotes.isNotEmpty),
+      alEliminar: () => _eliminar(detalle),
+      descargandoFicha: _descargandoFicha,
+      alDescargarFicha: () => _descargarFicha(detalle),
+    );
+  }
+
+  Widget _contenido(BuildContext context, ProductorDetalle detalle) {
+    final p = detalle.productor;
+    final puedeEditar = context.puede('PRODUCTORES_EDITAR');
+    final puedeSie = context.puede('SIE_REVISAR');
     final puedeLotes =
         context.puede('LOTES_EDITAR') || context.puede('NUMERO_LOTE_EDITAR');
     final puedeImagenes =
         context.puede('IMAGENES_EDITAR') ||
+        context.puede('FOTOS_PRODUCTORES_EDITAR') ||
+        context.puede('FOTOS_PRODUCTORES_ACTUALIZAR');
+    final puedeBorrarFoto =
+        context.puede('IMAGENES_EDITAR') ||
         context.puede('FOTOS_PRODUCTORES_EDITAR');
     _nombre = p.nombreCompleto;
-
-    return ListView(
-      key: PageStorageKey('ficha-productor-${widget.productorId}'),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
-      children: [
-        _Encabezado(
-          productor: p,
-          numeroLote: detalle.lotes.isEmpty ? null : detalle.lotes.first.codigo,
-          tieneFotografia: tieneFotografia,
-          puedeEditar: puedeEditar,
-          puedeEliminar: puedeEliminar,
-          puedeSie: puedeSie,
-          puedeImprimir: puedeImprimir,
-          verificandoSie: _verificandoSie,
-          alVerificarConSie: p.tieneSugerenciaSie
-              ? () => _aceptarSugerenciaSie(p)
-              : () => _verificarConSie(p),
-          alEditarObservacion: () => _editarObservacion(p),
-          agregandoReimpresion: _agregandoReimpresion,
-          alAgregarReimpresion: () => _agregarReimpresion(p),
-          alEditar: () => _editar(p),
-          alCambiarEstado: () => _cambiarEstado(p, detalle.lotes.isNotEmpty),
-          alEliminar: () => _eliminar(detalle),
-        ),
-        if (p.ciDuplicada) ...[
-          const SizedBox(height: 16),
-          Card(
-            color: Theme.of(context).colorScheme.errorContainer,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Revisión CI: esta cédula se repite en otro productor del padrón. '
-                'Todos los registros con esta CI quedan bloqueados para impresión. '
-                'Corregí la cédula en las fichas correspondientes; aprobar SIE o quitar una observación no elimina este conflicto.',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onErrorContainer,
-                ),
+    final avisos = <Widget>[
+      if (p.ciDuplicada) ...[
+        const SizedBox(height: 16),
+        Card(
+          color: Theme.of(context).colorScheme.errorContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'Revisión CI: esta cédula se repite en otro productor del padrón. '
+              'Todos los registros con esta CI quedan bloqueados para impresión. '
+              'Corregí la cédula en las fichas correspondientes; aprobar SIE o quitar una observación no elimina este conflicto.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onErrorContainer,
               ),
             ),
           ),
-        ],
-        if (p.observado) ...[
-          const SizedBox(height: 16),
-          _AvisoObservacionManual(
-            texto: p.observacion ?? 'Sin detalle',
-            alEditar: () => _editarObservacion(p),
-            permitirCambios:
-                puedeEditar || context.puede('PRODUCTORES_OBSERVAR'),
-          ),
-        ],
-        if (p.revisionLotePendiente) ...[
-          const SizedBox(height: 16),
-          Card(
-            color: Theme.of(context).colorScheme.errorContainer,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Revisión pendiente: número de lote',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(p.resumenRevisionLote),
-                  const Text(
-                    'No se puede imprimir el carnet hasta completar el número '
-                    'de lote. Al guardarlo se cierra esta revisión; los demás '
-                    'requisitos de impresión siguen vigentes.',
-                  ),
-                  const SizedBox(height: 8),
-                  if (puedeLotes)
-                    FilledButton.icon(
-                      onPressed: () => detalle.lotes.isEmpty
-                          ? _asignarParcela(p)
-                          : _cambiarNumero(detalle.lotes.first),
-                      icon: const Icon(Icons.edit_location_alt_outlined),
-                      label: const Text('Completar número de lote'),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-        if (_revisionSie case final revision?
-            when revision.estado == EstadoRevisionSie.noDisponible) ...[
-          const SizedBox(height: 16),
-          _AvisoRevisionSie(revision: revision),
-        ],
-        if (p.revisionSieEstado case final estado?) ...[
-          const SizedBox(height: 16),
-          _AvisoEstadoSie(
-            productor: p,
-            estado: estado,
-            alAceptar: () => _aceptarSugerenciaSie(p),
-            alAprobarDatos: () => _aprobarDatosActualesSie(p),
-            procesando: _verificandoSie,
-            permitirCambios: puedeSie,
-          ),
-        ],
-        _avisoDeVeto(context),
-        if (p.tieneCorreccionPendiente) ...[
-          const SizedBox(height: 16),
-          _CorreccionPendiente(
-            productor: p,
-            alConfirmar: () => _confirmarCorreccion(p),
-            permitirCambios: puedeEditar,
-          ),
-        ],
-        const SizedBox(height: 24),
-        _cargosDirectorio(context),
-        const SizedBox(height: 24),
-        LayoutBuilder(
-          builder: (context, restricciones) {
-            final fotografia = _Seccion(
-              titulo: 'Fotografía',
-              hijo: Padding(
-                padding: const EdgeInsets.all(8),
-                child: ImagenesProductor(
-                  productorId: p.id,
-                  nombreProductor: p.nombreCompleto,
-                  ci: p.ci,
-                  imagenes: detalle.imagenes,
-                  editable: puedeImagenes,
-                  alCambiar: () {
-                    _huboCambios = true;
-                    _recargar();
-                  },
-                ),
-              ),
-            );
-            final parcela = _seccionParcela(context, detalle);
-            if (restricciones.maxWidth < 800) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [fotografia, const SizedBox(height: 24), parcela],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: fotografia),
-                const SizedBox(width: 24),
-                Expanded(child: parcela),
-              ],
-            );
-          },
         ),
       ],
+      if (p.observado) ...[
+        const SizedBox(height: 16),
+        _AvisoObservacionManual(
+          texto: p.observacion ?? 'Sin detalle',
+          alEditar: () => _editarObservacion(p),
+          permitirCambios: puedeEditar || context.puede('PRODUCTORES_OBSERVAR'),
+        ),
+      ],
+      if (p.revisionLotePendiente) ...[
+        const SizedBox(height: 16),
+        Card(
+          color: Theme.of(context).colorScheme.errorContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Revisión pendiente: número de lote',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                if (puedeLotes) ...[
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    onPressed: () => detalle.lotes.isEmpty
+                        ? _asignarParcela(p)
+                        : _cambiarNumero(detalle.lotes.first),
+                    icon: const Icon(Icons.edit_location_alt_outlined),
+                    label: const Text('Completar número de lote'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+      if (_revisionSie case final revision?
+          when revision.estado == EstadoRevisionSie.noDisponible) ...[
+        const SizedBox(height: 16),
+        _AvisoRevisionSie(revision: revision),
+      ],
+      if (p.revisionSieEstado case final estado?) ...[
+        const SizedBox(height: 16),
+        _AvisoEstadoSie(
+          productor: p,
+          estado: estado,
+          alAceptar: () => _aceptarSugerenciaSie(p),
+          alAprobarDatos: () => _aprobarDatosActualesSie(p),
+          procesando: _verificandoSie,
+          permitirCambios: puedeSie,
+        ),
+      ],
+      _avisoDeVeto(context),
+      if (p.tieneCorreccionPendiente) ...[
+        const SizedBox(height: 16),
+        _CorreccionPendiente(
+          productor: p,
+          alConfirmar: () => _confirmarCorreccion(p),
+          permitirCambios: puedeEditar,
+        ),
+      ],
+      const SizedBox(height: 24),
+      _cargosDirectorio(context),
+    ];
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, limites) {
+          final horizontal = limites.maxWidth >= 840;
+          final compacto = limites.maxWidth < 740 || limites.maxHeight < 560;
+          final foto = ImagenesProductor(
+            key: _claveFotoFicha,
+            productorId: p.id,
+            nombreProductor: p.nombreCompleto,
+            ci: p.ci,
+            imagenes: detalle.imagenes,
+            editable: puedeImagenes,
+            borrable: puedeBorrarFoto,
+            enFicha: true,
+            compacta: compacto,
+            anchoFoto: compacto ? (limites.maxWidth < 360 ? 84 : 96) : 150,
+            accionesAlLado: compacto,
+            alCambiar: () {
+              _huboCambios = true;
+              _recargar();
+            },
+          );
+          final parcela = _seccionParcela(context, detalle);
+          final antecedentes = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Revisiones y antecedentes',
+                key: _claveAntecedentes,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              if (!_requiereAtencion(p) && p.revisionSieEstado == null)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text('Sin revisiones pendientes.'),
+                ),
+              ...avisos,
+            ],
+          );
+          return Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: _PanelFicha(
+                hijo: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Card(
+                    key: const ValueKey('ficha-integrada'),
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: EdgeInsets.all(compacto ? 8 : 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _crearEncabezado(
+                            detalle,
+                            fotografia: foto,
+                            compacto: compacto,
+                          ),
+                          const Divider(height: 24),
+                          if (horizontal)
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(flex: 4, child: parcela),
+                                const SizedBox(width: 20),
+                                Expanded(flex: 6, child: antecedentes),
+                              ],
+                            )
+                          else ...[
+                            parcela,
+                            const Divider(height: 24),
+                            antecedentes,
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
+
+  bool _requiereAtencion(Productor p) =>
+      p.ciDuplicada ||
+      p.observado ||
+      p.revisionLotePendiente ||
+      p.revisionSieBloqueaImpresion ||
+      p.tieneCorreccionPendiente ||
+      _revisionSie?.estado == EstadoRevisionSie.noDisponible;
 
   /// La parcela del productor: la que tiene, o el botón para darle una.
   ///
@@ -957,8 +1112,9 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
     final sinParcela = detalle.lotes.isEmpty;
     final editable = context.puede('LOTES_EDITAR');
     final numeroEditable = editable || context.puede('NUMERO_LOTE_EDITAR');
+    final quitarPermitido = editable || context.puede('LOTES_DESASIGNAR');
 
-    return _Seccion(
+    final seccion = _Seccion(
       titulo: 'Parcela',
       cantidad: detalle.lotes.length,
       accion: sinParcela && numeroEditable
@@ -981,6 +1137,7 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
                     lote: lote,
                     editable: editable,
                     numeroEditable: numeroEditable,
+                    quitarPermitido: quitarPermitido,
                     alAbrir: () => _abrirLote(lote),
                     alQuitar: () => _quitarParcela(lote, p),
                     alCambiarNumero: () => _cambiarNumero(lote),
@@ -988,6 +1145,25 @@ class _ProductorDetallePaginaState extends State<ProductorDetallePagina> {
                   ),
               ],
             ),
+    );
+    if (MediaQuery.sizeOf(context).height >= 700) return seccion;
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (sinParcela)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  const Expanded(child: Text('Parcela')),
+                  ?seccion.accion,
+                ],
+              ),
+            ),
+          seccion.hijo,
+        ],
+      ),
     );
   }
 
@@ -1255,8 +1431,21 @@ class _MarcaDeAguaVeto extends StatelessWidget {
   }
 }
 
+/// Ficha completa con todas las revisiones abiertas y desplazamiento común.
+class _PanelFicha extends StatelessWidget {
+  const _PanelFicha({required this.hijo});
+
+  final Widget hijo;
+
+  @override
+  Widget build(BuildContext context) =>
+      SingleChildScrollView(primary: false, child: hijo);
+}
+
 class _Encabezado extends StatelessWidget {
   const _Encabezado({
+    this.fotografia,
+    this.compacto = false,
     required this.productor,
     required this.numeroLote,
     required this.tieneFotografia,
@@ -1272,102 +1461,156 @@ class _Encabezado extends StatelessWidget {
     required this.alEditar,
     required this.alCambiarEstado,
     required this.alEliminar,
+    required this.descargandoFicha,
+    required this.alDescargarFicha,
   });
-
   final Productor productor;
+  final Widget? fotografia;
+  final bool compacto;
   final String? numeroLote;
-  final bool tieneFotografia;
-  final bool puedeEditar;
-  final bool puedeEliminar;
-  final bool puedeSie;
-  final bool puedeImprimir;
-  final bool verificandoSie;
-  final VoidCallback alVerificarConSie;
-  final VoidCallback alEditarObservacion;
-  final bool agregandoReimpresion;
-  final VoidCallback alAgregarReimpresion;
-  final VoidCallback alEditar;
-  final VoidCallback alCambiarEstado;
-  final VoidCallback alEliminar;
+  final bool tieneFotografia,
+      puedeEditar,
+      puedeEliminar,
+      puedeSie,
+      puedeImprimir;
+  final bool verificandoSie, agregandoReimpresion, descargandoFicha;
+  final VoidCallback alVerificarConSie,
+      alEditarObservacion,
+      alAgregarReimpresion;
+  final VoidCallback alEditar, alCambiarEstado, alEliminar, alDescargarFicha;
 
-  @override
-  Widget build(BuildContext context) {
+  Widget identidad(BuildContext context, {bool compacto = false}) {
     final tema = Theme.of(context);
-    final estiloDatoPrincipal = tema.textTheme.headlineSmall?.copyWith(
-      color: productor.habilitado ? null : tema.colorScheme.outline,
-    );
+    final estilo =
+        (compacto
+                ? tema.textTheme.titleLarge?.copyWith(fontSize: 20)
+                : tema.textTheme.headlineSmall)
+            ?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: productor.habilitado ? null : tema.colorScheme.outline,
+            );
     final nombres = (productor.nombresCorregidos ?? productor.nombres).trim();
     final apellidos =
         (productor.apellidosCorregidos ?? productor.apellidos ?? '').trim();
-    final cedula = productor.ci?.trim();
-    final lote = numeroLote?.trim();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!compacto)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Datos del productor',
+              style: tema.textTheme.titleMedium,
+            ),
+          ),
+        _LineaIdentidad(
+          key: const ValueKey('productor-nombres'),
+          texto: nombres.isEmpty ? 'Sin nombre' : nombres,
+          estilo: estilo,
+        ),
+        _LineaIdentidad(
+          key: const ValueKey('productor-apellidos'),
+          texto: apellidos.isEmpty ? 'Sin apellidos' : apellidos,
+          estilo: estilo,
+        ),
+        const SizedBox(height: 4),
+        _LineaIdentidad(
+          key: const ValueKey('productor-cedula'),
+          texto:
+              'C.I.: ${productor.ci?.trim().isNotEmpty == true ? productor.ci : 'Sin cédula'}',
+          estilo: tema.textTheme.titleMedium?.copyWith(
+            fontSize: compacto ? 18 : 22,
+            height: 1.1,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        SizedBox(height: compacto ? 4 : 6),
+        _LineaIdentidad(
+          key: const ValueKey('productor-codigo'),
+          texto: 'Código: ${productor.codigoPadron ?? 'Sin código'}',
+          estilo: tema.textTheme.bodyMedium?.copyWith(
+            fontSize: compacto ? 14 : 16,
+            height: 1.2,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        if (!compacto) ...[
+          const SizedBox(height: 6),
+          _LineaIdentidad(
+            key: const ValueKey('productor-lote'),
+            texto:
+                'N.° de lote: ${numeroLote?.isNotEmpty == true ? numeroLote : 'Sin lote'}',
+            estilo: tema.textTheme.bodyMedium,
+          ),
+        ],
+        const SizedBox(height: 4),
+        if (!productor.habilitado)
+          const EtiquetaDeshabilitado()
+        else
+          Text(
+            'Habilitado',
+            style: tema.textTheme.labelMedium?.copyWith(
+              color: tema.colorScheme.primary,
+            ),
+          ),
+      ],
+    );
+  }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: LayoutBuilder(
-          builder: (context, restricciones) {
-            final identidad = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _LineaIdentidad(
-                  key: const ValueKey('productor-nombres'),
-                  texto: nombres.isEmpty ? 'Sin nombre' : nombres,
-                  estilo: estiloDatoPrincipal,
-                ),
-                _LineaIdentidad(
-                  key: const ValueKey('productor-apellidos'),
-                  texto: apellidos.isEmpty ? 'Sin apellidos' : apellidos,
-                  estilo: estiloDatoPrincipal,
-                ),
-                const SizedBox(height: 6),
-                _LineaIdentidad(
-                  key: const ValueKey('productor-cedula'),
-                  texto:
-                      'C.I.: ${cedula == null || cedula.isEmpty ? 'Sin cédula' : cedula}',
-                  estilo: estiloDatoPrincipal,
-                ),
-                _LineaIdentidad(
-                  key: const ValueKey('productor-lote'),
-                  texto:
-                      'N.° de lote: ${lote == null || lote.isEmpty ? 'Sin lote' : lote}',
-                  estilo: estiloDatoPrincipal,
-                ),
-              ],
-            );
-            final acciones = Wrap(
-              children: [
+  Widget afiliacion(BuildContext context, {double? tamano}) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Central: ${productor.centralNombre}',
+        softWrap: true,
+        overflow: TextOverflow.visible,
+        style: tamano == null
+            ? Theme.of(context).textTheme.bodySmall
+            : Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontSize: tamano,
+                height: 1.3,
+                fontWeight: FontWeight.w500,
+              ),
+      ),
+      SizedBox(height: tamano == null ? 2 : 6),
+      Text(
+        'Sindicato: ${productor.sindicatoNombre}',
+        softWrap: true,
+        overflow: TextOverflow.visible,
+        style: tamano == null
+            ? Theme.of(context).textTheme.bodySmall
+            : Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontSize: tamano,
+                height: 1.3,
+                fontWeight: FontWeight.w500,
+              ),
+      ),
+    ],
+  );
+
+  Widget acciones(BuildContext context) {
+    final tema = Theme.of(context);
+    return LayoutBuilder(
+      builder: (context, limites) => IconButtonTheme(
+        data: const IconButtonThemeData(
+          style: ButtonStyle(
+            minimumSize: WidgetStatePropertyAll(Size(40, 40)),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: WidgetStatePropertyAll(EdgeInsets.all(8)),
+          ),
+        ),
+        child: Wrap(
+          spacing: 0,
+          alignment: WrapAlignment.center,
+          children:
+              [
                 if (puedeEditar)
                   IconButton(
-                    tooltip: productor.habilitado
-                        ? 'Deshabilitar'
-                        : 'Habilitar',
-                    onPressed: alCambiarEstado,
-                    icon: Icon(
-                      productor.habilitado
-                          ? Icons.block
-                          : Icons.check_circle_outline,
-                    ),
-                  ),
-                if (puedeImprimir && productor.credencialImpresa)
-                  IconButton(
-                    tooltip: productor.reimpresionFasePendiente
-                        ? 'Cancelar reimpresión'
-                        : 'Agregar para reimpresión',
-                    onPressed: agregandoReimpresion
-                        ? null
-                        : alAgregarReimpresion,
-                    icon: agregandoReimpresion
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            Icons.replay_outlined,
-                            color: productor.reimpresionFasePendiente
-                                ? Colors.orange.shade800
-                                : null,
-                          ),
+                    tooltip: 'Editar',
+                    onPressed: alEditar,
+                    icon: const Icon(Icons.edit_outlined),
                   ),
                 if (puedeSie)
                   IconButton(
@@ -1395,11 +1638,49 @@ class _Encabezado extends StatelessWidget {
                           : null,
                     ),
                   ),
+                IconButton(
+                  tooltip: descargandoFicha
+                      ? 'Preparando ficha…'
+                      : 'Descargar ficha de datos',
+                  onPressed: descargandoFicha ? null : alDescargarFicha,
+                  icon: descargandoFicha
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download_outlined),
+                ),
+                if (puedeImprimir && productor.credencialImpresa)
+                  IconButton(
+                    tooltip: productor.reimpresionFasePendiente
+                        ? 'Cancelar reimpresión'
+                        : 'Agregar para reimpresión',
+                    onPressed: agregandoReimpresion
+                        ? null
+                        : alAgregarReimpresion,
+                    icon: agregandoReimpresion
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            Icons.replay_outlined,
+                            color: productor.reimpresionFasePendiente
+                                ? Colors.orange.shade800
+                                : null,
+                          ),
+                  ),
                 if (puedeEditar)
                   IconButton(
-                    tooltip: 'Editar',
-                    onPressed: alEditar,
-                    icon: const Icon(Icons.edit_outlined),
+                    tooltip: productor.habilitado
+                        ? 'Deshabilitar'
+                        : 'Habilitar',
+                    onPressed: alCambiarEstado,
+                    icon: Icon(
+                      productor.habilitado
+                          ? Icons.block
+                          : Icons.check_circle_outline,
+                    ),
                   ),
                 if (puedeEliminar)
                   IconButton(
@@ -1410,68 +1691,98 @@ class _Encabezado extends StatelessWidget {
                       color: tema.colorScheme.error,
                     ),
                   ),
-              ],
-            );
-            final esMovil = restricciones.maxWidth < 600;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (esMovil)
-                  identidad
-                else
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              ].map((boton) {
+                if (limites.maxWidth < 700 ||
+                    MediaQuery.sizeOf(context).height < 600) {
+                  return boton;
+                }
+                final etiqueta = switch (boton.tooltip) {
+                  'Editar' => 'Editar datos',
+                  'Verificar con SIE' => 'Consultar SIE',
+                  'Aceptar sugerencia SIE' => 'Aceptar SIE',
+                  'Marcar como observado' ||
+                  'Editar observación' => 'Observaciones',
+                  'Descargar ficha de datos' => 'Descargar ficha',
+                  'Preparando ficha…' => 'Preparando…',
+                  'Agregar para reimpresión' ||
+                  'Cancelar reimpresión' => 'Reimpresión',
+                  'Eliminar productor' => 'Eliminar',
+                  _ => boton.tooltip ?? '',
+                };
+                return SizedBox(
+                  width: 100,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(child: identidad),
-                      acciones,
+                      boton,
+                      Text(
+                        etiqueta,
+                        style: tema.textTheme.labelSmall,
+                        maxLines: 1,
+                      ),
+                      const SizedBox(height: 4),
                     ],
                   ),
-                if (!productor.habilitado) ...[
-                  const SizedBox(height: 4),
-                  const EtiquetaDeshabilitado(),
-                ],
-                const SizedBox(height: 8),
-                Text(
-                  'Central: ${productor.centralNombre}',
-                  softWrap: true,
-                  overflow: TextOverflow.visible,
-                  style: tema.textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Sindicato: ${productor.sindicatoNombre}',
-                  softWrap: true,
-                  overflow: TextOverflow.visible,
-                  style: tema.textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 20),
-                Wrap(
-                  spacing: 32,
-                  runSpacing: 16,
-                  children: [
-                    // Primero el código: es con lo que se lo nombra.
-                    _Dato(
-                      etiqueta: 'Código',
-                      valor: productor.codigoPadron,
-                      vacio:
-                          'Falta el número de la federación o la sigla de la '
-                          'central',
-                    ),
-                    if (!tieneFotografia)
-                      const _Dato(etiqueta: 'Fotografía', vacio: 'Sin foto'),
-                    _Dato(
-                      etiqueta: 'Fecha de creación',
-                      valor: Auditoria.formatear(productor.auditoria.creadoEn),
-                    ),
-                    _EstadoImpresionCredencial(productor: productor),
-                  ],
-                ),
-                if (esMovil) ...[const SizedBox(height: 16), acciones],
-              ],
-            );
-          },
+                );
+              }).toList(),
         ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final datosComplementarios = <Widget>[
+      const SizedBox(height: 12),
+      afiliacion(context, tamano: compacto ? 18 : 16),
+      const SizedBox(height: 12),
+      Text(
+        'Fecha de creación: ${Auditoria.formatear(productor.auditoria.creadoEn) ?? 'Sin registro'}',
+        style: tema.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 4),
+      Text(
+        'Última modificación: ${Auditoria.formatear(productor.auditoria.editadoEn) ?? 'Sin registro'}',
+        style: tema.textTheme.bodySmall,
+      ),
+    ];
+    return Column(
+      key: const ValueKey('ficha-datos'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  identidad(context, compacto: compacto),
+                  if (!compacto) ...datosComplementarios,
+                ],
+              ),
+            ),
+            if (fotografia != null) ...[
+              const SizedBox(width: 12),
+              SizedBox(
+                width: compacto ? 140 : 240,
+                child: Column(
+                  children: [
+                    if (!compacto) ...[
+                      Text('Fotografía', style: tema.textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                    ],
+                    fotografia!,
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (compacto) ...datosComplementarios,
+      ],
     );
   }
 }
@@ -1491,74 +1802,6 @@ class _LineaIdentidad extends StatelessWidget {
     alignment: Alignment.centerLeft,
     child: Text(texto, maxLines: 1, style: estilo),
   );
-}
-
-class _EstadoImpresionCredencial extends StatelessWidget {
-  const _EstadoImpresionCredencial({required this.productor});
-
-  final Productor productor;
-
-  @override
-  Widget build(BuildContext context) {
-    final tema = Theme.of(context);
-    final (estado, color) = productor.ciDuplicada
-        ? (
-            'Revisión CI: cédula repetida, no se puede imprimir',
-            tema.colorScheme.error,
-          )
-        : !productor.habilitado
-        ? ('Deshabilitado, excluido de impresión', tema.colorScheme.outline)
-        : productor.observado
-        ? ('Observado, excluido de impresión', tema.colorScheme.error)
-        : productor.revisionSieBloqueaImpresion
-        ? ('Revisión SIE pendiente', tema.colorScheme.outline)
-        : productor.revisionLotePendiente
-        ? ('En revisión: falta número de lote', tema.colorScheme.outline)
-        : productor.faseImpresionPendiente &&
-              (productor.credencialLista || productor.reimpresionFasePendiente)
-        ? (
-            productor.reimpresionFasePendiente
-                ? 'Agregada para reimpresión en una fase'
-                : 'Pendiente en una fase de impresión',
-            Colors.orange.shade800,
-          )
-        : !productor.credencialLista
-        ? ('Incompleta o sin fotografía', tema.colorScheme.outline)
-        : productor.credencialImpresa
-        ? ('Impresa', Colors.green)
-        : ('Lista, pendiente de impresión', Colors.amber.shade700);
-    final ultima = Auditoria.formatear(productor.credencialUltimaImpresion);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'Impresión de credencial',
-          style: tema.textTheme.labelSmall?.copyWith(
-            color: tema.colorScheme.outline,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.print, size: 18, color: color),
-            const SizedBox(width: 6),
-            Flexible(child: Text(estado, style: tema.textTheme.bodyLarge)),
-          ],
-        ),
-        if (productor.credencialImpresiones > 0)
-          Text(
-            '${productor.credencialImpresiones} impresión(es) de la cara'
-            '${ultima == null ? '' : ' · Última: $ultima'}',
-            style: tema.textTheme.bodySmall?.copyWith(
-              color: tema.colorScheme.outline,
-            ),
-          ),
-      ],
-    );
-  }
 }
 
 enum _AccionObservacion { guardar, quitar }
@@ -1607,11 +1850,6 @@ class _AvisoObservacionManual extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(texto),
-            const SizedBox(height: 6),
-            const Text(
-              'Este productor está excluido de la impresión de carnets hasta '
-              'que se quite la observación.',
-            ),
           ],
         ),
       ),
@@ -1741,41 +1979,6 @@ class _AvisoEstadoSie extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _Dato extends StatelessWidget {
-  const _Dato({required this.etiqueta, this.valor, this.vacio = '—'});
-
-  final String etiqueta;
-  final String? valor;
-  final String vacio;
-
-  @override
-  Widget build(BuildContext context) {
-    final tema = Theme.of(context);
-    final hay = valor != null && valor!.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          etiqueta,
-          style: tema.textTheme.labelSmall?.copyWith(
-            color: tema.colorScheme.outline,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          hay ? valor! : vacio,
-          style: tema.textTheme.bodyLarge?.copyWith(
-            color: hay ? null : tema.colorScheme.outline,
-            fontStyle: hay ? null : FontStyle.italic,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1970,40 +2173,111 @@ class _FilaLote extends StatelessWidget {
     required this.lote,
     required this.editable,
     required this.numeroEditable,
+    required this.quitarPermitido,
     required this.alAbrir,
     required this.alQuitar,
     required this.alCambiarNumero,
     required this.alCambiarClasificacion,
   });
-
   final Lote lote;
-  final bool editable;
-  final bool numeroEditable;
-  final VoidCallback alAbrir;
-  final VoidCallback alQuitar;
-  final VoidCallback alCambiarNumero;
-  final VoidCallback alCambiarClasificacion;
+  final bool editable, numeroEditable, quitarPermitido;
+  final VoidCallback alAbrir, alQuitar, alCambiarNumero, alCambiarClasificacion;
 
   @override
   Widget build(BuildContext context) {
+    final compacto = MediaQuery.sizeOf(context).height < 700;
     final tema = Theme.of(context);
-
+    final acciones = <Widget>[
+      if (editable)
+        compacto
+            ? IconButton(
+                tooltip: 'Cambiar clasificación',
+                onPressed: alCambiarClasificacion,
+                icon: const Icon(Icons.category_outlined, size: 18),
+              )
+            : TextButton(
+                onPressed: alCambiarClasificacion,
+                child: const Text('Cambiar'),
+              ),
+      if (numeroEditable)
+        compacto
+            ? IconButton(
+                tooltip: 'Cambiar número',
+                onPressed: alCambiarNumero,
+                icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+              )
+            : TextButton.icon(
+                onPressed: alCambiarNumero,
+                icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+                label: const Text('Cambiar número'),
+              ),
+      if (quitarPermitido)
+        compacto
+            ? IconButton(
+                tooltip: 'Quitarle la parcela',
+                onPressed: alQuitar,
+                icon: Icon(
+                  Icons.link_off,
+                  size: 18,
+                  color: tema.colorScheme.error,
+                ),
+              )
+            : TextButton.icon(
+                onPressed: alQuitar,
+                icon: Icon(
+                  Icons.link_off,
+                  size: 18,
+                  color: tema.colorScheme.error,
+                ),
+                label: const Text('Quitarle la parcela'),
+              ),
+    ];
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (compacto)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: IconButtonTheme(
+              data: const IconButtonThemeData(
+                style: ButtonStyle(
+                  minimumSize: WidgetStatePropertyAll(Size(40, 40)),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: WidgetStatePropertyAll(EdgeInsets.all(8)),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Expanded(child: Text('Parcela')),
+                  ...acciones,
+                ],
+              ),
+            ),
+          ),
         ListTile(
           dense: true,
+          visualDensity: compacto
+              ? VisualDensity.compact
+              : VisualDensity.standard,
+          minVerticalPadding: 0,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8),
           leading: const Icon(Icons.grid_view_outlined),
-          title: Text(lote.codigo.isEmpty ? 'Lote ${lote.id}' : lote.codigo),
-          onTap: context.accesoCentral && !context.puede('LOTES_EDITAR')
+          title: Text(
+            'Número Lote: ${lote.codigo.isEmpty ? 'Sin número' : lote.codigo}',
+            style: tema.textTheme.titleMedium?.copyWith(
+              fontSize: compacto ? 18 : 20,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          onTap:
+              context.soloFotosObservaciones ||
+                  (context.accesoCentral && !context.puede('LOTES_EDITAR'))
               ? null
               : alAbrir,
           subtitle: Text(
-            [
-              lote.necesitaRevision && lote.estadoOriginal != null
-                  ? 'Estado sin reconocer, en el padrón decía '
-                        '«${lote.estadoOriginal}»'
-                  : lote.estado.etiqueta,
-            ].join(' · '),
+            lote.necesitaRevision && lote.estadoOriginal != null
+                ? 'Estado sin reconocer, en el padrón decía «${lote.estadoOriginal}»'
+                : 'Clasificación: ${lote.estado.etiqueta}',
             style: tema.textTheme.bodySmall,
           ),
           trailing: lote.necesitaRevision
@@ -2015,58 +2289,20 @@ class _FilaLote extends StatelessWidget {
                     color: tema.colorScheme.error,
                   ),
                 )
-              : (lote.mercado != null
-                    ? Chip(
-                        label: Text(lote.mercado!.etiqueta),
-                        visualDensity: VisualDensity.compact,
-                      )
-                    : null),
-        ),
-        // La clasificación pertenece a esta participación: otra persona con
-        // el mismo número puede tener una opción distinta.
-        Padding(
-          padding: const EdgeInsets.only(left: 56, right: 16, bottom: 8),
-          child: Row(
-            children: [
-              Icon(
-                Icons.category_outlined,
-                size: 18,
-                color: tema.colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Clasificación: ${lote.estado.etiqueta}',
-                  style: tema.textTheme.bodySmall,
+              : lote.mercado == null
+              ? null
+              : Chip(
+                  label: Text(lote.mercado!.etiqueta),
+                  visualDensity: VisualDensity.compact,
                 ),
-              ),
-              if (editable)
-                TextButton(
-                  onPressed: alCambiarClasificacion,
-                  child: const Text('Cambiar'),
-                ),
-            ],
-          ),
         ),
-        if (numeroEditable)
+        if (!compacto && acciones.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(left: 56, right: 16, bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Wrap(
               alignment: WrapAlignment.end,
               spacing: 8,
-              children: [
-                TextButton.icon(
-                  onPressed: alCambiarNumero,
-                  icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
-                  label: const Text('Cambiar número'),
-                ),
-                if (editable)
-                  TextButton.icon(
-                    onPressed: alQuitar,
-                    icon: const Icon(Icons.link_off, size: 18),
-                    label: const Text('Quitarle la parcela'),
-                  ),
-              ],
+              children: acciones,
             ),
           ),
       ],

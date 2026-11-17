@@ -44,10 +44,8 @@ class InformeImportacion extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                '${informe.nuevosSinLote} productores sin número '
-                'de lote: quedan pendientes de revisión. Se conserva la '
-                'clasificación declarada; completá el lote en su ficha antes '
-                'de imprimir el carnet.',
+                '${informe.nuevosSinLote} productores sin N° de lote. '
+                'Complétalo en su ficha antes de imprimir.',
               ),
             ),
           ),
@@ -84,9 +82,8 @@ class InformeImportacion extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Todas las filas están marcadas por defecto. Desmarcá las que no querés importar. '
-            'Si queda una sola CI y no se repite en el padrón, no tendrá observación por duplicidad. '
-            'Las demás validaciones y las observaciones del Excel se mantienen.',
+            'Desmarca las filas que no quieres importar. Si la CI deja de estar repetida, '
+            'se quita el bloqueo por duplicidad.',
           ),
           if (informe.filasOmitidas > 0)
             Text(
@@ -267,8 +264,8 @@ class InformeImportacion extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Estas centrales no se crearán automáticamente. Crealas '
-                    'manualmente con su abreviatura y volvé a analizar la planilla.',
+                    'Estas centrales no se crearán automáticamente. Créalas '
+                    'manualmente con su abreviatura y vuelve a analizar la planilla.',
                     style: tema.textTheme.bodySmall?.copyWith(
                       color: tema.colorScheme.onErrorContainer,
                     ),
@@ -319,7 +316,7 @@ class InformeImportacion extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Revisá que no sean errores de escritura. Solo se crearán después '
+                    'Revisa que no sean errores de escritura. Solo se crearán después '
                     'de que apruebes esta lista en el siguiente paso.',
                     style: tema.textTheme.bodySmall?.copyWith(
                       color: tema.colorScheme.onTertiaryContainer,
@@ -363,8 +360,7 @@ class InformeImportacion extends StatelessWidget {
             Expanded(
               child: Text(
                 '${informe.posiblesDuplicados} fila(s) coinciden en nombre, '
-                'apellido y sindicato con productores que ya están cargados. '
-                'Puede que esta planilla ya se haya importado antes.',
+                'apellido y sindicato con productores registrados. Revisa si ya fueron importados.',
                 style: tema.textTheme.bodyMedium?.copyWith(
                   color: tema.colorScheme.onErrorContainer,
                 ),
@@ -398,8 +394,7 @@ class InformeImportacion extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: Text(
-                'El número es el de la fila en Excel: abrí la planilla y andá '
-                'directo ahí.',
+                'Las filas corresponden a la planilla de Excel.',
                 style: tema.textTheme.bodySmall?.copyWith(
                   color: tema.colorScheme.outline,
                 ),

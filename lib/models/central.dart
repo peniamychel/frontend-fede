@@ -8,6 +8,7 @@ class Central {
     required this.federacionId,
     required this.federacionNombre,
     this.abreviatura,
+    this.telefono,
     this.faseImpresionActivaNumero,
     this.ultimaFaseImpresionNumero = 0,
     this.auditoria = Auditoria.habilitado,
@@ -24,6 +25,7 @@ class Central {
   /// Sigla de tres letras en mayúsculas. Única entre todas las centrales, y
   /// null mientras no se la carguen.
   final String? abreviatura;
+  final String? telefono;
   final int? faseImpresionActivaNumero;
   final int ultimaFaseImpresionNumero;
 
@@ -33,6 +35,7 @@ class Central {
     federacionId: (json['federacionId'] as num?)?.toInt() ?? 0,
     federacionNombre: json['federacionNombre'] as String? ?? '',
     abreviatura: json['abreviatura'] as String?,
+    telefono: json['telefono'] as String?,
     faseImpresionActivaNumero: (json['faseImpresionActivaNumero'] as num?)
         ?.toInt(),
     ultimaFaseImpresionNumero:

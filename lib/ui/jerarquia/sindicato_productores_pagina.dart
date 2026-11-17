@@ -140,13 +140,22 @@ class _SindicatoProductoresPaginaState
     final padron = PadronScope.of(context);
     final s = widget.sindicato;
     final total = _totalProductores ?? s.totalProductores ?? 0;
+    final ventana = MediaQuery.sizeOf(context);
+    final movilVertical = ventana.width < 600 && ventana.height > ventana.width;
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: movilVertical
+            ? MediaQuery.textScalerOf(context).scale(64) + 8
+            : null,
         title: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(s.nombre, maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (movilVertical)
+              _nombreCompletoMovil(context, s.nombre)
+            else
+              Text(s.nombre, maxLines: 1, overflow: TextOverflow.ellipsis),
             Text(
               'Central ${s.centralNombre} · '
               '$total ${total == 1 ? 'productor' : 'productores'}',
@@ -157,11 +166,13 @@ class _SindicatoProductoresPaginaState
           ],
         ),
         actions: [
-          if (context.puedeRegistrarProductores ||
-              context.puede('NUMERO_LOTE_EDITAR') ||
-              context.puede('LOTES_EDITAR') ||
-              context.puede('SIE_REVISAR') ||
-              context.puede('PRODUCTORES_OBSERVAR'))
+          if (!movilVertical &&
+              context.mostrarEdicionRapidaProductores &&
+              (context.puedeRegistrarProductores ||
+                  context.puede('NUMERO_LOTE_EDITAR') ||
+                  context.puede('LOTES_EDITAR') ||
+                  context.puede('SIE_REVISAR') ||
+                  context.puede('PRODUCTORES_OBSERVAR')))
             IconButton(
               tooltip: 'Edición rápida de productores',
               onPressed: _editarLista,
@@ -191,7 +202,7 @@ class _SindicatoProductoresPaginaState
                 ),
             ],
           ),
-          if (!context.accesoCentral)
+          if (!movilVertical && !context.accesoCentral)
             IconButton(
               tooltip: 'Estado e impresión de carnets',
               onPressed: _abrirImpresionMasiva,
@@ -292,6 +303,47 @@ class _SindicatoProductoresPaginaState
     );
   }
 
+  Widget _nombreCompletoMovil(BuildContext context, String nombre) => SizedBox(
+    height: MediaQuery.textScalerOf(context).scale(48),
+    child: LayoutBuilder(
+      builder: (context, limites) {
+        final estilo = DefaultTextStyle.of(context).style.copyWith(height: 1.1);
+        var tamano = estilo.fontSize ?? 20;
+        final medidor = TextPainter(
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 3,
+        );
+        // Medir el nombre completo evita los puntos suspensivos. Se conservan
+        // las palabras en varias líneas antes de reducir la letra.
+        while (true) {
+          medidor.text = TextSpan(
+            text: nombre,
+            style: estilo.copyWith(fontSize: tamano),
+          );
+          medidor.layout(maxWidth: limites.maxWidth);
+          if ((!medidor.didExceedMaxLines &&
+                  medidor.height <= limites.maxHeight) ||
+              tamano <= 1) {
+            break;
+          }
+          tamano -= 0.5;
+        }
+        medidor.dispose();
+        return Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            nombre,
+            maxLines: 3,
+            softWrap: true,
+            overflow: TextOverflow.clip,
+            style: estilo.copyWith(fontSize: tamano),
+          ),
+        );
+      },
+    ),
+  );
+
   Future<void> _abrir(Productor p) async {
     if (widget.alAbrirProductor case final abrir?) {
       final abierto = await abrir(p);
@@ -329,10 +381,12 @@ class _SindicatoProductoresPaginaState
     );
     if (mounted) {
       await _lista.currentState?.refrescarConservandoPosicion();
+      if (mounted) widget.alCambiarProductores?.call();
     }
   }
 
   Future<void> _editarLista() async {
+    if (!context.mostrarEdicionRapidaProductores) return;
     if (widget.antesDeEditarLista != null &&
         !await widget.antesDeEditarLista!()) {
       return;

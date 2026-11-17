@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fede/core/preferencia_tema.dart';
+import 'package:fede/core/sesion_controlador.dart';
 import 'package:fede/repositories/padron.dart';
 import 'package:fede/ui/inicio.dart';
+import 'package:fede/ui/administracion/accesos_pagina.dart';
 import 'package:fede/ui/padron_scope.dart';
+import 'package:fede/ui/sesion_scope.dart';
 
 /// Cada sección se carga la primera vez que se entra, no al abrir la app.
 ///
@@ -19,15 +22,134 @@ void main() {
   /// Cliente que anota cada ruta pedida y no llama a ningún servidor.
   late _ApiEspia espia;
 
-  Widget app() => TemaScope(
-    preferencia: PreferenciaTema(),
-    child: PadronScope(
-      padron: Padron(api: espia),
-      child: const MaterialApp(home: Inicio()),
-    ),
-  );
+  Widget app({Sesion? datosSesion}) {
+    Widget vista = const MaterialApp(home: Inicio());
+    if (datosSesion != null) {
+      final controlador = SesionControlador(AutenticacionRepository(espia));
+      controlador.sesion = datosSesion;
+      addTearDown(controlador.dispose);
+      vista = SesionScope(controlador: controlador, child: vista);
+    }
+    return TemaScope(
+      preferencia: PreferenciaTema(),
+      child: PadronScope(
+        padron: Padron(api: espia),
+        child: vista,
+      ),
+    );
+  }
 
   setUp(() => espia = _ApiEspia());
+
+  Sesion sesionMenu({bool administrador = true}) => Sesion(
+    token: 'prueba',
+    usuario: 'usuario',
+    nombreCompleto: 'Usuario de prueba',
+    rol: administrador ? 'ADMIN' : 'OPERADOR',
+    roles: {administrador ? 'ADMIN' : 'SUPERVISOR'},
+    permisos: const {
+      'PRODUCTORES_VER',
+      'REUNIONES_GESTIONAR',
+      'CARNETS_DISENO',
+      'CREDENCIALES_OPERADORES_GESTIONAR',
+      'USUARIOS_ADMINISTRAR',
+      'RESPALDOS_ADMINISTRAR',
+    },
+    expiraEn: DateTime(2100),
+  );
+
+  for (final caso in [
+    (tamano: const Size(390, 844), administrador: true, ocultar: true),
+    (tamano: const Size(640, 600), administrador: true, ocultar: false),
+    (tamano: const Size(1200, 800), administrador: true, ocultar: false),
+    (tamano: const Size(390, 844), administrador: false, ocultar: false),
+  ]) {
+    testWidgets(
+      'menú móvil administrador ${caso.administrador} en ${caso.tamano}',
+      (tester) async {
+        tester.view.physicalSize = caso.tamano;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          app(datosSesion: sesionMenu(administrador: caso.administrador)),
+        );
+        await tester.pumpAndSettle();
+        final menu = caso.tamano.width < 700
+            ? find.byType(NavigationBar)
+            : find.byType(NavigationRail);
+        for (final etiqueta in ['Carnet', 'Personal operador', 'Reuniones']) {
+          expect(
+            find.descendant(of: menu, matching: find.text(etiqueta)),
+            caso.ocultar ? findsNothing : findsOneWidget,
+          );
+        }
+        for (final etiqueta in [
+          'Productores',
+          'Centrales',
+          'Calidad',
+          'Respaldos',
+          'Accesos',
+          'Cuenta',
+        ]) {
+          expect(
+            find.descendant(of: menu, matching: find.text(etiqueta)),
+            findsOneWidget,
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'Accesos conserva su página e índice al girar el móvil y Atrás omite menús ocultos',
+    (tester) async {
+      tester.view.physicalSize = const Size(640, 600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(app(datosSesion: sesionMenu()));
+      await tester.pumpAndSettle();
+      final barra = find.byType(NavigationBar);
+      for (final etiqueta in ['Reuniones', 'Accesos']) {
+        await tester.tap(
+          find.descendant(of: barra, matching: find.text(etiqueta)),
+        );
+        await tester.pumpAndSettle();
+      }
+      final accesos = tester.state(find.byType(AccesosPagina));
+      tester.view.physicalSize = const Size(390, 844);
+      await tester.pumpAndSettle();
+      expect(tester.widget<NavigationBar>(barra).selectedIndex, 4);
+      expect(tester.state(find.byType(AccesosPagina)), same(accesos));
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(tester.widget<NavigationBar>(barra).selectedIndex, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('girar a vertical desde Reuniones vuelve a Productores', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(640, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(app(datosSesion: sesionMenu()));
+    await tester.pumpAndSettle();
+    final barra = find.byType(NavigationBar);
+    await tester.tap(
+      find.descendant(of: barra, matching: find.text('Reuniones')),
+    );
+    await tester.pumpAndSettle();
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pumpAndSettle();
+    expect(tester.widget<NavigationBar>(barra).selectedIndex, 0);
+    expect(
+      find.descendant(of: barra, matching: find.text('Reuniones')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('al abrir solo consulta la sección visible', (tester) async {
     await tester.pumpWidget(app());
@@ -120,6 +242,93 @@ void main() {
     expect(espia.rutas, contains('/federaciones/10/directorio'));
     expect(espia.rutas, contains('/federaciones/10/directorio/historial'));
   });
+
+  for (final caso in [
+    (
+      nombre: 'registro y revisión',
+      roles: {'REGISTRO_REVISION'},
+      administrador: false,
+      mostrar: false,
+    ),
+    (
+      nombre: 'registro de productores',
+      roles: {'REGISTRO'},
+      administrador: false,
+      mostrar: true,
+    ),
+    (
+      nombre: 'solo consulta',
+      roles: {'CONSULTA'},
+      administrador: false,
+      mostrar: true,
+    ),
+    (
+      nombre: 'administrador con registro y revisión',
+      roles: {'ADMIN', 'REGISTRO_REVISION'},
+      administrador: true,
+      mostrar: true,
+    ),
+  ]) {
+    testWidgets('menú de directorio federación para ${caso.nombre}', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        app(
+          datosSesion: Sesion(
+            token: 'prueba',
+            usuario: 'usuario',
+            nombreCompleto: 'Usuario de prueba',
+            rol: caso.administrador ? 'ADMIN' : 'OPERADOR',
+            roles: caso.roles,
+            permisos: const {'PRODUCTORES_VER'},
+            expiraEn: DateTime(2100),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final menu = find.byKey(const ValueKey('menu-directorio-federacion'));
+      final marca = find.text('PADRÓN FEDERACIÓN\nCARRASCO TROPICAL');
+      expect(marca, findsOneWidget);
+      expect(menu, caso.mostrar ? findsOneWidget : findsNothing);
+      expect(
+        find.byTooltip('Opciones de la federación'),
+        caso.mostrar ? findsOneWidget : findsNothing,
+      );
+
+      if (caso.mostrar) {
+        await tester.tap(menu);
+        await tester.pumpAndSettle();
+        expect(find.text('Directorio de la federación'), findsOneWidget);
+        await tester.tap(find.text('Directorio de la federación'));
+        await tester.pumpAndSettle();
+        expect(find.text('Directorio de CARRASCO TROPICAL'), findsOneWidget);
+        expect(espia.rutas, contains('/federaciones/10/directorio'));
+      } else {
+        final encabezado = find
+            .ancestor(of: marca, matching: find.byType(Row))
+            .first;
+        expect(
+          find.descendant(
+            of: encabezado,
+            matching: find.byIcon(Icons.arrow_drop_down),
+          ),
+          findsNothing,
+        );
+        await tester.tap(marca);
+        await tester.pumpAndSettle();
+        expect(find.text('Directorio de la federación'), findsNothing);
+        expect(
+          espia.rutas.where((ruta) => ruta.startsWith('/federaciones')),
+          isEmpty,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
 
 /// Un ApiClient que anota las rutas y devuelve listas vacías.

@@ -307,7 +307,7 @@ class _PanelState extends State<_Panel> {
     if (cantidad == null || !context.mounted) return;
 
     final candidatos = panel.candidatos
-        .where((c) => c.impresiones == 0 && c.seleccionable)
+        .where((c) => c.pendienteDeImpresion)
         .take(cantidad)
         .toList(growable: false);
     final impresos = await Navigator.of(context).push<int>(
@@ -318,7 +318,7 @@ class _PanelState extends State<_Panel> {
           editor: editor,
           titulo: 'Revisar caras antes de imprimir',
           seleccionarTodosAlAbrir: true,
-          permitirReimpresion: false,
+          permitirReimpresion: candidatos.any((c) => c.impresiones > 0),
         ),
       ),
     );
@@ -986,13 +986,19 @@ class _CredencialSeleccionable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final yaImpreso = candidato.impresiones > 0;
+    final reimpresionPendiente =
+        candidato.pendienteDeImpresion && candidato.reimpresionEnFase;
     final colorEstado = !candidato.seleccionable
         ? Theme.of(context).colorScheme.error
+        : reimpresionPendiente
+        ? Colors.orange.shade800
         : yaImpreso
         ? Colors.green
         : Colors.amber.shade800;
     final textoEstado = !candidato.seleccionable
         ? 'Datos incompletos'
+        : reimpresionPendiente
+        ? 'Reimpresión pendiente · ${candidato.impresiones} ${candidato.impresiones == 1 ? 'impresión previa' : 'impresiones previas'}'
         : yaImpreso
         ? 'Impreso · ${candidato.impresiones} ${candidato.impresiones == 1 ? 'vez' : 'veces'}'
         : 'No impreso';

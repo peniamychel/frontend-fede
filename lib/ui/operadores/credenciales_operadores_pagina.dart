@@ -1,3 +1,4 @@
+import '../imagen_autenticada.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -163,7 +164,7 @@ class _CredencialesOperadoresPaginaState
                             child: operador.fotoUrl == null
                                 ? const Icon(Icons.badge_outlined)
                                 : ClipOval(
-                                    child: Image.network(
+                                    child: ImagenAutenticada(
                                       ApiConfig.urlAbsoluta(operador.fotoUrl!),
                                       width: 40,
                                       height: 40,

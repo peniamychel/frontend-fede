@@ -14,9 +14,13 @@ class ApiConfig {
   const ApiConfig._();
 
   static const String _hostForzado = String.fromEnvironment('API_HOST');
+  static const String _esquemaForzado = String.fromEnvironment(
+    'API_ESQUEMA',
+    defaultValue: 'http',
+  );
   static const int _puerto = int.fromEnvironment(
     'API_PUERTO',
-    defaultValue: 8080,
+    defaultValue: _esquemaForzado == 'https' ? 443 : 8080,
   );
   static const bool _mismoOrigenForzado = bool.fromEnvironment(
     'API_MISMO_ORIGEN',
@@ -41,7 +45,10 @@ class ApiConfig {
   /// y Spring en 8080, mientras que en producción Nginx publica ambos por 80.
   static String get esquema {
     if (kIsWeb && _hostForzado.isEmpty) return Uri.base.scheme;
-    return 'http';
+    if (_esquemaForzado != 'http' && _esquemaForzado != 'https') {
+      throw ArgumentError('API_ESQUEMA debe ser http o https');
+    }
+    return _esquemaForzado;
   }
 
   static int get puerto {

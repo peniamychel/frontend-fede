@@ -36,7 +36,7 @@ void main() {
     expect(find.text('Cuenta'), findsWidgets);
 
     final preferencias = await SharedPreferences.getInstance();
-    expect(preferencias.getString('federa.sesion'), isNotNull);
+    expect(preferencias.getString('federa.sesion'), isNull);
   });
 }
 

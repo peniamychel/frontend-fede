@@ -34,12 +34,16 @@ RUN --mount=type=cache,target=/home/constructor/.pub-cache,uid=1000,gid=1000 \
     flutter pub get
 
 COPY --chown=constructor:constructor . .
+ARG FEDERA_VERSION
 RUN --mount=type=cache,target=/home/constructor/.pub-cache,uid=1000,gid=1000 \
     flutter pub get \
-    && flutter build web --release --no-web-resources-cdn
+    && flutter build web --release --no-web-resources-cdn --dart-define=FEDERA_VERSION="${FEDERA_VERSION}"
 
 FROM nginx:1.29-alpine AS ejecucion
+ARG FEDERA_VERSION
+LABEL org.opencontainers.image.version="${FEDERA_VERSION}"
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=compilacion /workspace/build/web /usr/share/nginx/html
+RUN printf '%s' "$FEDERA_VERSION" > /usr/share/nginx/html/federa-version.txt
 
 EXPOSE 80

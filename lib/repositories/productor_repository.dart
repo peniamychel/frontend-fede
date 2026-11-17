@@ -276,15 +276,69 @@ class ProductorRepository {
     required String nombreArchivo,
     Recorte? recorte,
     String? operacionId,
+    bool pendienteEdicion = false,
+    String? fotoOrigen,
   }) async {
+    if (pendienteEdicion) {
+      final capacidades = await _api.obtener(
+        '$_ruta/$productorId/imagenes/capacidades',
+      );
+      if (capacidades.comoObjeto['subidaSinProcesar'] != true) {
+        throw StateError(
+          'El servidor todavía no admite fotografías pendientes de edición.',
+        );
+      }
+    }
     final datos = await _api.subirArchivo(
       '$_ruta/$productorId/imagenes',
       campo: 'archivo',
       bytes: bytes,
       nombreArchivo: nombreArchivo,
       query: recorte?.query,
-      campos: operacionId == null ? null : {'operacionId': operacionId},
+      campos: {
+        'operacionId': ?operacionId,
+        'fotoOrigen': ?fotoOrigen,
+        if (pendienteEdicion) 'pendienteEdicion': 'true',
+        'fondoProcesado': (!pendienteEdicion).toString(),
+      },
     );
+    final confirmacion = _confirmarImagen(datos, productorId, operacionId);
+    if (pendienteEdicion && !confirmacion.original.pendienteEdicion) {
+      throw const FormatException(
+        'El servidor no confirmó la fotografía como pendiente de edición.',
+      );
+    }
+    return confirmacion;
+  }
+
+  Future<ImagenSubida> guardarEdicionManual({
+    required int productorId,
+    required List<int> bytes,
+    required String fotoOrigen,
+    required String operacionId,
+    bool fondoProcesado = false,
+  }) async {
+    final datos = await _api.subirArchivo(
+      '$_ruta/$productorId/imagenes/edicion-manual',
+      campo: 'archivo',
+      bytes: bytes,
+      nombreArchivo: 'fotografia-editada.png',
+      campos: {
+        'fotoOrigen': fotoOrigen,
+        'operacionId': operacionId,
+        if (fondoProcesado) 'fondoProcesado': 'true',
+      },
+    );
+    final confirmacion = _confirmarImagen(datos, productorId, operacionId);
+    if (fondoProcesado && confirmacion.original.pendienteEdicion) {
+      throw const FormatException(
+        'El servidor no confirmó el procesamiento de la fotografía.',
+      );
+    }
+    return confirmacion;
+  }
+
+  ImagenSubida _confirmarImagen(Object? datos, int productorId, String? operacionId) {
     final confirmacion = ImagenSubida.desdeJson(datos.comoObjeto);
     if (confirmacion.productorId != productorId ||
         confirmacion.operacionId != operacionId) {

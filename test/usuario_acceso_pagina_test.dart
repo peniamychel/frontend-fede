@@ -80,12 +80,18 @@ void main() {
     await tester.tap(find.text('Fotógrafo'));
     await tester.pumpAndSettle();
     expect(find.text('Configuración del usuario'), findsOneWidget);
+    expect(find.text('CENTRAL PRUEBA'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Seleccionados: 1'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Seleccionados: 1'), findsOneWidget);
     final elegido = tester.widget<CheckboxListTile>(
       find.widgetWithText(CheckboxListTile, 'SINDICATO A'),
     );
     expect(elegido.value, isTrue);
-    expect(find.text('CENTRAL PRUEBA'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -150,6 +156,164 @@ void main() {
     expect(find.text('Fotos, observaciones y número de lote'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  for (final alcance in ['general', 'uno', 'varios', 'todos']) {
+    testWidgets('fotos y observaciones se asigna con alcance $alcance', (
+      tester,
+    ) async {
+      final api = _ApiUsuarios();
+      await abrir(tester, api);
+      if (alcance == 'general') {
+        await pulsar(tester, 'Acceso solo a una central');
+      } else {
+        if (alcance == 'varios') {
+          await pulsar(tester, 'SINDICATO B');
+        } else if (alcance == 'todos') {
+          await pulsar(tester, 'Todos los sindicatos');
+        }
+        await pulsar(tester, 'Fotos, observaciones y número de lote');
+      }
+      await pulsar(tester, 'Fotos y observaciones');
+      await pulsar(tester, 'Personalizar permisos de este usuario');
+      await pulsar(tester, 'Guardar configuración');
+      expect(api.guardado?['roles'], [7]);
+      expect(api.guardado?['centralId'], alcance == 'general' ? null : 3);
+      expect(
+        api.guardado?['todosSindicatos'],
+        alcance == 'general' || alcance == 'todos',
+      );
+      expect(
+        api.guardado?['sindicatoIds'],
+        unorderedEquals(switch (alcance) {
+          'uno' => [7],
+          'varios' => [7, 8],
+          _ => <int>[],
+        }),
+      );
+      expect(
+        api.guardado?['permisos'],
+        unorderedEquals([
+          'PRODUCTORES_VER',
+          'FOTOS_PRODUCTORES_ACTUALIZAR',
+          'PRODUCTORES_OBSERVAR',
+        ]),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('gestor se asigna a una central y un sindicato', (tester) async {
+    tester.view.physicalSize = const Size(900, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _ApiUsuarios();
+    await abrir(tester, api);
+    await pulsar(tester, 'Fotos, observaciones y número de lote');
+    await pulsar(tester, 'Gestor de productores');
+    await pulsar(tester, 'Personalizar permisos de este usuario');
+    for (final nombre in ['Eliminar productores', 'Quitar parcela asignada']) {
+      await tester.scrollUntilVisible(
+        find.text(nombre),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        tester
+            .widget<CheckboxListTile>(
+              find.widgetWithText(CheckboxListTile, nombre),
+            )
+            .value,
+        isTrue,
+      );
+    }
+    expect(find.text('Editar directorios'), findsNothing);
+    expect(find.text('Imprimir carnets'), findsNothing);
+    expect(find.text('Importar padrón'), findsNothing);
+    await pulsar(tester, 'Guardar configuración');
+    expect(api.guardado?['roles'], [6]);
+    expect(api.guardado?['centralId'], 3);
+    expect(api.guardado?['todosSindicatos'], isFalse);
+    expect(api.guardado?['sindicatoIds'], [7]);
+    expect(
+      api.guardado?['permisos'],
+      unorderedEquals([
+        'PRODUCTORES_VER',
+        'PRODUCTORES_REGISTRAR',
+        'PRODUCTORES_EDITAR',
+        'PRODUCTORES_ELIMINAR',
+        'SIE_REVISAR',
+        'FOTOS_PRODUCTORES_EDITAR',
+        'PRODUCTORES_OBSERVAR',
+        'NUMERO_LOTE_EDITAR',
+        'LOTES_DESASIGNAR',
+      ]),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('gestor permite varios sindicatos de la central', (tester) async {
+    final api = _ApiUsuarios();
+    await abrir(tester, api);
+    await pulsar(tester, 'SINDICATO B');
+    await pulsar(tester, 'Fotos, observaciones y número de lote');
+    await pulsar(tester, 'Gestor de productores');
+    await pulsar(tester, 'Guardar configuración');
+    expect(api.guardado?['roles'], [6]);
+    expect(api.guardado?['centralId'], 3);
+    expect(api.guardado?['todosSindicatos'], isFalse);
+    expect(api.guardado?['sindicatoIds'], unorderedEquals([7, 8]));
+    expect(api.guardado?['permisosPersonalizados'], isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('gestor permite todos los sindicatos de la central', (
+    tester,
+  ) async {
+    final api = _ApiUsuarios();
+    await abrir(tester, api);
+    await pulsar(tester, 'Todos los sindicatos');
+    await pulsar(tester, 'Fotos, observaciones y número de lote');
+    await pulsar(tester, 'Gestor de productores');
+    await pulsar(tester, 'Guardar configuración');
+    expect(api.guardado?['roles'], [6]);
+    expect(api.guardado?['centralId'], 3);
+    expect(api.guardado?['todosSindicatos'], isTrue);
+    expect(api.guardado?['sindicatoIds'], isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('gestor sigue disponible sin exigir acceso a una central', (
+    tester,
+  ) async {
+    final api = _ApiUsuarios();
+    await abrir(tester, api);
+    await pulsar(tester, 'Acceso solo a una central');
+    await pulsar(tester, 'Gestor de productores');
+    await pulsar(tester, 'Guardar configuración');
+    expect(api.guardado?['roles'], [6]);
+    expect(api.guardado?['centralId'], isNull);
+    expect(api.guardado?['todosSindicatos'], isTrue);
+    expect(api.guardado?['sindicatoIds'], isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'gestor personalizado con permisos ajenos no se ofrece en central',
+    (tester) async {
+      final api = _ApiUsuarios()
+        ..permisosGestor = [
+          ..._ApiUsuarios.permisosGestorBase,
+          'DIRECTORIOS_EDITAR',
+        ];
+      await abrir(tester, api);
+      await pulsar(tester, 'Personalizar permisos de este usuario');
+      expect(find.text('Gestor de productores'), findsNothing);
+      expect(find.text('Editar directorios'), findsNothing);
+      expect(find.text('Imprimir carnets'), findsNothing);
+      expect(find.text('Importar padrón'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('registro puede añadirse como permiso individual de central', (
     tester,
@@ -286,13 +450,13 @@ void main() {
         of: find.byType(AlertDialog),
         matching: find.byType(TextFormField),
       ),
-      'aBcDe',
+      'aBcDe234FgHi567JkLmN89pq',
     );
     await tester.tap(find.text('Guardar código'));
     await tester.pumpAndSettle();
-    expect(api.codigo, 'aBcDe');
+    expect(api.codigo, 'aBcDe234FgHi567JkLmN89pq');
     expect(find.text('Código de acceso guardado'), findsOneWidget);
-    expect(find.text('aBcDe'), findsOneWidget);
+    expect(find.text('aBcDe234FgHi567JkLmN89pq'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -303,15 +467,27 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await abrir(tester, _ApiUsuarios());
     await pulsar(tester, 'Personalizar permisos de este usuario');
-    await pulsar(tester, 'Generar código de 5 letras');
+    await pulsar(tester, 'Generar código seguro');
     await tester.tap(find.text('Generar'));
     await tester.pumpAndSettle();
-    expect(find.text('AbCdE'), findsOneWidget);
+    expect(find.text('AbCdE234FgHi567JkLmN89pq'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
 
 class _ApiUsuarios extends ApiClient {
+  static const permisosGestorBase = [
+    'PRODUCTORES_VER',
+    'PRODUCTORES_REGISTRAR',
+    'PRODUCTORES_EDITAR',
+    'PRODUCTORES_ELIMINAR',
+    'SIE_REVISAR',
+    'FOTOS_PRODUCTORES_EDITAR',
+    'PRODUCTORES_OBSERVAR',
+    'NUMERO_LOTE_EDITAR',
+    'LOTES_DESASIGNAR',
+  ];
+  List<String> permisosGestor = permisosGestorBase;
   bool eliminado = false;
   bool registroCompleto = false;
   @override
@@ -376,6 +552,24 @@ class _ApiUsuarios extends ApiClient {
                     'NUMERO_LOTE_EDITAR',
                   ],
           },
+          {
+            'id': 6,
+            'codigo': 'REGISTRO_REVISION',
+            'nombre': 'Gestor de productores',
+            'activo': true,
+            'permisos': permisosGestor,
+          },
+          {
+            'id': 7,
+            'codigo': 'FOTOS_OBSERVACIONES',
+            'nombre': 'Fotos y observaciones',
+            'activo': true,
+            'permisos': [
+              'PRODUCTORES_VER',
+              'FOTOS_PRODUCTORES_ACTUALIZAR',
+              'PRODUCTORES_OBSERVAR',
+            ],
+          },
         ];
       case '/administracion/accesos/permisos':
         return [
@@ -387,6 +581,11 @@ class _ApiUsuarios extends ApiClient {
           {
             'codigo': 'FOTOS_PRODUCTORES_EDITAR',
             'nombre': 'Editar fotografías',
+            'grupo': 'Productores',
+          },
+          {
+            'codigo': 'FOTOS_PRODUCTORES_ACTUALIZAR',
+            'nombre': 'Subir y actualizar fotografías',
             'grupo': 'Productores',
           },
           {
@@ -429,6 +628,31 @@ class _ApiUsuarios extends ApiClient {
             'nombre': 'Editar imágenes',
             'grupo': 'Imágenes',
           },
+          {
+            'codigo': 'PRODUCTORES_ELIMINAR',
+            'nombre': 'Eliminar productores',
+            'grupo': 'Productores',
+          },
+          {
+            'codigo': 'LOTES_DESASIGNAR',
+            'nombre': 'Quitar parcela asignada',
+            'grupo': 'Productores',
+          },
+          {
+            'codigo': 'DIRECTORIOS_EDITAR',
+            'nombre': 'Editar directorios',
+            'grupo': 'Jerarquía',
+          },
+          {
+            'codigo': 'CARNETS_IMPRIMIR',
+            'nombre': 'Imprimir carnets',
+            'grupo': 'Carnets',
+          },
+          {
+            'codigo': 'IMPORTAR_PADRON',
+            'nombre': 'Importar padrón',
+            'grupo': 'Importaciones',
+          },
         ];
       case '/centrales':
         return [
@@ -458,7 +682,7 @@ class _ApiUsuarios extends ApiClient {
   Future<Object?> crear(String ruta, Object cuerpo) async {
     codigo = ruta.endsWith('/codigo-manual')
         ? (cuerpo as Map)['codigoAcceso'] as String
-        : 'AbCdE';
+        : 'AbCdE234FgHi567JkLmN89pq';
     return {'codigoAcceso': codigo};
   }
 }

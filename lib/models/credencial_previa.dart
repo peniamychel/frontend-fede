@@ -348,7 +348,7 @@ class UltimoGrupoImpresionCredencial {
       );
 }
 
-/// Productor no impreso que ya tiene foto; puede seguir bloqueado por otro dato.
+/// Candidato a primera impresión o reimpresión; puede estar bloqueado por datos.
 class CandidatoImpresionCredencial {
   const CandidatoImpresionCredencial({
     required this.credencial,
@@ -367,6 +367,13 @@ class CandidatoImpresionCredencial {
   final bool incluidoEnFase;
   final bool pendienteEnFase;
   final bool reimpresionEnFase;
+
+  /// Cola automática de la fase: primeras impresiones y reimpresiones marcadas.
+  bool get pendienteDeImpresion =>
+      seleccionable &&
+      incluidoEnFase &&
+      pendienteEnFase &&
+      (impresiones == 0 || reimpresionEnFase);
 
   int get productorId => credencial.productorId;
 
